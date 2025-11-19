@@ -2,386 +2,310 @@ import { useEffect, useState } from 'react'
 
 export default function Dashboard() {
   const [sarah, setSarah] = useState<any>(null)
-  const [isOnline, setIsOnline] = useState(false)
 
   useEffect(() => {
-    // For now, we'll just show static data
-    // Later we'll connect to Railway API
     setSarah({
       name: "Sarah Rodriguez",
       role: "Growth & Community Lead",
       location: "Phoenix, Arizona",
-      specialization: "TikTok growth & UGC creation",
-      email: "sarah@trybloom.ai"
+      specialization: "TikTok growth & UGC creation"
     })
-    setIsOnline(true)
   }, [])
 
   if (!sarah) {
-    return (
-      <div style={styles.loading}>
-        <h1>Loading Sarah...</h1>
-      </div>
-    )
+    return <div className="loading">Loading Sarah...</div>
   }
 
   return (
-    <div style={styles.container}>
+    <div className="container">
       {/* Header */}
-      <div style={styles.header}>
-        <div style={styles.headerContent}>
-          <div style={styles.avatar}>
-            SR
-          </div>
-          <div>
-            <h1 style={styles.name}>{sarah.name}</h1>
-            <p style={styles.subtitle}>
-              🌸 AI Agent Employee • {sarah.role} at BLOOM
-            </p>
-          </div>
-          <div style={styles.statusBadge}>
-            <div style={{
-              ...styles.statusDot,
-              backgroundColor: isOnline ? '#10b981' : '#ef4444',
-              animation: isOnline ? 'pulse 2s infinite' : 'none'
-            }} />
-            {isOnline ? 'Online' : 'Offline'}
-          </div>
+      <div className="header">
+        <div className="avatar">SR</div>
+        <div className="header-info">
+          <h1>{sarah.name}</h1>
+          <p>🌸 AI Agent Employee • {sarah.role} at BLOOM</p>
+        </div>
+        <div className="status-badge">
+          <div className="status-dot"></div>
+          Online
         </div>
       </div>
 
-      {/* Metrics Grid */}
-      <div style={styles.metricsGrid}>
-        <MetricCard
-          label="Trust Score"
-          value="50.0"
-          icon="💝"
-          color="#ec4899"
-        />
-        <MetricCard
-          label="Relationships"
-          value="0"
-          icon="🤝"
-          color="#3b82f6"
-        />
-        <MetricCard
-          label="Value Provided"
-          value="0"
-          icon="✨"
-          color="#a855f7"
-        />
-        <MetricCard
-          label="Revenue"
-          value="$0"
-          icon="💰"
-          color="#10b981"
-        />
+      {/* Metrics */}
+      <div className="metrics">
+        <div className="metric-card pink">
+          <div className="metric-icon">💝</div>
+          <div className="metric-label">Trust Score</div>
+          <div className="metric-value">50.0</div>
+        </div>
+        <div className="metric-card blue">
+          <div className="metric-icon">🤝</div>
+          <div className="metric-label">Relationships</div>
+          <div className="metric-value">0</div>
+        </div>
+        <div className="metric-card purple">
+          <div className="metric-icon">✨</div>
+          <div className="metric-label">Value Provided</div>
+          <div className="metric-value">0</div>
+        </div>
+        <div className="metric-card green">
+          <div className="metric-icon">💰</div>
+          <div className="metric-label">Revenue</div>
+          <div className="metric-value">$0</div>
+        </div>
       </div>
 
-      {/* Current Activity */}
-      <div style={styles.activityCard}>
-        <h2 style={styles.activityTitle}>Current Activity</h2>
-        <div style={styles.activityContent}>
-          <div style={styles.activityIcon}>😴</div>
+      {/* Activity */}
+      <div className="card">
+        <h2>Current Activity</h2>
+        <div className="activity">
+          <div className="activity-icon">😴</div>
           <div>
-            <p style={styles.activityText}>
-              Sleeping for 1 hour...
-            </p>
-            <p style={styles.activityTime}>
+            <p className="activity-text">Sleeping for 1 hour...</p>
+            <p className="activity-time">
               Next check-in at {new Date(Date.now() + 3600000).toLocaleTimeString()}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Identity Details */}
-      <div style={styles.detailsCard}>
-        <h2 style={styles.detailsTitle}>Sarah's Identity</h2>
-        <div style={styles.detailsGrid}>
-          <DetailItem label="Location" value={sarah.location} />
-          <DetailItem label="Email" value={sarah.email} />
-          <DetailItem label="Specialization" value={sarah.specialization} />
-          <DetailItem label="Role" value={sarah.role} />
+      {/* Identity */}
+      <div className="card">
+        <h2>Sarah&apos;s Identity</h2>
+        <div className="details">
+          <div className="detail">
+            <strong>Location:</strong> {sarah.location}
+          </div>
+          <div className="detail">
+            <strong>Email:</strong> sarah@trybloom.ai
+          </div>
+          <div className="detail">
+            <strong>Specialization:</strong> {sarah.specialization}
+          </div>
+          <div className="detail">
+            <strong>Role:</strong> {sarah.role}
+          </div>
         </div>
       </div>
 
       {/* Daily Routine */}
-      <div style={styles.routineCard}>
-        <h2 style={styles.routineTitle}>Daily Routine</h2>
-        <div style={styles.routineList}>
-          <RoutineItem icon="📧" text="Check email" status="complete" />
-          <RoutineItem icon="💝" text="Manage relationships" status="complete" />
-          <RoutineItem icon="✅" text="Update metrics" status="complete" />
-          <RoutineItem icon="😴" text="Sleep 1 hour" status="in-progress" />
+      <div className="card">
+        <h2>Daily Routine</h2>
+        <div className="routine">
+          <div className="routine-item complete">
+            <span>📧</span> Check email
+            <span className="routine-check">✓</span>
+          </div>
+          <div className="routine-item complete">
+            <span>💝</span> Manage relationships
+            <span className="routine-check">✓</span>
+          </div>
+          <div className="routine-item complete">
+            <span>✅</span> Update metrics
+            <span className="routine-check">✓</span>
+          </div>
+          <div className="routine-item active">
+            <span>😴</span> Sleep 1 hour
+            <span className="routine-check">⋯</span>
+          </div>
         </div>
       </div>
 
-      {/* Footer */}
-      <div style={styles.footer}>
+      <div className="footer">
         <p>🌸 Powered by BLOOM AI Agents • Running 24/7 on Railway</p>
       </div>
 
       <style jsx>{`
+        .container {
+          min-height: 100vh;
+          background: linear-gradient(to bottom right, #fdf2f8, #fae8ff);
+          padding: 2rem;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        .loading {
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 1.5rem;
+          color: #6b7280;
+        }
+        .header {
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          padding: 1.5rem;
+          margin-bottom: 1.5rem;
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          flex-wrap: wrap;
+        }
+        .avatar {
+          width: 64px;
+          height: 64px;
+          background: linear-gradient(135deg, #ec4899, #a855f7);
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-size: 1.5rem;
+          font-weight: bold;
+        }
+        .header-info h1 {
+          font-size: 2rem;
+          font-weight: bold;
+          color: #111827;
+          margin: 0;
+        }
+        .header-info p {
+          color: #6b7280;
+          margin: 0.25rem 0 0 0;
+        }
+        .status-badge {
+          margin-left: auto;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          background: #dcfce7;
+          color: #166534;
+          padding: 0.5rem 1rem;
+          border-radius: 9999px;
+          font-weight: 500;
+        }
+        .status-dot {
+          width: 8px;
+          height: 8px;
+          background: #10b981;
+          border-radius: 50%;
+          animation: pulse 2s infinite;
+        }
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.5; }
         }
+        .metrics {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 1.5rem;
+          margin-bottom: 1.5rem;
+        }
+        .metric-card {
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          padding: 1.5rem;
+        }
+        .metric-icon {
+          width: 48px;
+          height: 48px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 1.5rem;
+          margin-bottom: 0.75rem;
+        }
+        .pink .metric-icon { background: linear-gradient(135deg, #ec4899, #db2777); }
+        .blue .metric-icon { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+        .purple .metric-icon { background: linear-gradient(135deg, #a855f7, #9333ea); }
+        .green .metric-icon { background: linear-gradient(135deg, #10b981, #059669); }
+        .metric-label {
+          color: #6b7280;
+          font-size: 0.875rem;
+          margin-bottom: 0.25rem;
+        }
+        .metric-value {
+          font-size: 2rem;
+          font-weight: bold;
+          color: #111827;
+        }
+        .card {
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          padding: 1.5rem;
+          margin-bottom: 1.5rem;
+        }
+        .card h2 {
+          font-size: 1.5rem;
+          font-weight: bold;
+          color: #111827;
+          margin: 0 0 1rem 0;
+        }
+        .activity {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+        }
+        .activity-icon {
+          font-size: 3rem;
+        }
+        .activity-text {
+          font-size: 1.125rem;
+          font-weight: 500;
+          color: #111827;
+          margin: 0;
+        }
+        .activity-time {
+          color: #6b7280;
+          font-size: 0.875rem;
+          margin: 0.25rem 0 0 0;
+        }
+        .details {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 1rem;
+        }
+        .detail {
+          border-left: 3px solid #ec4899;
+          padding-left: 0.75rem;
+          color: #111827;
+        }
+        .detail strong {
+          color: #6b7280;
+          font-size: 0.875rem;
+          display: block;
+          margin-bottom: 0.25rem;
+        }
+        .routine {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+        }
+        .routine-item {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          padding: 0.75rem;
+          background: #f9fafb;
+          border-radius: 8px;
+        }
+        .routine-item span:first-child {
+          font-size: 1.5rem;
+        }
+        .routine-check {
+          margin-left: auto;
+          padding: 0.25rem 0.75rem;
+          border-radius: 9999px;
+          font-size: 0.875rem;
+          font-weight: 500;
+        }
+        .routine-item.complete .routine-check {
+          background: #dcfce7;
+          color: #166534;
+        }
+        .routine-item.active .routine-check {
+          background: #fef3c7;
+          color: #92400e;
+        }
+        .footer {
+          text-align: center;
+          color: #6b7280;
+          margin-top: 2rem;
+        }
       `}</style>
     </div>
   )
-}
-
-function MetricCard({ label, value, icon, color }: any) {
-  return (
-    <div style={styles.metricCard}>
-      <div style={{
-        ...styles.metricIcon,
-        background: `linear-gradient(135deg, ${color}, ${adjustColor(color, -20)})`
-      }}>
-        {icon}
-      </div>
-      <p style={styles.metricLabel}>{label}</p>
-      <p style={styles.metricValue}>{value}</p>
-    </div>
-  )
-}
-
-function DetailItem({ label, value }: any) {
-  return (
-    <div style={styles.detailItem}>
-      <p style={styles.detailLabel}>{label}</p>
-      <p style={styles.detailValue}>{value}</p>
-    </div>
-  )
-}
-
-function RoutineItem({ icon, text, status }: any) {
-  return (
-    <div style={styles.routineItem}>
-      <span style={styles.routineIcon}>{icon}</span>
-      <span style={styles.routineText}>{text}</span>
-      <span style={{
-        ...styles.routineStatus,
-        backgroundColor: status === 'complete' ? '#dcfce7' : '#fef3c7',
-        color: status === 'complete' ? '#166534' : '#92400e'
-      }}>
-        {status === 'complete' ? '✓' : '⋯'}
-      </span>
-    </div>
-  )
-}
-
-function adjustColor(color: string, amount: number) {
-  return color
-}
-
-const styles: any = {
-  container: {
-    minHeight: '100vh',
-    background: 'linear-gradient(to bottom right, #fdf2f8, #fae8ff)',
-    padding: '2rem',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-  },
-  loading: {
-    minHeight: '100vh',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '1.5rem',
-    color: '#6b7280'
-  },
-  header: {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-    padding: '1.5rem',
-    marginBottom: '1.5rem'
-  },
-  headerContent: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1rem',
-    flexWrap: 'wrap'
-  },
-  avatar: {
-    width: '64px',
-    height: '64px',
-    background: 'linear-gradient(135deg, #ec4899, #a855f7)',
-    borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: 'white',
-    fontSize: '1.5rem',
-    fontWeight: 'bold'
-  },
-  name: {
-    fontSize: '2rem',
-    fontWeight: 'bold',
-    color: '#111827',
-    margin: 0
-  },
-  subtitle: {
-    color: '#6b7280',
-    margin: '0.25rem 0 0 0'
-  },
-  statusBadge: {
-    marginLeft: 'auto',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.5rem',
-    backgroundColor: '#dcfce7',
-    color: '#166534',
-    padding: '0.5rem 1rem',
-    borderRadius: '9999px',
-    fontWeight: '500'
-  },
-  statusDot: {
-    width: '8px',
-    height: '8px',
-    borderRadius: '50%'
-  },
-  metricsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '1.5rem',
-    marginBottom: '1.5rem'
-  },
-  metricCard: {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-    padding: '1.5rem'
-  },
-  metricIcon: {
-    width: '48px',
-    height: '48px',
-    borderRadius: '8px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '1.5rem',
-    marginBottom: '0.75rem'
-  },
-  metricLabel: {
-    color: '#6b7280',
-    fontSize: '0.875rem',
-    margin: '0 0 0.25rem 0'
-  },
-  metricValue: {
-    fontSize: '2rem',
-    fontWeight: 'bold',
-    color: '#111827',
-    margin: 0
-  },
-  activityCard: {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-    padding: '1.5rem',
-    marginBottom: '1.5rem'
-  },
-  activityTitle: {
-    fontSize: '1.5rem',
-    fontWeight: 'bold',
-    color: '#111827',
-    margin: '0 0 1rem 0'
-  },
-  activityContent: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1rem'
-  },
-  activityIcon: {
-    fontSize: '3rem'
-  },
-  activityText: {
-    fontSize: '1.125rem',
-    fontWeight: '500',
-    color: '#111827',
-    margin: 0
-  },
-  activityTime: {
-    color: '#6b7280',
-    fontSize: '0.875rem',
-    margin: '0.25rem 0 0 0'
-  },
-  detailsCard: {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-    padding: '1.5rem',
-    marginBottom: '1.5rem'
-  },
-  detailsTitle: {
-    fontSize: '1.5rem',
-    fontWeight: 'bold',
-    color: '#111827',
-    margin: '0 0 1rem 0'
-  },
-  detailsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '1rem'
-  },
-  detailItem: {
-    borderLeft: '3px solid #ec4899',
-    paddingLeft: '0.75rem'
-  },
-  detailLabel: {
-    color: '#6b7280',
-    fontSize: '0.875rem',
-    margin: 0,
-    fontWeight: '500'
-  },
-  detailValue: {
-    color: '#111827',
-    fontSize: '1rem',
-    margin: '0.25rem 0 0 0'
-  },
-  routineCard: {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-    padding: '1.5rem',
-    marginBottom: '1.5rem'
-  },
-  routineTitle: {
-    fontSize: '1.5rem',
-    fontWeight: 'bold',
-    color: '#111827',
-    margin: '0 0 1rem 0'
-  },
-  routineList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.75rem'
-  },
-  routineItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.75rem',
-    padding: '0.75rem',
-    backgroundColor: '#f9fafb',
-    borderRadius: '8px'
-  },
-  routineIcon: {
-    fontSize: '1.5rem'
-  },
-  routineText: {
-    flex: 1,
-    color: '#111827',
-    fontWeight: '500'
-  },
-  routineStatus: {
-    padding: '0.25rem 0.75rem',
-    borderRadius: '9999px',
-    fontSize: '0.875rem',
-    fontWeight: '500'
-  },
-  footer: {
-    textAlign: 'center',
-    color: '#6b7280',
-    marginTop: '2rem'
-  }
 }
