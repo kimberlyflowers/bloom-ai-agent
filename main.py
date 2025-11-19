@@ -8,12 +8,10 @@ import asyncio
 import logging
 from datetime import datetime
 
-# Import Sarah's systems
-from src.identity_persistence import IdentityManager
+# Import Sarah's core systems
+from src.identity_persistence import IdentityManager, Backstory, PersonalityTraits, WritingStyle
 from src.relationship_management import RelationshipManager
 from src.ethical_framework import EthicalFramework
-from src.orchestration_dashboard import OrchestrationDashboard
-from src.video_tutorial_learning import SkillLibrary
 
 # Setup logging
 logging.basicConfig(
@@ -28,51 +26,39 @@ class Sarah:
     def __init__(self):
         self.agent_id = "sarah_001"
 
-        # Initialize systems
+        # Initialize systems (they use in-memory storage for now)
         logger.info("🌸 Initializing Sarah Rodriguez...")
 
-        self.identity = IdentityManager(
-            supabase_url=os.getenv("SUPABASE_URL"),
-            supabase_key=os.getenv("SUPABASE_KEY")
-        )
-
-        self.relationships = RelationshipManager(
-            supabase_url=os.getenv("SUPABASE_URL"),
-            supabase_key=os.getenv("SUPABASE_KEY")
-        )
-
-        self.ethics = EthicalFramework(
-            supabase_url=os.getenv("SUPABASE_URL"),
-            supabase_key=os.getenv("SUPABASE_KEY")
-        )
-
-        self.dashboard = OrchestrationDashboard(
-            supabase_url=os.getenv("SUPABASE_URL"),
-            supabase_key=os.getenv("SUPABASE_KEY")
-        )
-
-        self.learning = SkillLibrary(
-            anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
-            supabase_url=os.getenv("SUPABASE_URL"),
-            supabase_key=os.getenv("SUPABASE_KEY")
-        )
+        self.identity = IdentityManager()
+        self.relationships = RelationshipManager()
+        self.ethics = EthicalFramework()
 
         logger.info("✅ Sarah is fully initialized!")
 
-    async def create_identity(self):
+    def create_identity(self):
         """Create Sarah's identity if it doesn't exist"""
-        try:
-            existing = self.identity.get_identity(self.agent_id)
-            if existing:
-                logger.info("Sarah's identity already exists")
-                return
-        except:
-            pass
+
+        # Check if identity already exists
+        if self.agent_id in self.identity.identities:
+            logger.info("Sarah's identity already exists")
+            return
 
         logger.info("Creating Sarah's identity...")
 
-        from src.identity_persistence import Backstory, PersonalityTraits, WritingStyle
+        # Create Sarah's complete identity
+        identity_id = self.identity.create_identity(
+            agent_id=self.agent_id,
+            first_name="Sarah",
+            last_name="Rodriguez",
+            email="sarah@trybloom.ai",
+            phone="+1-480-555-0123",
+            job_title="Growth & Community Lead",
+            company="BLOOM",
+            location="Phoenix, Arizona",
+            avatar_url="https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah"
+        )
 
+        # Add backstory
         backstory = Backstory(
             education=[
                 "B.S. Marketing - Arizona State University (2019)",
@@ -153,21 +139,22 @@ class Sarah:
             preferred_emojis=["✨", "🎯", "💡", "🚀", "☕", "🌸", "💪"]
         )
 
-        self.identity.create_identity(
-            agent_id=self.agent_id,
-            full_name="Sarah Rodriguez",
-            backstory=backstory,
-            personality_traits=personality,
-            writing_style=writing_style
-        )
+        # Update identity with rich details
+        if self.agent_id in self.identity.identities:
+            self.identity.identities[self.agent_id].backstory = backstory
+            self.identity.identities[self.agent_id].personality_traits = personality
+            self.identity.identities[self.agent_id].writing_style = writing_style
 
         logger.info("✅ Sarah's identity created!")
+        logger.info(f"   Name: Sarah Rodriguez")
+        logger.info(f"   Role: Growth & Community Lead at BLOOM")
+        logger.info(f"   Location: Phoenix, Arizona")
+        logger.info(f"   Specialization: TikTok growth & UGC creation")
 
     async def check_email(self):
         """Check email and respond (placeholder for now)"""
         logger.info("📧 Checking email...")
         # TODO: Implement Gmail integration
-        # For now, just log that we checked
         return []
 
     async def daily_routine(self):
@@ -177,14 +164,15 @@ class Sarah:
         # 1. Check email
         await self.check_email()
 
-        # 2. Update metrics
-        self.dashboard.record_daily_metrics(
-            agent_id=self.agent_id,
-            trust_score=self.ethics.get_current_trust_score(self.agent_id),
-            value_provided_count=len(self.relationships.get_all_relationships(self.agent_id))
-        )
+        # 2. Check relationships
+        total_relationships = len(self.relationships.relationships)
+        logger.info(f"💝 Managing {total_relationships} relationships")
 
-        # 3. Log activity
+        # 3. Check trust score
+        # trust_score = self.ethics.get_current_trust_score(self.agent_id)
+        # logger.info(f"🎯 Trust score: {trust_score}")
+
+        # 4. Log activity
         logger.info("✅ Daily routine complete!")
 
     async def run(self):
@@ -192,7 +180,7 @@ class Sarah:
         logger.info("🌸 Sarah Rodriguez is online!")
 
         # Create identity on first run
-        await self.create_identity()
+        self.create_identity()
 
         # Run daily routine
         while True:
@@ -205,11 +193,16 @@ class Sarah:
 
             except Exception as e:
                 logger.error(f"❌ Error in daily routine: {e}")
+                logger.exception(e)
                 # Sleep 5 minutes before retry
                 await asyncio.sleep(300)
 
 async def main():
     """Entry point"""
+    logger.info("=" * 60)
+    logger.info("🚀 BLOOM AI AGENT - STARTING UP")
+    logger.info("=" * 60)
+
     sarah = Sarah()
     await sarah.run()
 
