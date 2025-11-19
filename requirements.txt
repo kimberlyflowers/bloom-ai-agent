@@ -1,8 +1,14 @@
+# Core dependencies
 anthropic>=0.18.0
-praw>=7.7.0
-tweepy>=4.14.0
 schedule>=1.2.0
 fastapi>=0.104.0
 uvicorn>=0.24.0
 python-dotenv>=1.0.0
 requests>=2.31.0
+
+# Platform integrations
+praw>=7.7.0                    # Reddit
+tweepy>=4.14.0                 # Twitter/X
+discord.py>=2.3.0              # Discord (NEW - BEST PLATFORM!)
+python-telegram-bot>=20.7      # Telegram (NEW)
+slack-sdk>=3.26.0              # Slack (NEW - B2B focus)
