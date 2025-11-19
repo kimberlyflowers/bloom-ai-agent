@@ -10,6 +10,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from ai_agent import BloomAIAgent, Specialization
+from agent_competition import AgentCompetition
 
 logger = logging.getLogger(__name__)
 
@@ -141,15 +142,20 @@ class AgentGenealogy:
 class AgentColony:
     """
     Manages a colony of AI agents with reproduction capability.
+    Now includes competition system for performance-based rewards!
     """
 
-    def __init__(self):
+    def __init__(self, colony_id: str = "main"):
         """Initialize empty colony"""
+        self.colony_id = colony_id
         self.agents: Dict[str, BloomAIAgent] = {}
         self.genealogy: Dict[str, AgentGenealogy] = {}
         self.reproduction_history: List[dict] = []
 
-        logger.info("Agent colony initialized")
+        # Competition system for performance-based rewards
+        self.competition = AgentCompetition(colony_id=colony_id)
+
+        logger.info(f"Agent colony '{colony_id}' initialized with competition system")
 
     def add_agent(self, agent: BloomAIAgent, agent_id: str,
                   parent_id: Optional[str] = None,
@@ -449,6 +455,59 @@ class AgentColony:
 
         return tree
 
+    def record_agent_action(self, agent_id: str, revenue: float = 0.0,
+                           spent: float = 0.0, conversions: int = 0, actions: int = 1):
+        """
+        Record agent activity for competition tracking.
+        Call this whenever an agent takes an action.
+
+        Args:
+            agent_id: Agent ID
+            revenue: Commission earned from this action
+            spent: Cost of this action
+            conversions: Number of conversions (usually 0 or 1)
+            actions: Number of actions taken (default 1)
+        """
+        if agent_id not in self.agents:
+            logger.warning(f"Cannot record action for unknown agent '{agent_id}'")
+            return
+
+        # Record in competition system
+        self.competition.record_agent_activity(
+            agent_id=agent_id,
+            revenue=revenue,
+            spent=spent,
+            conversions=conversions,
+            actions=actions
+        )
+
+        logger.debug(f"Recorded action for {agent_id}: ${revenue:.2f} revenue, ${spent:.2f} spent")
+
+    def get_agent_commission_rate(self, agent_id: str, base_rate: float = 0.10) -> float:
+        """
+        Get commission rate for agent including performance multiplier.
+
+        Returns:
+            float: Commission rate (e.g., 0.15 for Elite tier, 0.08 for Learner)
+        """
+        return self.competition.get_commission_rate(agent_id, base_rate)
+
+    def run_weekly_competition(self):
+        """Run weekly competition and return results"""
+        result = self.competition.run_weekly_competition()
+        logger.info(f"Weekly competition complete! Winner: {result.winner_id}")
+        return result
+
+    def run_monthly_competition(self):
+        """Run monthly competition and return results"""
+        result = self.competition.run_monthly_competition()
+        logger.info(f"Monthly competition complete! Winner: {result.winner_id}")
+        return result
+
+    def get_leaderboard(self, limit: int = 10):
+        """Get current competition leaderboard"""
+        return self.competition.get_leaderboard(limit=limit)
+
     def save_colony_state(self, directory: str = 'data'):
         """Save all colony data to files"""
         os.makedirs(directory, exist_ok=True)
@@ -471,12 +530,15 @@ class AgentColony:
         with open(f"{directory}/reproduction_history.json", 'w') as f:
             json.dump(self.reproduction_history, f, indent=2)
 
+        # Save competition state
+        self.competition.save_state(f"{directory}/competition_state.json")
+
         logger.info(f"Colony state saved to {directory}/")
 
     @staticmethod
-    def load_colony_state(directory: str = 'data') -> 'AgentColony':
+    def load_colony_state(directory: str = 'data', colony_id: str = "main") -> 'AgentColony':
         """Load colony from saved files"""
-        colony = AgentColony()
+        colony = AgentColony(colony_id=colony_id)
 
         # Load genealogy first
         with open(f"{directory}/genealogy.json", 'r') as f:
@@ -499,6 +561,12 @@ class AgentColony:
         if os.path.exists(history_path):
             with open(history_path, 'r') as f:
                 colony.reproduction_history = json.load(f)
+
+        # Load competition state
+        competition_path = f"{directory}/competition_state.json"
+        if os.path.exists(competition_path):
+            colony.competition = AgentCompetition.load_state(competition_path)
+            logger.info("Competition state loaded")
 
         logger.info(f"Colony loaded from {directory}/ - {len(colony.agents)} agents")
 

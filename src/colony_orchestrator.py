@@ -66,10 +66,14 @@ class ColonyOrchestrator:
         # Check for reproductions every 6 hours
         schedule.every(6).hours.do(self.check_reproductions)
 
+        # Competition runs
+        schedule.every().monday.at("00:00").do(self.run_weekly_competition)  # Weekly on Monday
+        schedule.every().month.at("00:00").do(self.run_monthly_competition)  # Monthly on 1st
+
         # Save state every hour
         schedule.every().hour.do(self.save_all_states)
 
-        logger.info("Colony schedule configured")
+        logger.info("Colony schedule configured with competition system")
 
     def morning_routine(self):
         """Morning routine for entire colony"""
@@ -123,6 +127,19 @@ class ColonyOrchestrator:
                        f"${agent_info['balance']:.2f} balance, "
                        f"{agent_info['roi']:.2f}x ROI, "
                        f"{agent_info['children_count']} children")
+
+        # Show competition leaderboard
+        logger.info("\n        🏆 Competition Leaderboard:")
+        leaderboard = self.colony.get_leaderboard(limit=5)
+        if leaderboard:
+            for entry in leaderboard:
+                logger.info(f"  #{entry['rank']} {entry['agent_id']}: "
+                           f"Score {entry['score']:.1f}, "
+                           f"{entry['tier']} tier, "
+                           f"{entry['commission_rate']} commission, "
+                           f"{entry['roi']:.2f}x ROI")
+        else:
+            logger.info("  (No agents eligible for competition yet)")
 
         # Save state
         self.save_all_states()
@@ -185,12 +202,21 @@ class ColonyOrchestrator:
             logger.error(f"Error executing {strategy_name} for agent '{agent_id}': {e}")
             success = False
 
-        # Record result
+        # Record result in agent's history
         agent.record_action_result(
             strategy_name=strategy_name,
             cost=strategy.cost_per_action,
             conversions=0,
             revenue=0.0
+        )
+
+        # Record action in competition system (for performance tracking)
+        self.colony.record_agent_action(
+            agent_id=agent_id,
+            revenue=0.0,  # No revenue yet (comes from conversions via webhook)
+            spent=strategy.cost_per_action,
+            conversions=0,
+            actions=1
         )
 
         if success:
@@ -230,14 +256,19 @@ class ColonyOrchestrator:
 
         agent = self.colony.agents[agent_id]
 
-        # Calculate commission (2x for enterprise hunters)
-        commission_amount = agent.COMMISSION_RATES.get(plan_type, 0.50)
+        # Calculate base commission
+        base_commission = agent.COMMISSION_RATES.get(plan_type, 0.50)
 
+        # Apply specialization multiplier
         genealogy = self.colony.genealogy[agent_id]
         if genealogy.specialization == Specialization.ENTERPRISE_HUNTER:
-            commission_amount *= 2.0  # 2x commission for enterprise hunter
+            base_commission *= 2.0  # 2x commission for enterprise hunter
 
-        # Record commission
+        # Apply performance multiplier from competition system
+        performance_multiplier = self.colony.competition.get_commission_multiplier(agent_id)
+        commission_amount = base_commission * performance_multiplier
+
+        # Record commission in agent
         agent.record_commission(
             amount=commission_amount,
             user_id=f"user_{random.randint(1000, 9999)}",
@@ -247,19 +278,82 @@ class ColonyOrchestrator:
             conversion_path=conversion_path
         )
 
+        # Record revenue in competition system
+        self.colony.record_agent_action(
+            agent_id=agent_id,
+            revenue=commission_amount,
+            spent=0.0,
+            conversions=1,
+            actions=0
+        )
+
+        tier = self.colony.competition.get_agent_tier(agent_id)
         logger.info(f"🎉 Conversion recorded for agent '{agent_id}': "
-                   f"{plan_type} → ${commission_amount:.2f} commission")
+                   f"{plan_type} → ${commission_amount:.2f} commission "
+                   f"(base ${base_commission:.2f} × {performance_multiplier}x {tier.display_name} tier)")
+
+    def run_weekly_competition(self):
+        """Run weekly competition and announce results"""
+        logger.info("🏆 Running weekly competition...")
+
+        result = self.colony.run_weekly_competition()
+
+        if result.winner_id:
+            logger.info(f"""
+            🎊 WEEKLY COMPETITION RESULTS 🎊
+            ================================
+            Winner: {result.winner_id}
+            Score: {result.winner_score:.2f}/100
+            Tier: {result.winner_tier.display_name}
+            Commission Rate: {result.winner_tier.multiplier * 10}%
+
+            Top 5 Rankings:
+            """)
+
+            for i, (agent_id, score, tier) in enumerate(result.rankings[:5], 1):
+                logger.info(f"  {i}. {agent_id}: {score:.2f} points ({tier.display_name} tier)")
+
+            logger.info(f"\nTotal participants: {len(result.rankings)}")
+        else:
+            logger.info("No eligible agents for this week's competition")
+
+    def run_monthly_competition(self):
+        """Run monthly competition and announce results"""
+        logger.info("🏆🏆 Running MONTHLY competition...")
+
+        result = self.colony.run_monthly_competition()
+
+        if result.winner_id:
+            logger.info(f"""
+            🎊🎊 MONTHLY COMPETITION RESULTS 🎊🎊
+            ====================================
+            Winner: {result.winner_id}
+            Score: {result.winner_score:.2f}/100
+            Tier: {result.winner_tier.display_name}
+            Commission Rate: {result.winner_tier.multiplier * 10}%
+
+            Top 10 Rankings:
+            """)
+
+            for i, (agent_id, score, tier) in enumerate(result.rankings[:10], 1):
+                logger.info(f"  {i}. {agent_id}: {score:.2f} points ({tier.display_name} tier)")
+
+            logger.info(f"\nTotal participants: {len(result.rankings)}")
+        else:
+            logger.info("No eligible agents for this month's competition")
 
     def get_colony_report(self) -> dict:
         """Get comprehensive colony report"""
         stats = self.colony.get_colony_stats()
         tree = self.colony.get_family_tree()
+        leaderboard = self.colony.get_leaderboard(limit=10)
 
         return {
             'timestamp': datetime.now().isoformat(),
             'stats': stats,
             'family_tree': tree,
-            'reproduction_history': self.colony.reproduction_history
+            'reproduction_history': self.colony.reproduction_history,
+            'competition_leaderboard': leaderboard
         }
 
     def run_continuously(self):

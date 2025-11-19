@@ -5,9 +5,10 @@ An autonomous AI agent system that grows BLOOM's user base through intelligent R
 ## 🌟 Key Features
 
 ### 1. Commission-Based Economics
-- Agents earn 10% commission on BLOOM user conversions
+- Agents earn commission on BLOOM user conversions (8-15% based on performance)
+- Performance-based tiers reward top performers with higher commission rates
 - Commission funds their own operations (API costs, promotions)
-- Self-sustaining growth model
+- Self-sustaining growth model with natural selection
 
 ### 2. Adaptive Learning System
 - Tracks ROI for every marketing action
@@ -173,15 +174,24 @@ Server runs on `http://localhost:8000`
 bloom-ai-agent/
 ├── src/
 │   ├── ai_agent.py              # Core agent (commission, learning, strategies)
-│   ├── reddit_integration.py    # Reddit API integration
-│   ├── twitter_integration.py   # Twitter API integration
-│   ├── orchestrator.py          # Single agent coordinator
+│   ├── agent_competition.py     # Competition system (NEW!)
 │   ├── agent_reproduction.py    # Reproduction system
 │   ├── colony_orchestrator.py   # Multi-agent colony manager
+│   ├── reddit_integration.py    # Reddit API integration
+│   ├── twitter_integration.py   # Twitter API integration
+│   ├── discord_integration.py   # Discord bot integration
+│   ├── telegram_integration.py  # Telegram bot integration
+│   ├── slack_integration.py     # Slack bot integration
+│   ├── orchestrator.py          # Single agent coordinator
 │   └── webhook_handler.py       # Conversion webhook receiver
-├── data/                        # Runtime data (agents, genealogy)
+├── data/                        # Runtime data (agents, genealogy, competition)
 ├── logs/                        # Log files
 ├── demo.py                      # Interactive demonstration
+├── competition_demo.py          # Competition system demo (NEW!)
+├── COMPETITION_SYSTEM.md        # Competition documentation (NEW!)
+├── MULTI_PLATFORM_STRATEGY.md   # Multi-platform guide
+├── MULTI_PLATFORM_QUICK_START.md # Setup guide
+├── REDDIT_COMPLIANT_STRATEGY.md # Reddit manual strategy
 ├── requirements.txt             # Python dependencies
 ├── .env.example                 # Configuration template
 └── README.md                    # This file
@@ -210,15 +220,74 @@ Agents reproduce when meeting ALL criteria for a level:
 4. **Inherit Knowledge**: Child inherits parent's ROI history for relevant strategies
 5. **Independent Operation**: Both parent and child continue autonomously
 
+## 🏆 Agent Competition System
+
+### Natural Selection for AI Agents
+
+Agents compete for higher commission rates based on performance, creating evolutionary pressure where the best strategies naturally dominate.
+
+### Performance Tiers
+
+Agents are scored 0-100 based on ROI, conversion rate, revenue per action, and total revenue:
+
+| Tier | Score Range | Commission Rate | Multiplier | Impact |
+|------|-------------|-----------------|------------|--------|
+| 🏆 **Elite** | 90-100 | 15% | 1.5x | +50% more budget than base |
+| 🥇 **Champion** | 75-89 | 12% | 1.2x | +20% more budget than base |
+| 🥈 **Competitor** | 50-74 | 10% | 1.0x | Base rate (default) |
+| 🥉 **Learner** | 0-49 | 8% | 0.8x | -20% budget penalty |
+
+### How It Works
+
+**Every action tracked:**
+```python
+# Agent takes action
+colony.record_agent_action(agent_id='alpha', spent=0.10, actions=1)
+
+# User converts
+colony.record_agent_action(agent_id='alpha', revenue=5.00, conversions=1)
+
+# Performance score calculated automatically (ROI, conversion rate, etc.)
+```
+
+**Commission rates adjust dynamically:**
+```
+Elite Agent: $50 plan × 10% base × 1.5x multiplier = $7.50 commission
+Learner Agent: $50 plan × 10% base × 0.8x multiplier = $4.00 commission
+```
+
+**Natural Selection:**
+- Elite agents earn 50% more → can afford more actions → find more customers → reproduce faster
+- Learner agents earn 20% less → limited budget → struggle to compete → may never reproduce
+- Best strategies spread through reproduction, poor strategies fade out
+
+### Competition Cycles
+
+- **Weekly**: Every Monday, announces top 5 performers
+- **Monthly**: 1st of month, announces top 10 performers
+- **Automatic**: Tiers update dynamically based on current performance
+
+### Run the Demo
+
+```bash
+python competition_demo.py
+```
+
+See full details in [COMPETITION_SYSTEM.md](COMPETITION_SYSTEM.md)
+
 ## 💰 Commission Rates
 
-| Plan Type | Price | Commission (10%) | Enterprise Hunter (20%) |
-|-----------|-------|------------------|------------------------|
-| Free | $0 | $0.50 | $1.00 |
-| VERIFY | $19 | $1.90 | $3.80 |
-| Creator | $49/mo | $4.90 | $9.80 |
-| Studio | $99/mo | $9.90 | $19.80 |
-| Agency | $999/mo | $99.90 | $199.80 |
+Base commission rates (before performance multiplier):
+
+| Plan Type | Price | Base Commission (10%) | Elite Tier (15%) | Learner Tier (8%) |
+|-----------|-------|----------------------|------------------|-------------------|
+| Free | $0 | $0.50 | $0.75 | $0.40 |
+| VERIFY | $19 | $1.90 | $2.85 | $1.52 |
+| Creator | $49/mo | $4.90 | $7.35 | $3.92 |
+| Studio | $99/mo | $9.90 | $14.85 | $7.92 |
+| Agency | $999/mo | $99.90 | $149.85 | $79.92 |
+
+**Note**: Enterprise Hunter specialization adds additional 2x multiplier on top of performance tier.
 
 ## 🎯 Marketing Strategies
 
@@ -515,26 +584,33 @@ For issues or questions:
 
 ## 🗺️ Roadmap
 
-### Phase 1 (Current)
+### Phase 1 (Completed ✅)
 - ✅ Core agent with commission tracking
 - ✅ Learning system with ROI optimization
 - ✅ Operating modes (SURVIVAL/GROWTH/SCALE)
 - ✅ Cellular reproduction system
 - ✅ Reddit & Twitter integration
+- ✅ Discord, Telegram, Slack integration
 - ✅ Webhook server for conversions
+- ✅ **Agent competition system with natural selection**
+- ✅ **Performance-based commission tiers (8-15%)**
+- ✅ **Weekly and monthly competitions**
 
 ### Phase 2 (Planned)
 - [ ] Advanced content generation with A/B testing
 - [ ] Sentiment analysis for opportunity scoring
-- [ ] Multi-platform expansion (LinkedIn, TikTok)
+- [ ] Additional platform expansion (LinkedIn, TikTok, YouTube)
 - [ ] Agent communication and coordination
 - [ ] Advanced analytics dashboard
+- [ ] Real-time leaderboard UI
 
 ### Phase 3 (Future)
 - [ ] Autonomous budget management
 - [ ] Cross-agent strategy sharing
 - [ ] Predictive conversion modeling
 - [ ] Self-optimizing reproduction benchmarks
+- [ ] Agent personality development
+- [ ] Multi-colony orchestration
 
 ---
 
