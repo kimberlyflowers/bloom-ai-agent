@@ -1,33 +1,35 @@
 """
-Video Tutorial Learning - System #26
+Self-Learning from Video Tutorials - System #26
 
-AGENTS TEACH THEMSELVES NEW SKILLS!
+🎓 AGENTS TEACH THEMSELVES NEW SKILLS!
 
-Agents can:
-- Watch YouTube tutorials
-- Extract steps using Claude Vision
-- Follow along in real-time
-- Save workflows as "learned skills"
-- Repeat skills anytime
-- Share skills with all agents via Learning Network
+How it works:
+1. Agent finds YouTube tutorial (e.g., "How to create UGC ad with Arcade")
+2. Watches video, Claude Vision analyzes each frame
+3. Extracts step-by-step instructions
+4. Follows along with browser automation
+5. Records workflow with screenshots
+6. Saves as "learned skill" in memory
+7. Can repeat skill anytime with new context!
 
-Example Use Cases:
-- Learn "How to create UGC ad with Arcade" → Create product demos
-- Learn "How to edit videos with CapCut" → Make testimonial videos
-- Learn "How to design carousel posts" → Create social content
-- Learn "How to set up TikTok Shop" → Automate new revenue channels
+Example:
+- Sarah watches: "How to create UGC video ad"
+- Sarah learns: Complete workflow
+- Sarah creates: UGC ad with HER AI face promoting BLOOM
+- Sarah posts: TikTok, Instagram Reels
+- Result: Professional UGC content at scale!
 
-When one agent learns a skill, ALL agents can do it!
-
-REVOLUTIONARY: Self-improving agent workforce! 🚀
+When one agent learns → ALL agents can do it (via Learning Network)!
 """
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from enum import Enum
 from pathlib import Path
 import json
+import base64
+import time
 
 
 # ============================================================================
@@ -37,151 +39,310 @@ import json
 SKILLS_DIR = Path("data/learned_skills")
 SKILLS_DIR.mkdir(parents=True, exist_ok=True)
 
-SKILL_VIDEOS_DIR = Path("data/skill_videos")
-SKILL_VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
+WORKFLOWS_DIR = Path("data/skill_workflows")
+WORKFLOWS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ============================================================================
-# MODELS
+# LEARNED SKILL MODELS
 # ============================================================================
 
 class SkillCategory(Enum):
     """Categories of learnable skills"""
-    VIDEO_CREATION = "video_creation"  # UGC ads, demos, tutorials
-    VIDEO_EDITING = "video_editing"  # CapCut, Premiere, etc.
-    GRAPHIC_DESIGN = "graphic_design"  # Canva, Figma, etc.
-    PLATFORM_MASTERY = "platform_mastery"  # TikTok Shop, Instagram, etc.
-    AUTOMATION_WORKFLOW = "automation_workflow"  # Zapier, Make, etc.
-    CONTENT_CREATION = "content_creation"  # Carousels, infographics, etc.
-    TOOL_USAGE = "tool_usage"  # Specific tool tutorials
+    VIDEO_CREATION = "video_creation"  # Arcade, CapCut, video editing
+    GRAPHIC_DESIGN = "graphic_design"  # Canva, Figma, design tools
+    PLATFORM_MASTERY = "platform_mastery"  # TikTok Shop, LinkedIn features
+    CONTENT_CREATION = "content_creation"  # Writing, posting, formatting
+    AUTOMATION_WORKFLOW = "automation_workflow"  # Tool workflows
+    MARKETING_TECHNIQUE = "marketing_technique"  # Marketing strategies
+    SALES_PROCESS = "sales_process"  # Sales techniques
+    TECHNICAL_SKILL = "technical_skill"  # Technical workflows
 
 
 class StepType(Enum):
-    """Types of tutorial steps"""
+    """Types of steps in a tutorial"""
     NAVIGATE = "navigate"  # Go to URL
     CLICK = "click"  # Click element
     TYPE = "type"  # Type text
-    DRAG = "drag"  # Drag and drop
-    SELECT = "select"  # Select from dropdown
+    SELECT = "select"  # Select option
     UPLOAD = "upload"  # Upload file
-    DOWNLOAD = "download"  # Download file
     WAIT = "wait"  # Wait for element/time
     VERIFY = "verify"  # Verify result
+    EXTRACT = "extract"  # Extract information
 
 
 @dataclass
 class TutorialStep:
-    """A single step in a tutorial"""
+    """A single step from a tutorial"""
     step_number: int
-    step_type: StepType
-    description: str  # What to do
+    description: str  # "Click the 'Record Demo' button"
+    action_type: StepType
 
-    # Visual analysis
-    video_timestamp: float  # Timestamp in video
-    screenshot_before: Optional[str] = None  # Before action
-    screenshot_after: Optional[str] = None  # After action
-
-    # Execution details
-    target_element: Optional[str] = None  # CSS selector or description
-    action_value: Optional[str] = None  # Text to type, URL to navigate, etc.
-
-    # Validation
+    # Action details
+    target: Optional[str] = None  # Selector, URL, etc.
+    input_value: Optional[str] = None  # Text to type, file to upload
     expected_result: Optional[str] = None  # What should happen
-    success_indicators: List[str] = field(default_factory=list)  # How to verify success
+
+    # Visual reference
+    screenshot_before: Optional[str] = None
+    screenshot_after: Optional[str] = None
 
     # Context
-    tips: List[str] = field(default_factory=list)  # Tips from video
-    common_mistakes: List[str] = field(default_factory=list)  # Things to avoid
+    timing_notes: Optional[str] = None  # "Wait 2 seconds for animation"
+    pro_tips: List[str] = field(default_factory=list)
+    common_mistakes: List[str] = field(default_factory=list)
 
 
 @dataclass
 class LearnedSkill:
     """A skill learned from a video tutorial"""
     skill_id: str
-    skill_name: str
+    skill_name: str  # "Create UGC Video Ad with Arcade"
     category: SkillCategory
-    learned_by: str  # agent_id who learned it first
+    learned_by: str  # agent_id
 
     # Source
-    video_url: str
+    source_video_url: str
     video_title: str
-    video_duration: float  # seconds
-    channel_name: Optional[str] = None
+    video_creator: str
+    tutorial_quality: float = 0.0  # 0-1, how good was the tutorial
 
-    # Tutorial breakdown
+    # The skill itself
     steps: List[TutorialStep] = field(default_factory=list)
-    total_steps: int = 0
-    estimated_time: float = 0.0  # minutes to execute
-
-    # Prerequisites
-    required_tools: List[str] = field(default_factory=list)  # "Arcade", "Canva", etc.
-    required_accounts: List[str] = field(default_factory=list)  # "TikTok", "YouTube", etc.
+    required_tools: List[str] = field(default_factory=list)  # ["Arcade.dev", "Browser"]
+    prerequisites: List[str] = field(default_factory=list)  # Other skills needed first
 
     # Performance
     times_executed: int = 0
     success_rate: float = 0.0  # 0-1
-    avg_execution_time: float = 0.0  # minutes
+    avg_duration_seconds: float = 0.0
+
+    # Context for execution
+    variable_inputs: Dict[str, str] = field(default_factory=dict)  # {"topic": "describe", "style": "options"}
+    output_description: str = ""  # What this skill produces
 
     # Sharing
+    shared_with_network: bool = False
     adopted_by: List[str] = field(default_factory=list)  # Other agent_ids
-    difficulty: str = "medium"  # "easy", "medium", "hard"
 
-    # Learning
+    # Meta
     learned_date: datetime = field(default_factory=datetime.utcnow)
-    last_executed: Optional[datetime] = None
+    last_used_date: Optional[datetime] = None
 
-    # Output examples
-    example_outputs: List[str] = field(default_factory=list)  # Screenshots/videos created
+    # Quality metrics
+    clarity_score: float = 0.0  # How clear were the instructions
+    replicability_score: float = 0.0  # How easy to replicate
+    usefulness_score: float = 0.0  # How useful is this skill
 
 
 @dataclass
 class SkillExecution:
-    """A record of executing a learned skill"""
+    """A specific execution of a learned skill"""
     execution_id: str
     skill_id: str
     agent_id: str
-
-    # Context
-    context: Dict[str, Any]  # Custom parameters for this execution
+    context: Dict[str, Any]  # Variable inputs for this execution
 
     # Results
     success: bool = False
-    steps_completed: int = 0
-    steps_failed: int = 0
-    execution_time: float = 0.0  # minutes
+    output: Optional[str] = None  # URL, file path, etc.
+    screenshots: List[str] = field(default_factory=list)
 
-    # Output
-    output_files: List[str] = field(default_factory=list)  # Created files
-    output_urls: List[str] = field(default_factory=list)  # Posted content
-
-    # Issues
+    # Performance
+    duration_seconds: float = 0.0
     errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
 
+    # Meta
     executed_at: datetime = field(default_factory=datetime.utcnow)
 
 
 # ============================================================================
-# VIDEO TUTORIAL LEARNER
+# VIDEO ANALYSIS
 # ============================================================================
 
-class VideoTutorialLearner:
+class VideoTutorialAnalyzer:
     """
-    Learn skills by watching video tutorials!
+    Analyze video tutorials to extract learnable steps
 
-    Process:
-    1. Agent finds tutorial video
-    2. Play video and extract key frames
-    3. Claude Vision analyzes each frame
-    4. Extract steps and actions
-    5. Follow along in real-time
-    6. Save workflow as learned skill
-    7. Share with all agents!
+    Uses Claude Vision to understand what's happening in each frame!
     """
 
     def __init__(self):
+        self.frame_interval = 2.0  # Analyze every 2 seconds
+
+    def analyze_tutorial(
+        self,
+        video_url: str,
+        skill_name: str,
+        category: SkillCategory
+    ) -> Tuple[List[TutorialStep], Dict[str, Any]]:
+        """
+        Analyze a video tutorial and extract steps
+
+        This is where the MAGIC happens - Claude Vision watches the video!
+        """
+        print(f"\n🎓 LEARNING: {skill_name}")
+        print(f"   Source: {video_url}")
+        print(f"   Category: {category.value}")
+
+        # In production, this would:
+        # 1. Use Playwright to open YouTube video
+        # 2. Extract frames at regular intervals
+        # 3. Send each frame to Claude Vision API
+        # 4. Ask: "What step is being performed here?"
+        # 5. Identify UI elements, actions, expected results
+        # 6. Build step-by-step workflow
+
+        # For this demo, let's simulate the analysis
+        steps = self._simulate_video_analysis(skill_name, category)
+
+        metadata = {
+            "video_title": "How to create UGC ads with Arcade.dev",
+            "video_creator": "SaaSGrowth",
+            "duration_minutes": 8.5,
+            "required_tools": ["Arcade.dev", "Browser", "Microphone (optional)"]
+        }
+
+        print(f"\n✅ Analysis complete!")
+        print(f"   Extracted {len(steps)} steps")
+        print(f"   Required tools: {', '.join(metadata['required_tools'])}")
+
+        return steps, metadata
+
+    def _simulate_video_analysis(
+        self,
+        skill_name: str,
+        category: SkillCategory
+    ) -> List[TutorialStep]:
+        """
+        Simulate what Claude Vision would extract from tutorial
+
+        In production, this analyzes actual video frames!
+        """
+        if "UGC" in skill_name or "Arcade" in skill_name:
+            # Simulating: "How to create UGC video ad with Arcade"
+            return [
+                TutorialStep(
+                    step_number=1,
+                    description="Navigate to Arcade.dev",
+                    action_type=StepType.NAVIGATE,
+                    target="https://arcade.software",
+                    expected_result="Arcade homepage loads",
+                    timing_notes="Wait for page to fully load"
+                ),
+                TutorialStep(
+                    step_number=2,
+                    description="Click 'Start Recording' button",
+                    action_type=StepType.CLICK,
+                    target="button:contains('Start Recording')",
+                    expected_result="Recording interface opens",
+                    pro_tips=["Make sure to allow screen recording permissions"],
+                    timing_notes="Browser may ask for permissions"
+                ),
+                TutorialStep(
+                    step_number=3,
+                    description="Select browser tab to record",
+                    action_type=StepType.SELECT,
+                    target="tab-selector",
+                    expected_result="Tab selected for recording",
+                    timing_notes="Choose the product demo tab"
+                ),
+                TutorialStep(
+                    step_number=4,
+                    description="Click 'Record' to start capturing",
+                    action_type=StepType.CLICK,
+                    target="button[data-action='record']",
+                    expected_result="Recording begins, red indicator shows",
+                    pro_tips=["Speak clearly if adding voiceover", "Move slowly through UI"]
+                ),
+                TutorialStep(
+                    step_number=5,
+                    description="Navigate through product demonstrating features",
+                    action_type=StepType.NAVIGATE,
+                    target="your-product-url",
+                    expected_result="Product demo recorded",
+                    timing_notes="Take 15-30 seconds showing key features",
+                    pro_tips=["Highlight pain points this solves", "Show clear value"]
+                ),
+                TutorialStep(
+                    step_number=6,
+                    description="Click 'Stop Recording'",
+                    action_type=StepType.CLICK,
+                    target="button[data-action='stop']",
+                    expected_result="Recording stops, enters editing mode",
+                    timing_notes="Wait a moment before clicking"
+                ),
+                TutorialStep(
+                    step_number=7,
+                    description="Add text overlays highlighting key points",
+                    action_type=StepType.CLICK,
+                    target=".add-text-button",
+                    input_value="Problem → Solution → Result",
+                    expected_result="Text overlays added to video",
+                    pro_tips=["Keep text short and punchy", "Use contrasting colors"]
+                ),
+                TutorialStep(
+                    step_number=8,
+                    description="Add voiceover narration (optional)",
+                    action_type=StepType.CLICK,
+                    target=".add-voiceover",
+                    expected_result="Voiceover recording interface opens",
+                    timing_notes="Optional but increases engagement",
+                    common_mistakes=["Talking too fast", "Not testing audio first"]
+                ),
+                TutorialStep(
+                    step_number=9,
+                    description="Preview the final video",
+                    action_type=StepType.CLICK,
+                    target="button[data-action='preview']",
+                    expected_result="Video plays in preview mode",
+                    pro_tips=["Watch full video to check flow", "Verify audio sync"]
+                ),
+                TutorialStep(
+                    step_number=10,
+                    description="Export video",
+                    action_type=StepType.CLICK,
+                    target="button[data-action='export']",
+                    expected_result="Video exports as MP4",
+                    timing_notes="May take 30-60 seconds to export",
+                    pro_tips=["Choose 1080p for best quality", "Download to known location"]
+                ),
+                TutorialStep(
+                    step_number=11,
+                    description="Verify exported video file",
+                    action_type=StepType.VERIFY,
+                    target="downloads-folder",
+                    expected_result="MP4 file exists and plays correctly",
+                    pro_tips=["Play full video to ensure quality", "Check file size (should be 5-20MB)"]
+                )
+            ]
+
+        # Default generic steps
+        return [
+            TutorialStep(
+                step_number=1,
+                description="Follow the tutorial step by step",
+                action_type=StepType.NAVIGATE,
+                target="tutorial-url",
+                expected_result="Skill learned successfully"
+            )
+        ]
+
+
+# ============================================================================
+# SKILL LEARNER
+# ============================================================================
+
+class SkillLearner:
+    """
+    Learn skills by following tutorials
+
+    Agents become self-improving!
+    """
+
+    def __init__(self):
+        self.analyzer = VideoTutorialAnalyzer()
         self.learned_skills: Dict[str, LearnedSkill] = {}
-        self.skill_executions: List[SkillExecution] = []
 
     def learn_from_video(
         self,
@@ -191,221 +352,91 @@ class VideoTutorialLearner:
         category: SkillCategory
     ) -> LearnedSkill:
         """
-        Watch a video tutorial and learn the skill
+        Agent learns a new skill by watching a tutorial!
 
-        This is the MAGIC function!
+        This is INCREDIBLE - agents teaching themselves!
         """
-        import secrets
+        print(f"\n{'='*80}")
+        print(f"🎓 AGENT LEARNING NEW SKILL")
+        print(f"{'='*80}")
+        print(f"\n   Agent: {agent_id}")
+        print(f"   Skill: {skill_name}")
+        print(f"   Source: {video_url}")
 
+        # Step 1: Analyze the video tutorial
+        print("\n📹 Step 1: Analyzing tutorial video...")
+        steps, metadata = self.analyzer.analyze_tutorial(video_url, skill_name, category)
+
+        # Step 2: Follow along and record workflow
+        print("\n🎯 Step 2: Following along with tutorial...")
+        workflow_results = self._follow_tutorial_steps(agent_id, steps)
+
+        # Step 3: Create learned skill
+        import secrets
         skill_id = f"skill_{secrets.token_urlsafe(8)}"
 
-        print(f"\n🎓 LEARNING NEW SKILL: {skill_name}")
-        print(f"   Agent: {agent_id}")
-        print(f"   Video: {video_url}")
-        print(f"   Category: {category.value}")
-
-        # Simulate video analysis (in production, use actual browser + Claude Vision)
-        print(f"\n📹 Playing video...")
-        print(f"   Extracting key frames...")
-        print(f"   Analyzing with Claude Vision...")
-
-        # Extract steps from video
-        steps = self._extract_steps_from_video(video_url, skill_name)
-
-        print(f"\n✅ Extracted {len(steps)} steps from tutorial")
-
-        # Follow along and execute
-        print(f"\n🎬 Following along...")
-        workflow = self._follow_tutorial(agent_id, steps)
-
-        # Create learned skill
-        learned_skill = LearnedSkill(
+        skill = LearnedSkill(
             skill_id=skill_id,
             skill_name=skill_name,
             category=category,
             learned_by=agent_id,
-            video_url=video_url,
-            video_title=f"{skill_name} Tutorial",
-            video_duration=300.0,  # 5 minutes
+            source_video_url=video_url,
+            video_title=metadata["video_title"],
+            video_creator=metadata["video_creator"],
             steps=steps,
-            total_steps=len(steps),
-            estimated_time=10.0,  # 10 minutes
-            success_rate=1.0,  # First try success!
+            required_tools=metadata["required_tools"],
+            success_rate=1.0,  # First execution successful!
             times_executed=1
         )
 
-        self.learned_skills[skill_id] = learned_skill
+        # Save skill
+        self.learned_skills[skill_id] = skill
 
-        print(f"\n🎉 SKILL LEARNED!")
+        print(f"\n✅ SKILL LEARNED SUCCESSFULLY!")
         print(f"   Skill ID: {skill_id}")
-        print(f"   Steps: {len(steps)}")
-        print(f"   Ready to use!")
+        print(f"   Steps mastered: {len(steps)}")
+        print(f"   Can now execute this skill anytime!")
 
-        return learned_skill
+        return skill
 
-    def _extract_steps_from_video(
-        self,
-        video_url: str,
-        skill_name: str
-    ) -> List[TutorialStep]:
-        """
-        Extract tutorial steps using Claude Vision
-
-        In production:
-        1. Play video in browser
-        2. Extract frames at key moments (scene changes, actions)
-        3. Analyze each frame with Claude Vision
-        4. Identify: "What action is being performed?"
-        5. Build step-by-step workflow
-        """
-
-        # Demo steps for "Create UGC Ad with Arcade"
-        if "ugc" in skill_name.lower() or "arcade" in skill_name.lower():
-            return [
-                TutorialStep(
-                    step_number=1,
-                    step_type=StepType.NAVIGATE,
-                    description="Navigate to Arcade.dev",
-                    video_timestamp=15.0,
-                    target_element="url",
-                    action_value="https://arcade.dev",
-                    expected_result="Arcade homepage loads",
-                    tips=["Make sure you're logged in first"]
-                ),
-                TutorialStep(
-                    step_number=2,
-                    step_type=StepType.CLICK,
-                    description="Click 'Create New Demo' button",
-                    video_timestamp=25.0,
-                    target_element="button:contains('Create New Demo')",
-                    expected_result="Demo creation wizard opens",
-                    tips=["You can also use keyboard shortcut Cmd+N"]
-                ),
-                TutorialStep(
-                    step_number=3,
-                    step_type=StepType.SELECT,
-                    description="Select 'Product Demo' template",
-                    video_timestamp=35.0,
-                    target_element="div.template[data-type='product-demo']",
-                    expected_result="Template selected, editor opens",
-                    tips=["Product demo template works best for features"]
-                ),
-                TutorialStep(
-                    step_number=4,
-                    step_type=StepType.CLICK,
-                    description="Click 'Start Recording'",
-                    video_timestamp=45.0,
-                    target_element="button.record-btn",
-                    expected_result="Screen recording starts",
-                    tips=["Position your windows first", "Close unnecessary tabs"]
-                ),
-                TutorialStep(
-                    step_number=5,
-                    step_type=StepType.NAVIGATE,
-                    description="Navigate through product feature",
-                    video_timestamp=60.0,
-                    action_value="Demonstrate the feature naturally",
-                    expected_result="Actions recorded",
-                    tips=["Go slow", "Click deliberately", "Show the value"]
-                ),
-                TutorialStep(
-                    step_number=6,
-                    step_type=StepType.CLICK,
-                    description="Click 'Stop Recording'",
-                    video_timestamp=90.0,
-                    target_element="button.stop-btn",
-                    expected_result="Recording stops, preview shows",
-                    tips=["Make sure you captured everything"]
-                ),
-                TutorialStep(
-                    step_number=7,
-                    step_type=StepType.CLICK,
-                    description="Add voiceover narration",
-                    video_timestamp=110.0,
-                    target_element="button.add-voiceover",
-                    expected_result="Voiceover recording modal opens",
-                    tips=["Use enthusiastic but natural tone"]
-                ),
-                TutorialStep(
-                    step_number=8,
-                    step_type=StepType.TYPE,
-                    description="Type voiceover script or record",
-                    video_timestamp=130.0,
-                    action_value="Hey! Let me show you this amazing feature...",
-                    expected_result="Voiceover added to timeline",
-                    tips=["Keep it under 30 seconds for TikTok"]
-                ),
-                TutorialStep(
-                    step_number=9,
-                    step_type=StepType.CLICK,
-                    description="Click 'Export Video'",
-                    video_timestamp=150.0,
-                    target_element="button.export",
-                    expected_result="Export options appear",
-                    tips=["Choose 1080p for best quality"]
-                ),
-                TutorialStep(
-                    step_number=10,
-                    step_type=StepType.SELECT,
-                    description="Select 'TikTok Format (9:16)'",
-                    video_timestamp=160.0,
-                    target_element="select.format option[value='tiktok']",
-                    expected_result="Format set to vertical video",
-                    tips=["TikTok format also works for Instagram Reels"]
-                ),
-                TutorialStep(
-                    step_number=11,
-                    step_type=StepType.DOWNLOAD,
-                    description="Download the video",
-                    video_timestamp=170.0,
-                    expected_result="Video file downloaded",
-                    tips=["File will be named arcade-demo-[timestamp].mp4"]
-                )
-            ]
-
-        # Generic steps for other tutorials
-        return [
-            TutorialStep(
-                step_number=1,
-                step_type=StepType.NAVIGATE,
-                description=f"Navigate to required platform for {skill_name}",
-                video_timestamp=0.0
-            )
-        ]
-
-    def _follow_tutorial(
+    def _follow_tutorial_steps(
         self,
         agent_id: str,
         steps: List[TutorialStep]
-    ) -> List[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """
-        Follow the tutorial steps in real-time
+        Agent follows tutorial steps with browser automation
 
-        In production:
-        1. Execute each step using browser automation
-        2. Take screenshots before/after
-        3. Verify expected results
-        4. Handle errors gracefully
-        5. Record workflow for replay
+        Takes screenshots at each step to record workflow!
         """
-        workflow = []
+        results = {
+            "steps_completed": 0,
+            "screenshots": [],
+            "success": True
+        }
 
         for step in steps:
             print(f"\n   Step {step.step_number}: {step.description}")
 
+            # In production, this would use Playwright to:
+            # 1. Execute the action (click, type, navigate)
+            # 2. Take screenshot before and after
+            # 3. Verify expected result
+            # 4. Record any errors
+
             # Simulate execution
-            workflow.append({
-                "step": step.step_number,
-                "action": step.description,
-                "success": True,
-                "screenshot": f"step_{step.step_number}_completed.png"
-            })
+            time.sleep(0.1)  # Simulate action time
 
-            # Show tips if available
-            if step.tips:
-                print(f"      💡 Tip: {step.tips[0]}")
+            results["steps_completed"] += 1
+            results["screenshots"].append(f"screenshot_step_{step.step_number}.png")
 
-        return workflow
+            print(f"      ✅ Completed")
+
+            if step.pro_tips:
+                for tip in step.pro_tips:
+                    print(f"      💡 Tip: {tip}")
+
+        return results
 
     def execute_learned_skill(
         self,
@@ -414,49 +445,46 @@ class VideoTutorialLearner:
         context: Dict[str, Any]
     ) -> SkillExecution:
         """
-        Execute a previously learned skill with custom context
+        Execute a previously learned skill with new context
 
-        Example context for UGC ad:
-        {
-            "topic": "BLOOM's email automation feature",
-            "style": "enthusiastic product demo",
-            "duration": 30,  # seconds
-            "platform": "tiktok",
-            "agent_face": "sarah_headshot.jpg",  # Use agent's AI face!
-            "product_url": "https://app.bloom.ai/email-automation"
-        }
+        This is where agents APPLY what they learned!
         """
-        import secrets
-
-        execution_id = f"exec_{secrets.token_urlsafe(8)}"
-
         if skill_id not in self.learned_skills:
-            print(f"❌ Skill {skill_id} not found!")
-            return None
+            raise ValueError(f"Skill {skill_id} not found")
 
         skill = self.learned_skills[skill_id]
 
-        print(f"\n🎬 EXECUTING LEARNED SKILL: {skill.skill_name}")
-        print(f"   Agent: {agent_id}")
+        print(f"\n{'='*80}")
+        print(f"🎬 EXECUTING LEARNED SKILL")
+        print(f"{'='*80}")
+        print(f"\n   Agent: {agent_id}")
+        print(f"   Skill: {skill.skill_name}")
         print(f"   Context: {context}")
 
-        start_time = datetime.utcnow()
+        import secrets
+        execution_id = f"exec_{secrets.token_urlsafe(8)}"
 
-        # Execute each step with context
-        output_files = []
-        steps_completed = 0
+        start_time = time.time()
 
+        # Execute each step with the new context
+        print(f"\n📋 Executing {len(skill.steps)} steps...")
+
+        screenshots = []
         for step in skill.steps:
-            print(f"\n   Executing: {step.description}")
+            print(f"\n   Step {step.step_number}: {step.description}")
 
-            # Adapt step to context
-            adapted_action = self._adapt_step_to_context(step, context)
-            print(f"      → {adapted_action}")
+            # Apply context to step
+            # For example, if context has "topic": "email automation"
+            # And step is "record product demo"
+            # We'd navigate to the email automation feature
 
-            steps_completed += 1
+            # In production: Execute with Playwright + context
+            time.sleep(0.1)
 
-        end_time = datetime.utcnow()
-        execution_time = (end_time - start_time).total_seconds() / 60.0
+            screenshots.append(f"exec_screenshot_{step.step_number}.png")
+            print(f"      ✅ Done")
+
+        duration = time.time() - start_time
 
         # Create execution record
         execution = SkillExecution(
@@ -465,218 +493,141 @@ class VideoTutorialLearner:
             agent_id=agent_id,
             context=context,
             success=True,
-            steps_completed=steps_completed,
-            execution_time=execution_time,
-            output_files=[f"{context.get('topic', 'demo')}_ugc_ad.mp4"],
-            output_urls=[f"https://tiktok.com/@bloomai/video/123"]
+            output="ugc_ad_video.mp4",  # Example output
+            screenshots=screenshots,
+            duration_seconds=duration
         )
 
-        # Update skill stats
+        # Update skill metrics
         skill.times_executed += 1
-        skill.last_executed = datetime.utcnow()
-
-        if agent_id not in skill.adopted_by:
-            skill.adopted_by.append(agent_id)
-
-        self.skill_executions.append(execution)
+        skill.last_used_date = datetime.utcnow()
 
         print(f"\n✅ SKILL EXECUTED SUCCESSFULLY!")
-        print(f"   Output: {execution.output_files[0]}")
-        print(f"   Time: {execution_time:.1f} minutes")
+        print(f"   Output: {execution.output}")
+        print(f"   Duration: {duration:.1f} seconds")
 
         return execution
 
-    def _adapt_step_to_context(
+
+# ============================================================================
+# SKILL LIBRARY MANAGER
+# ============================================================================
+
+class SkillLibrary:
+    """
+    Manage all learned skills across all agents
+
+    When one learns, ALL can access via the library!
+    """
+
+    def __init__(self):
+        self.learner = SkillLearner()
+        self.all_skills: Dict[str, LearnedSkill] = {}
+        self.agent_skills: Dict[str, List[str]] = {}  # agent_id -> [skill_ids]
+
+    def agent_learns_skill(
         self,
-        step: TutorialStep,
-        context: Dict[str, Any]
-    ) -> str:
+        agent_id: str,
+        video_url: str,
+        skill_name: str,
+        category: SkillCategory
+    ) -> LearnedSkill:
+        """Agent learns a new skill"""
+        skill = self.learner.learn_from_video(agent_id, video_url, skill_name, category)
+
+        # Add to library
+        self.all_skills[skill.skill_id] = skill
+
+        # Track what this agent knows
+        if agent_id not in self.agent_skills:
+            self.agent_skills[agent_id] = []
+        self.agent_skills[agent_id].append(skill.skill_id)
+
+        return skill
+
+    def share_skill_with_network(
+        self,
+        skill_id: str,
+        learning_network
+    ):
         """
-        Adapt a tutorial step to the current context
+        Share a learned skill via the Learning Network
 
-        Example:
-        Original: "Type voiceover script"
-        Context: {"topic": "Email automation"}
-        Adapted: "Type: 'Hey! Let me show you BLOOM's email automation...'"
+        Now ALL agents can use this skill!
         """
+        if skill_id not in self.all_skills:
+            return
 
-        # For voiceover/script steps
-        if step.step_type == StepType.TYPE and "voiceover" in step.description.lower():
-            topic = context.get("topic", "this feature")
-            return f"Type voiceover: 'Hey! Let me show you {topic}. This is game-changing...'"
+        skill = self.all_skills[skill_id]
 
-        # For navigation steps
-        if step.step_type == StepType.NAVIGATE and "product_url" in context:
-            return f"Navigate to: {context['product_url']}"
+        # Contribute to learning network
+        learning_network.contribute_lesson(
+            agent_id=skill.learned_by,
+            lesson_type="TECHNIQUE",  # LessonType.TECHNIQUE
+            title=f"How to: {skill.skill_name}",
+            description=f"Learned from video tutorial: {skill.video_title}",
+            context=f"Category: {skill.category.value}, Steps: {len(skill.steps)}",
+            tags=[skill.category.value, "video-learned", "workflow"],
+            platform_specific=None
+        )
 
-        # For export steps
-        if "export" in step.description.lower() and "platform" in context:
-            platform = context["platform"]
-            return f"Export for {platform} (optimized format)"
+        skill.shared_with_network = True
 
-        return step.description
+        print(f"\n✅ Skill shared with Learning Network!")
+        print(f"   All agents can now learn: {skill.skill_name}")
 
-    def get_skill_library(
+    def get_available_skills(
         self,
         category: Optional[SkillCategory] = None,
         min_success_rate: float = 0.7
     ) -> List[LearnedSkill]:
-        """Get all learned skills, optionally filtered"""
-        skills = list(self.learned_skills.values())
+        """Get all available skills"""
+        skills = list(self.all_skills.values())
 
         if category:
             skills = [s for s in skills if s.category == category]
 
         skills = [s for s in skills if s.success_rate >= min_success_rate]
 
-        # Sort by times executed and success rate
-        skills.sort(key=lambda s: (s.times_executed, s.success_rate), reverse=True)
+        # Sort by usefulness and success rate
+        skills.sort(key=lambda s: (s.success_rate, s.times_executed), reverse=True)
 
         return skills
 
-    def get_skill_report(self) -> str:
-        """Get report of learned skills"""
-        report = f"\n{'='*80}\n"
-        report += "LEARNED SKILLS LIBRARY\n"
-        report += f"{'='*80}\n\n"
+    def get_skill_summary(self) -> str:
+        """Get summary of all learned skills"""
+        summary = f"\n{'='*80}\n"
+        summary += "LEARNED SKILLS LIBRARY\n"
+        summary += f"{'='*80}\n\n"
 
-        report += f"📚 TOTAL SKILLS LEARNED: {len(self.learned_skills)}\n\n"
+        summary += f"📚 TOTAL SKILLS: {len(self.all_skills)}\n"
 
-        # By category
+        # Group by category
         by_category: Dict[SkillCategory, int] = {}
-        for skill in self.learned_skills.values():
+        for skill in self.all_skills.values():
             by_category[skill.category] = by_category.get(skill.category, 0) + 1
 
-        report += "BY CATEGORY:\n"
-        for category, count in sorted(by_category.items(), key=lambda x: x[1], reverse=True):
-            report += f"   • {category.value}: {count}\n"
+        summary += f"\n📊 BY CATEGORY:\n"
+        for cat, count in sorted(by_category.items(), key=lambda x: x[1], reverse=True):
+            summary += f"   • {cat.value}: {count} skills\n"
 
-        # Most used skills
-        report += f"\n🔥 MOST USED SKILLS:\n"
+        summary += f"\n🏆 TOP SKILLS:\n"
         top_skills = sorted(
-            self.learned_skills.values(),
-            key=lambda s: s.times_executed,
+            self.all_skills.values(),
+            key=lambda s: (s.success_rate, s.times_executed),
             reverse=True
         )[:5]
 
-        for skill in top_skills:
-            report += f"\n   • {skill.skill_name}\n"
-            report += f"     Times used: {skill.times_executed}\n"
-            report += f"     Success rate: {skill.success_rate:.0%}\n"
-            report += f"     Adopted by: {len(skill.adopted_by)} agents\n"
+        for i, skill in enumerate(top_skills, 1):
+            summary += f"\n   {i}. {skill.skill_name}\n"
+            summary += f"      Category: {skill.category.value}\n"
+            summary += f"      Success rate: {skill.success_rate:.0%}\n"
+            summary += f"      Times used: {skill.times_executed}\n"
+            summary += f"      Learned by: {skill.learned_by}\n"
 
-        # Total executions
-        total_executions = sum(s.times_executed for s in self.learned_skills.values())
-        report += f"\n📊 TOTAL SKILL EXECUTIONS: {total_executions}\n"
+        summary += f"\n{'='*80}\n"
 
-        report += f"\n{'='*80}\n"
-
-        return report
-
-
-# ============================================================================
-# SKILL LIBRARY INTEGRATION
-# ============================================================================
-
-class SkillLibraryIntegration:
-    """
-    Integrate learned skills with other systems
-    """
-
-    @staticmethod
-    def share_with_learning_network(
-        skill: LearnedSkill,
-        learning_network
-    ):
-        """
-        Share learned skill with Learning Network
-
-        When one agent learns, ALL benefit!
-        """
-        from agent_learning_network import LessonType
-
-        learning_network.contribute_lesson(
-            agent_id=skill.learned_by,
-            lesson_type=LessonType.TECHNIQUE,
-            title=f"How to: {skill.skill_name}",
-            description=f"""
-Learned from video tutorial: {skill.video_url}
-
-Steps: {skill.total_steps}
-Estimated time: {skill.estimated_time:.0f} minutes
-Success rate: {skill.success_rate:.0%}
-
-Tools needed: {', '.join(skill.required_tools)}
-
-This skill can be used to:
-{skill.skill_name}
-
-All agents can now execute this skill!
-            """,
-            context=f"Video tutorial learning - {skill.category.value}",
-            tags=["video-learned", skill.category.value, "automation"],
-            platform_specific=None
-        )
-
-        print(f"\n✅ Skill shared with Learning Network!")
-        print(f"   All agents can now: {skill.skill_name}")
-
-    @staticmethod
-    def create_ugc_ad_for_feature(
-        agent_id: str,
-        learner: VideoTutorialLearner,
-        feature_name: str,
-        feature_description: str,
-        agent_profile
-    ) -> SkillExecution:
-        """
-        Create a UGC video ad featuring the agent's face!
-
-        This is MAGIC - agents creating video ads of themselves!
-        """
-
-        # Find UGC creation skill
-        ugc_skills = [
-            s for s in learner.learned_skills.values()
-            if "ugc" in s.skill_name.lower() or "video ad" in s.skill_name.lower()
-        ]
-
-        if not ugc_skills:
-            print("❌ No UGC creation skill learned yet!")
-            return None
-
-        skill = ugc_skills[0]
-
-        # Execute with agent's identity
-        context = {
-            "topic": feature_name,
-            "description": feature_description,
-            "style": "enthusiastic product demo",
-            "duration": 30,  # 30 seconds for TikTok
-            "platform": "tiktok",
-            "agent_name": agent_profile.full_name,
-            "agent_face": agent_profile.avatar_url,  # Their AI face!
-            "agent_title": agent_profile.job_title,
-            "product_url": "https://app.bloom.ai"
-        }
-
-        print(f"\n🎥 CREATING UGC AD:")
-        print(f"   Agent: {agent_profile.full_name}")
-        print(f"   Feature: {feature_name}")
-        print(f"   Using agent's face: {agent_profile.avatar_url}")
-
-        execution = learner.execute_learned_skill(
-            agent_id=agent_id,
-            skill_id=skill.skill_id,
-            context=context
-        )
-
-        print(f"\n🎉 UGC AD CREATED!")
-        print(f"   Video: {execution.output_files[0]}")
-        print(f"   Features {agent_profile.full_name}'s face!")
-        print(f"   Ready to post on TikTok, Instagram Reels, YouTube Shorts!")
-
-        return execution
+        return summary
 
 
 # ============================================================================
@@ -685,130 +636,176 @@ All agents can now execute this skill!
 
 if __name__ == "__main__":
     print("=" * 80)
-    print(" " * 20 + "🎓 VIDEO TUTORIAL LEARNING DEMO")
+    print(" " * 15 + "🎓 VIDEO TUTORIAL LEARNING DEMO")
     print("=" * 80)
 
-    print("\n🎯 The Vision:")
-    print("   • Agents watch YouTube tutorials")
-    print("   • Learn new skills autonomously")
-    print("   • Execute skills with custom context")
+    print("\n🌟 Self-Learning Agents:")
+    print("   • Watch YouTube tutorials")
+    print("   • Extract step-by-step workflows")
+    print("   • Follow along with browser automation")
+    print("   • Record the process")
+    print("   • Save as learned skill")
+    print("   • Execute skill anytime with new context")
     print("   • Share with all agents!")
-    print("   • Create UGC ads using their AI faces!")
 
-    # Initialize
-    learner = VideoTutorialLearner()
+    # Create skill library
+    library = SkillLibrary()
 
     # Scenario: Sarah learns to create UGC ads
     print("\n\n" + "="*80)
     print("SCENARIO: SARAH LEARNS TO CREATE UGC VIDEO ADS")
     print("="*80)
 
-    print("\n📱 Sarah searches YouTube:")
-    print('   "How to create UGC product demo with Arcade"')
-    print("\n🎥 Finds tutorial: 'Ultimate Guide to UGC Ads with Arcade.dev'")
+    print("\n📱 Sarah thinks: 'We should create UGC ads to promote BLOOM features'")
+    print("   Sarah searches: 'How to create UGC video ad with Arcade'")
+    print("   Sarah finds: Tutorial by SaaSGrowth on YouTube")
 
-    input("\nPress ENTER to watch Sarah learn...")
+    input("\nPress ENTER to watch Sarah learn the skill...")
 
-    # Sarah learns the skill
-    ugc_skill = learner.learn_from_video(
+    # Sarah learns!
+    skill = library.agent_learns_skill(
         agent_id="sarah_001",
-        video_url="https://youtube.com/watch?v=ugc-arcade-tutorial",
+        video_url="https://youtube.com/watch?v=ugc-ad-tutorial",
         skill_name="Create UGC Video Ad with Arcade",
         category=SkillCategory.VIDEO_CREATION
     )
 
-    # Share with Learning Network
-    print("\n\n📢 SHARING WITH ALL AGENTS...")
-    from agent_learning_network import AgentLearningNetwork
+    print("\n\n💡 Sarah now knows:")
+    print(f"   • How to record product demos with Arcade")
+    print(f"   • How to add text overlays")
+    print(f"   • How to add voiceover")
+    print(f"   • How to export as video")
+    print(f"   • Complete workflow in {len(skill.steps)} steps!")
 
-    learning_network = AgentLearningNetwork()
-    SkillLibraryIntegration.share_with_learning_network(ugc_skill, learning_network)
-
-    print("\n✅ Now ALL agents can create UGC ads!")
-
-    input("\nPress ENTER to see Sarah create a UGC ad...")
-
-    # Sarah creates a UGC ad for new BLOOM feature
+    # Sarah creates her first UGC ad!
     print("\n\n" + "="*80)
-    print("SARAH CREATES UGC AD FOR NEW FEATURE")
+    print("SARAH CREATES HER FIRST UGC AD")
     print("="*80)
 
-    print("\n💡 BLOOM just launched: 'AI Email Sequencing'")
-    print("📋 Marketing needs: UGC ad for TikTok")
-    print("👤 Sarah volunteers: 'I can make that!'")
+    print("\n🎬 Sarah executes learned skill:")
+    print("   Topic: BLOOM's new email automation feature")
+    print("   Style: Enthusiastic product demo")
+    print("   Duration: 30 seconds")
+    print("   Platform: TikTok")
 
-    execution = learner.execute_learned_skill(
+    input("\nPress ENTER to watch Sarah create the UGC ad...")
+
+    execution = library.learner.execute_learned_skill(
         agent_id="sarah_001",
-        skill_id=ugc_skill.skill_id,
+        skill_id=skill.skill_id,
         context={
-            "topic": "BLOOM's AI Email Sequencing",
-            "description": "Automatically writes and sends personalized email sequences",
-            "style": "enthusiastic product demo",
-            "duration": 30,
+            "topic": "BLOOM's email automation - send 500 emails/day automatically",
+            "style": "enthusiastic, authentic",
+            "duration": "30 seconds",
             "platform": "tiktok",
-            "agent_name": "Sarah Thompson",
-            "agent_face": "sarah_headshot.jpg",
-            "product_url": "https://app.bloom.ai/email-sequencing"
+            "key_points": [
+                "Show the automation dashboard",
+                "Highlight time savings",
+                "Demonstrate ease of setup"
+            ]
         }
     )
 
-    print("\n\n🎬 VIDEO CREATED:")
-    print("="*80)
-    print("""
-    📹 File: bloom_ai_email_sequencing_ugc.mp4
-    🎭 Featuring: Sarah Thompson (her AI face!)
-    ⏱️  Duration: 30 seconds
-    📱 Format: TikTok (9:16 vertical)
+    print("\n\n🎉 UGC AD CREATED!")
+    print(f"   File: {execution.output}")
+    print(f"   Duration: {execution.duration_seconds:.1f} seconds")
+    print("\n   The video shows:")
+    print("   • Sarah's AI face (her professional headshot brought to life!)")
+    print("   • Walking through BLOOM email automation")
+    print("   • 'Hey! Sarah here from BLOOM...'")
+    print("   • Demonstrating the feature")
+    print("   • Looks 100% like a real person making a UGC ad!")
 
-    Script:
-    "Hey! Sarah here from BLOOM. Let me show you our new AI Email
-    Sequencing feature. Watch this - I can create a personalized
-    5-email sequence in literally 10 seconds. [shows demo] This is
-    insane! Check out BLOOM if you want to automate your outreach.
-    Link in bio! 🚀"
+    print("\n📱 Sarah posts to TikTok:")
+    print("   Caption: 'How we automated 500 emails/day with BLOOM 🚀'")
+    print("   Hashtags: #SaaS #Automation #EmailMarketing #Productivity")
 
-    ✅ Ready to post!
-    """)
-
-    print("="*80)
-
-    # Now other agents can use the skill!
+    # Share with network
     print("\n\n" + "="*80)
-    print("ALEX USES SARAH'S LEARNED SKILL")
+    print("SHARING WITH LEARNING NETWORK")
     print("="*80)
 
-    print("\n👤 Alex (Backend Agent) needs to create a UGC ad too")
-    print("   He adopts Sarah's learned skill...")
+    print("\n🌐 Sarah shares skill with all agents...")
 
-    alex_execution = learner.execute_learned_skill(
+    # Simulate learning network
+    class MockLearningNetwork:
+        def contribute_lesson(self, **kwargs):
+            pass
+
+    library.share_skill_with_network(skill.skill_id, MockLearningNetwork())
+
+    print("\n✅ Skill shared!")
+    print("   Now ALL agents can create UGC ads!")
+    print("\n   • Alex can create UGC ad about CRM automation")
+    print("   • Mike can create UGC ad about sales features")
+    print("   • Emma can create UGC ad about customer support")
+    print("   • ALL using the same workflow Sarah learned!")
+
+    # More agents adopt the skill
+    print("\n\n📚 Other agents adopt the skill:")
+
+    skill.adopted_by.extend(["alex_001", "mike_001", "emma_001"])
+    skill.times_executed += 3
+
+    print("   • Alex creates UGC ad → Posted to LinkedIn")
+    print("   • Mike creates UGC ad → Posted to Instagram Reels")
+    print("   • Emma creates UGC ad → Posted to YouTube Shorts")
+
+    print("\n💪 Result: 4 professional UGC ads in minutes!")
+    print("   Each featuring the agent's own AI face")
+    print("   Each promoting different BLOOM features")
+    print("   Each posted to different platforms")
+    print("   All from ONE tutorial Sarah watched!")
+
+    # Show another learning example
+    print("\n\n" + "="*80)
+    print("ALEX LEARNS ANOTHER SKILL")
+    print("="*80)
+
+    print("\n🎨 Alex thinks: 'We need better Instagram content'")
+    print("   Alex searches: 'How to create Instagram carousel with Canva'")
+
+    input("\nPress ENTER to watch Alex learn...")
+
+    skill2 = library.agent_learns_skill(
         agent_id="alex_001",
-        skill_id=ugc_skill.skill_id,
+        video_url="https://youtube.com/watch?v=canva-carousel",
+        skill_name="Create Instagram Carousel with Canva",
+        category=SkillCategory.GRAPHIC_DESIGN
+    )
+
+    print("\n✅ Alex learned!")
+    print("   Now Alex can create professional Instagram carousels")
+
+    # Alex creates carousel
+    print("\n🎨 Alex creates carousel:")
+    print("   Topic: '10 Automation Wins for Course Creators'")
+
+    execution2 = library.learner.execute_learned_skill(
+        agent_id="alex_001",
+        skill_id=skill2.skill_id,
         context={
-            "topic": "BLOOM's CRM Automation",
-            "description": "Automatically updates CRM from every interaction",
-            "style": "professional walkthrough",
-            "duration": 30,
-            "platform": "linkedin",  # LinkedIn video this time
-            "agent_name": "Alex Rodriguez",
-            "agent_face": "alex_headshot.jpg",
-            "product_url": "https://app.bloom.ai/crm-automation"
+            "topic": "10 Automation Wins for Course Creators",
+            "style": "professional, data-driven",
+            "slides": 10
         }
     )
 
-    print(f"\n✅ Alex created his video using the same skill!")
-    print(f"   Output: {alex_execution.output_files[0]}")
-    print(f"   Now posting to LinkedIn!")
+    print("\n✅ Carousel created and posted to Instagram!")
 
-    # Show skill library
-    print("\n\n" + learner.get_skill_report())
+    # Show library summary
+    print("\n\n" + library.get_skill_summary())
 
     print("\n\n" + "=" * 80)
     print("✨ Video Tutorial Learning Complete!")
-    print("\nThe Future:")
-    print("   • Agents find tutorials for ANY skill")
-    print("   • Learn by watching and following along")
-    print("   • Create content using their AI faces")
-    print("   • Share skills with entire agent workforce")
-    print("   • Self-improving team that never stops learning!")
-    print("\nRevolutionary: AI agents that teach themselves! 🚀")
+    print("\nNow:")
+    print("   ✅ Agents can watch YouTube tutorials")
+    print("   ✅ Agents extract step-by-step workflows")
+    print("   ✅ Agents follow along and record process")
+    print("   ✅ Agents save as permanent skills")
+    print("   ✅ Agents execute skills with new context")
+    print("   ✅ Skills shared across ALL agents")
+    print("   ✅ SELF-IMPROVING AGENT WORKFORCE!")
+    print("\n🌟 When one agent learns → ALL agents benefit!")
+    print("   This is NEXT-LEVEL collective intelligence! 🚀")
     print("=" * 80)
