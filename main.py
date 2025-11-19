@@ -45,20 +45,7 @@ class Sarah:
 
         logger.info("Creating Sarah's identity...")
 
-        # Create Sarah's complete identity
-        identity_id = self.identity.create_identity(
-            agent_id=self.agent_id,
-            first_name="Sarah",
-            last_name="Rodriguez",
-            email="sarah@trybloom.ai",
-            phone="+1-480-555-0123",
-            job_title="Growth & Community Lead",
-            company="BLOOM",
-            location="Phoenix, Arizona",
-            avatar_url="https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah"
-        )
-
-        # Add backstory
+        # Build backstory first
         backstory = Backstory(
             education=[
                 "B.S. Marketing - Arizona State University (2019)",
@@ -139,11 +126,21 @@ class Sarah:
             preferred_emojis=["✨", "🎯", "💡", "🚀", "☕", "🌸", "💪"]
         )
 
-        # Update identity with rich details
-        if self.agent_id in self.identity.identities:
-            self.identity.identities[self.agent_id].backstory = backstory
-            self.identity.identities[self.agent_id].personality_traits = personality
-            self.identity.identities[self.agent_id].writing_style = writing_style
+        # Create Sarah's complete identity with all details
+        identity_id = self.identity.create_identity(
+            agent_id=self.agent_id,
+            first_name="Sarah",
+            last_name="Rodriguez",
+            email="sarah@trybloom.ai",
+            phone="+1-480-555-0123",
+            job_title="Growth & Community Lead",
+            company="BLOOM",
+            location="Phoenix, Arizona",
+            avatar_url="https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah",
+            backstory=backstory,
+            writing_style=writing_style,
+            personality=personality
+        )
 
         logger.info("✅ Sarah's identity created!")
         logger.info(f"   Name: Sarah Rodriguez")
