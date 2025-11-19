@@ -9,11 +9,11 @@ import logging
 from datetime import datetime
 
 # Import Sarah's systems
-from src.identity_persistence import IdentityPersistence
+from src.identity_persistence import IdentityManager
 from src.relationship_management import RelationshipManager
 from src.ethical_framework import EthicalFramework
 from src.orchestration_dashboard import OrchestrationDashboard
-from src.video_tutorial_learning import VideoTutorialLearning
+from src.video_tutorial_learning import SkillLibrary
 
 # Setup logging
 logging.basicConfig(
@@ -31,7 +31,7 @@ class Sarah:
         # Initialize systems
         logger.info("🌸 Initializing Sarah Rodriguez...")
 
-        self.identity = IdentityPersistence(
+        self.identity = IdentityManager(
             supabase_url=os.getenv("SUPABASE_URL"),
             supabase_key=os.getenv("SUPABASE_KEY")
         )
@@ -51,7 +51,7 @@ class Sarah:
             supabase_key=os.getenv("SUPABASE_KEY")
         )
 
-        self.learning = VideoTutorialLearning(
+        self.learning = SkillLibrary(
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
             supabase_url=os.getenv("SUPABASE_URL"),
             supabase_key=os.getenv("SUPABASE_KEY")
