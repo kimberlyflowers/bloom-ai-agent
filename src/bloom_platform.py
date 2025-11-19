@@ -145,6 +145,10 @@ class BloomPlatform:
         self.is_running = False
         print("✅ Platform stopped gracefully\n")
 
+    def shutdown(self):
+        """Alias for stop() - shutdown all platform services"""
+        self.stop()
+
     def _register_health_checks(self):
         """Register all health checks"""
         if not self.health:
@@ -174,14 +178,14 @@ class BloomPlatform:
             stats = self.jobs.get_stats()
             return stats["workers"]["total"] > 0
 
-        from health_checks import CheckType, CheckCategory, HealthCheckResult
+        from health_checks import CheckType, CheckCategory, HealthCheckResult, HealthStatus
 
         def jobs_health_check():
             is_healthy = check_jobs()
             stats = self.jobs.get_stats()
             return HealthCheckResult(
                 check_name="background_jobs",
-                status="healthy" if is_healthy else "unhealthy",
+                status=HealthStatus.HEALTHY if is_healthy else HealthStatus.UNHEALTHY,
                 message=f"Workers: {stats['workers']['total']}, Active: {stats['workers']['active']}",
                 timestamp=datetime.utcnow(),
                 duration_ms=0.5,

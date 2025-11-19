@@ -310,9 +310,12 @@ class ABTestManager:
                          traffic_split: Optional[List[float]] = None,
                          min_sample_size: int = 100,
                          confidence_level: float = 0.95,
-                         auto_promote: bool = True) -> Experiment:
+                         auto_promote: bool = True) -> str:
         """
         Create a new A/B test experiment
+
+        Returns:
+            experiment_id (str): The ID of the created experiment
         """
         experiment_id = str(uuid.uuid4())
 
@@ -348,7 +351,7 @@ class ABTestManager:
         )
 
         self.experiments[experiment_id] = experiment
-        return experiment
+        return experiment_id  # Return ID, not the object
 
     def start_experiment(self, experiment_id: str):
         """Start an experiment"""
