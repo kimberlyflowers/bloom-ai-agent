@@ -11,6 +11,7 @@ from datetime import datetime
 import schedule
 from ai_agent import BloomAIAgent, Specialization
 from agent_reproduction import AgentColony
+from colony_learning import ColonyLearning, print_learning_report
 from reddit_integration import RedditMonitor, RedditStrategy
 from twitter_integration import TwitterMonitor, TwitterStrategy
 
@@ -47,10 +48,13 @@ class ColonyOrchestrator:
         self.reddit_monitor = RedditMonitor()
         self.twitter_monitor = TwitterMonitor()
 
+        # Initialize collaborative learning system
+        self.learning = ColonyLearning(colony_id="main")
+
         # Setup schedule
         self._setup_schedule()
 
-        logger.info(f"Colony orchestrator initialized with founding agent '{initial_agent_id}'")
+        logger.info(f"Colony orchestrator initialized with founding agent '{initial_agent_id}' and collaborative learning")
 
     def _setup_schedule(self):
         """Setup colony-wide schedule"""
@@ -66,14 +70,17 @@ class ColonyOrchestrator:
         # Check for reproductions every 6 hours
         schedule.every(6).hours.do(self.check_reproductions)
 
-        # Competition runs
+        # Collaborative learning sessions
+        schedule.every().sunday.at("18:00").do(self.run_learning_session)  # Weekly on Sunday evening
+
+        # Competition runs (keep for performance tracking)
         schedule.every().monday.at("00:00").do(self.run_weekly_competition)  # Weekly on Monday
         schedule.every().month.at("00:00").do(self.run_monthly_competition)  # Monthly on 1st
 
         # Save state every hour
         schedule.every().hour.do(self.save_all_states)
 
-        logger.info("Colony schedule configured with competition system")
+        logger.info("Colony schedule configured with collaborative learning and competition system")
 
     def morning_routine(self):
         """Morning routine for entire colony"""
@@ -341,6 +348,37 @@ class ColonyOrchestrator:
             logger.info(f"\nTotal participants: {len(result.rankings)}")
         else:
             logger.info("No eligible agents for this month's competition")
+
+    def run_learning_session(self):
+        """
+        Run collaborative learning session.
+
+        Agents learn from the best while protecting promising experiments.
+        This prevents the "local maximum trap" where everyone chases quick wins
+        and misses better long-term strategies.
+        """
+        logger.info("🧠 Running weekly learning session...")
+
+        session = self.learning.run_learning_session(self.colony)
+
+        if session:
+            # Print detailed report
+            print_learning_report(session)
+
+            # Log key insights
+            logger.info(f"\n💡 Learning Insights:")
+            logger.info(f"  Best performer: {session['best_agent']} ({session['best_roi']:.2f}x ROI)")
+            logger.info(f"  Agents improved: {len(session['actions'])}")
+
+            # Show protected experiments
+            protected_count = sum(1 for action in session['actions']
+                                 if action['role'] == 'Experimenter')
+            if protected_count > 0:
+                logger.info(f"  🛡️ Protected experiments: {protected_count}")
+                logger.info(f"     (These are showing promise even if ROI is currently lower)")
+
+        else:
+            logger.info("Not enough data for learning session yet")
 
     def get_colony_report(self) -> dict:
         """Get comprehensive colony report"""
