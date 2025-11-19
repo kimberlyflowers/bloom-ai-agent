@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 export default function Dashboard() {
-  const [sarah, setSarah] = useState<any>(null)
+  const [sarah, setSarah] = useState(null)
 
   useEffect(() => {
     setSarah({
