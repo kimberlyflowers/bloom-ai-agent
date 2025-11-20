@@ -245,15 +245,17 @@ export default function Dashboard() {
             }
             setMessages(prev => [...prev, systemMessage])
 
-            // Save system message to database
-            try {
-              await fetch(`${getApiUrl()}/api/conversations/${currentConversationIdRef.current}/messages`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: 'system', text: data.message })
-              })
-            } catch (error) {
-              console.error('Error saving system message to database:', error)
+            // Save system message to database (skip if no conversation yet)
+            if (currentConversationIdRef.current) {
+              try {
+                await fetch(`${getApiUrl()}/api/conversations/${currentConversationIdRef.current}/messages`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ type: 'system', text: data.message })
+                })
+              } catch (error) {
+                console.error('Error saving system message to database:', error)
+              }
             }
           } else if (data.type === 'sarah_message') {
             const sarahMessage = {
@@ -266,14 +268,16 @@ export default function Dashboard() {
             setIsSending(false)
 
             // Save Sarah's response to database
-            try {
-              await fetch(`${getApiUrl()}/api/conversations/${currentConversationIdRef.current}/messages`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: 'sarah', text: data.message })
-              })
-            } catch (error) {
-              console.error('Error saving Sarah message to database:', error)
+            if (currentConversationIdRef.current) {
+              try {
+                await fetch(`${getApiUrl()}/api/conversations/${currentConversationIdRef.current}/messages`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ type: 'sarah', text: data.message })
+                })
+              } catch (error) {
+                console.error('Error saving Sarah message to database:', error)
+              }
             }
           }
         } catch (error) {
@@ -301,7 +305,7 @@ export default function Dashboard() {
   async function sendMessage(e) {
     e.preventDefault()
 
-    if (!chatInput.trim() || !chatConnected || isSending) {
+    if (!chatInput.trim() || !chatConnected || isSending || !currentConversationIdRef.current) {
       return
     }
 
