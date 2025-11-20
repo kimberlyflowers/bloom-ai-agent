@@ -23,6 +23,14 @@ from anthropic import Anthropic
 from conversations_db import ConversationsDB
 from file_handler import FileHandler
 
+# Browser automation
+try:
+    from playwright.async_api import async_playwright
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    PLAYWRIGHT_AVAILABLE = False
+    logger.warning("⚠️ Playwright not installed - browser automation disabled")
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -83,6 +91,13 @@ class Sarah:
         else:
             logger.warning("⚠️ No ANTHROPIC_API_KEY - chat will not be available")
             self.anthropic = None
+
+        # Browser automation
+        self.playwright = None
+        self.browser = None
+        self.browser_context = None
+        self.browser_page = None
+        self.browser_actions = []  # Track browser action history
 
         logger.info("✅ Sarah is fully initialized!")
 
@@ -332,6 +347,291 @@ Important:
                     # Other errors - don't retry
                     logger.error(f"❌ Error generating response: {e}")
                     return f"Oops! I ran into an issue: {str(e)}. Let me try to help anyway - what did you want to know? 🌸"
+
+    async def start_browser(self) -> bool:
+        """Start Sarah's browser for frontend automation"""
+        if not PLAYWRIGHT_AVAILABLE:
+            logger.error("❌ Playwright not installed - cannot start browser")
+            await broadcast_screen_activity(
+                'error',
+                'Browser automation unavailable (Playwright not installed)',
+                {'error': 'playwright_missing'}
+            )
+            return False
+
+        if self.browser_page:
+            logger.info("✅ Browser already running")
+            return True
+
+        try:
+            import random
+
+            await broadcast_screen_activity(
+                'browser_starting',
+                'Starting browser...',
+                {}
+            )
+
+            # Small human-like delay
+            await asyncio.sleep(random.uniform(0.5, 1.0))
+
+            # Start Playwright
+            self.playwright = await async_playwright().start()
+
+            # Launch browser (headless for production, can set headless=False for debugging)
+            self.browser = await self.playwright.chromium.launch(
+                headless=True,  # Set to False to see browser window
+                args=['--no-sandbox']  # Needed for Railway/Docker
+            )
+
+            # Create browser context (like an incognito window)
+            self.browser_context = await self.browser.new_context(
+                viewport={'width': 1920, 'height': 1080},
+                user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            )
+
+            # Create page
+            self.browser_page = await self.browser_context.new_page()
+
+            logger.info("✅ Browser started successfully")
+
+            await broadcast_screen_activity(
+                'browser_ready',
+                'Browser started and ready! 🌐',
+                {'status': 'ready'}
+            )
+
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Failed to start browser: {e}")
+            await broadcast_screen_activity(
+                'error',
+                f'Failed to start browser: {str(e)}',
+                {'error': str(e)}
+            )
+            return False
+
+    async def navigate_to(self, url: str) -> bool:
+        """Navigate to a URL"""
+        if not self.browser_page:
+            success = await self.start_browser()
+            if not success:
+                return False
+
+        try:
+            import random
+
+            await broadcast_screen_activity(
+                'navigating',
+                f'Opening {url}...',
+                {'url': url}
+            )
+
+            # Human-like delay before navigation
+            await asyncio.sleep(random.uniform(0.5, 1.5))
+
+            # Navigate to URL
+            await self.browser_page.goto(url, wait_until='networkidle', timeout=30000)
+
+            # Take screenshot after navigation
+            screenshot_path = Path("data/screenshots")
+            screenshot_path.mkdir(parents=True, exist_ok=True)
+            screenshot_file = screenshot_path / f"nav_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+
+            await self.browser_page.screenshot(path=str(screenshot_file))
+
+            logger.info(f"✅ Navigated to {url}")
+
+            await broadcast_screen_activity(
+                'page_loaded',
+                f'Loaded: {url} ✅',
+                {'url': url, 'screenshot': str(screenshot_file)}
+            )
+
+            # Track action
+            self.browser_actions.append({
+                'type': 'navigate',
+                'url': url,
+                'timestamp': datetime.now().isoformat(),
+                'success': True
+            })
+
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Failed to navigate to {url}: {e}")
+            await broadcast_screen_activity(
+                'error',
+                f'Failed to load {url}: {str(e)}',
+                {'url': url, 'error': str(e)}
+            )
+
+            self.browser_actions.append({
+                'type': 'navigate',
+                'url': url,
+                'timestamp': datetime.now().isoformat(),
+                'success': False,
+                'error': str(e)
+            })
+
+            return False
+
+    async def browser_click(self, selector: str, description: str = "") -> bool:
+        """Click an element on the page"""
+        if not self.browser_page:
+            return False
+
+        try:
+            import random
+
+            await broadcast_screen_activity(
+                'clicking',
+                f'Clicking: {description or selector}',
+                {'selector': selector}
+            )
+
+            # Human-like delay before click
+            await asyncio.sleep(random.uniform(0.5, 1.5))
+
+            # Click element
+            await self.browser_page.click(selector)
+
+            logger.info(f"✅ Clicked: {description or selector}")
+
+            await broadcast_screen_activity(
+                'clicked',
+                f'Clicked: {description or selector} ✅',
+                {'selector': selector}
+            )
+
+            self.browser_actions.append({
+                'type': 'click',
+                'selector': selector,
+                'description': description,
+                'timestamp': datetime.now().isoformat(),
+                'success': True
+            })
+
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Failed to click {selector}: {e}")
+            await broadcast_screen_activity(
+                'error',
+                f'Failed to click {description or selector}: {str(e)}',
+                {'selector': selector, 'error': str(e)}
+            )
+            return False
+
+    async def browser_type(self, selector: str, text: str, description: str = "") -> bool:
+        """Type text into an input field (human-like speed)"""
+        if not self.browser_page:
+            return False
+
+        try:
+            import random
+
+            await broadcast_screen_activity(
+                'typing',
+                f'Typing in: {description or selector}',
+                {'selector': selector, 'text_length': len(text)}
+            )
+
+            # Human-like delay before typing
+            await asyncio.sleep(random.uniform(0.3, 0.8))
+
+            # Clear field first
+            await self.browser_page.fill(selector, '')
+
+            # Type character by character with human-like delays
+            for char in text:
+                await self.browser_page.type(selector, char, delay=random.randint(50, 150))  # 50-150ms per char
+
+            logger.info(f"✅ Typed into: {description or selector}")
+
+            await broadcast_screen_activity(
+                'typed',
+                f'Entered text in: {description or selector} ✅',
+                {'selector': selector}
+            )
+
+            self.browser_actions.append({
+                'type': 'type',
+                'selector': selector,
+                'description': description,
+                'text_length': len(text),
+                'timestamp': datetime.now().isoformat(),
+                'success': True
+            })
+
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Failed to type into {selector}: {e}")
+            await broadcast_screen_activity(
+                'error',
+                f'Failed to type into {description or selector}: {str(e)}',
+                {'selector': selector, 'error': str(e)}
+            )
+            return False
+
+    async def take_screenshot(self, description: str = "") -> Optional[str]:
+        """Take a screenshot of current page"""
+        if not self.browser_page:
+            return None
+
+        try:
+            screenshot_path = Path("data/screenshots")
+            screenshot_path.mkdir(parents=True, exist_ok=True)
+            screenshot_file = screenshot_path / f"screen_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+
+            await self.browser_page.screenshot(path=str(screenshot_file), full_page=True)
+
+            logger.info(f"📸 Screenshot saved: {screenshot_file}")
+
+            await broadcast_screen_activity(
+                'screenshot',
+                f'Screenshot taken: {description}',
+                {'filepath': str(screenshot_file)}
+            )
+
+            return str(screenshot_file)
+
+        except Exception as e:
+            logger.error(f"❌ Failed to take screenshot: {e}")
+            return None
+
+    async def close_browser(self) -> bool:
+        """Close browser and cleanup"""
+        try:
+            if self.browser_page:
+                await self.browser_page.close()
+            if self.browser_context:
+                await self.browser_context.close()
+            if self.browser:
+                await self.browser.close()
+            if self.playwright:
+                await self.playwright.stop()
+
+            self.browser_page = None
+            self.browser_context = None
+            self.browser = None
+            self.playwright = None
+
+            logger.info("✅ Browser closed")
+
+            await broadcast_screen_activity(
+                'browser_closed',
+                'Browser closed',
+                {}
+            )
+
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Error closing browser: {e}")
+            return False
 
 
 # API Routes
@@ -643,6 +943,72 @@ async def process_message_queue():
             is_processing_queue = False
 
 
+# Helper functions for browser command parsing
+
+async def handle_browser_command(message: str) -> bool:
+    """
+    Parse user message for browser commands and execute them
+
+    Returns True if a browser command was handled, False otherwise
+    """
+    message_lower = message.lower().strip()
+
+    # Command: Navigate to URL
+    if any(phrase in message_lower for phrase in ['go to ', 'navigate to ', 'open ', 'visit ']):
+        # Extract URL from message
+        import re
+
+        # Look for URLs in the message
+        url_match = re.search(r'(https?://[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}[^\s]*)', message)
+        if url_match:
+            url = url_match.group(1)
+
+            # Add https:// if missing
+            if not url.startswith('http'):
+                url = 'https://' + url
+
+            logger.info(f"🌐 Browser command: Navigate to {url}")
+            await sarah_instance.navigate_to(url)
+            return True
+
+    # Command: Click element
+    if message_lower.startswith('click '):
+        selector = message[6:].strip()
+        logger.info(f"🖱️ Browser command: Click {selector}")
+        await sarah_instance.browser_click(selector, description=selector)
+        return True
+
+    # Command: Type text
+    if 'type ' in message_lower and (' in ' in message_lower or ' into ' in message_lower):
+        # Parse "type [text] in [selector]" or "type [text] into [selector]"
+        if ' into ' in message_lower:
+            parts = message.split(' into ', 1)
+        else:
+            parts = message.split(' in ', 1)
+
+        if len(parts) == 2:
+            text_part = parts[0].replace('type ', '', 1).replace('Type ', '', 1).strip()
+            selector = parts[1].strip()
+
+            logger.info(f"⌨️ Browser command: Type '{text_part}' into {selector}")
+            await sarah_instance.browser_type(selector, text_part, description=selector)
+            return True
+
+    # Command: Take screenshot
+    if any(phrase in message_lower for phrase in ['take screenshot', 'screenshot', 'take a picture']):
+        logger.info(f"📸 Browser command: Take screenshot")
+        await sarah_instance.take_screenshot("User requested screenshot")
+        return True
+
+    # Command: Close browser
+    if any(phrase in message_lower for phrase in ['close browser', 'close the browser', 'stop browser']):
+        logger.info(f"❌ Browser command: Close browser")
+        await sarah_instance.close_browser()
+        return True
+
+    return False
+
+
 # Helper functions for screen broadcasting
 
 async def broadcast_screen_activity(activity_type: str, content: str, data: dict = None):
@@ -697,6 +1063,17 @@ async def chat_endpoint(websocket: WebSocket):
                 conversation_id = data.get('conversation_id')
 
                 logger.info(f"💬 User ({conversation_id}): {user_message}")
+
+                # Check for browser commands before generating AI response
+                browser_command_handled = await handle_browser_command(user_message)
+
+                if browser_command_handled:
+                    # Send confirmation to user
+                    await websocket.send_json({
+                        'type': 'sarah_message',
+                        'message': "On it! You can watch what I'm doing on my screen 🌸"
+                    })
+                    continue  # Don't generate AI response for direct commands
 
                 # Generate Sarah's response
                 sarah_response = await sarah_instance.generate_response(user_message)
