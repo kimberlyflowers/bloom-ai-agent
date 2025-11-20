@@ -449,7 +449,7 @@ export default function Dashboard() {
             <div>
               <p className="activity-text">Chatting with you!</p>
               <p className="activity-time">
-                {conversations.find(c => c.id === currentConversationId)?.messages.length || 0} messages in this conversation
+                {messages.length} messages in this conversation
               </p>
             </div>
           </div>
