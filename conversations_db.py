@@ -41,11 +41,21 @@ class ConversationsDB:
     def connect(self):
         """Establish database connection"""
         try:
+            # Supabase requires SSL connection
+            # Add sslmode=require if not already in connection string
+            conn_string = self.connection_string
+            if 'sslmode=' not in conn_string:
+                # Add SSL mode parameter
+                separator = '&' if '?' in conn_string else '?'
+                conn_string = f"{conn_string}{separator}sslmode=require"
+                logger.info("🔒 Added SSL mode to connection string")
+
             self.conn = psycopg2.connect(
-                self.connection_string,
+                conn_string,
                 cursor_factory=RealDictCursor
             )
             self.conn.autocommit = False  # Use transactions
+            logger.info("🔌 PostgreSQL connection established")
         except Exception as e:
             logger.error(f"Failed to connect to Supabase: {e}")
             raise
