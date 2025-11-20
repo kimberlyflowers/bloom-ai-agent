@@ -34,8 +34,12 @@ export default function Dashboard() {
 
   const loadConversations = async () => {
     try {
-      const response = await fetch(`${getApiUrl()}/api/conversations`)
+      const apiUrl = getApiUrl()
+      console.log('📡 Loading conversations from:', `${apiUrl}/api/conversations`)
+      const response = await fetch(`${apiUrl}/api/conversations`)
+      console.log('📡 Response status:', response.status)
       const data = await response.json()
+      console.log('📡 Response data:', data)
 
       if (data && data.conversations && data.conversations.length > 0) {
         setConversations(data.conversations)
