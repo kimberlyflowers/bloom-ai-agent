@@ -6,9 +6,11 @@ Proper HTTP server with WebSocket endpoints for Railway deployment
 import os
 import asyncio
 import logging
-from typing import Set
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from typing import Set, List, Dict
+from datetime import datetime
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import uvicorn
 
 # Import Sarah's systems
@@ -16,6 +18,7 @@ from src.identity_persistence import IdentityManager, Backstory, PersonalityTrai
 from src.relationship_management import RelationshipManager
 from src.ethical_framework import EthicalFramework
 from anthropic import Anthropic
+from conversations_db import ConversationsDB
 
 # Setup logging
 logging.basicConfig(
@@ -36,10 +39,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Pydantic models for API
+class MessageCreate(BaseModel):
+    type: str
+    text: str
+
+class ConversationCreate(BaseModel):
+    id: str
+
 # Global Sarah instance
 sarah_instance = None
 chat_clients: Set[WebSocket] = set()
-conversation_history = []
+conversations_db: ConversationsDB = None
 MAX_HISTORY = 20
 
 
@@ -278,6 +289,77 @@ async def health():
     return {"status": "healthy", "agent": "sarah_001"}
 
 
+# Conversation Management API
+
+@app.get("/api/conversations")
+async def get_conversations():
+    """Get all conversations"""
+    try:
+        conversations = conversations_db.get_all_conversations()
+        return {"conversations": conversations}
+    except Exception as e:
+        logger.error(f"Error getting conversations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/conversations")
+async def create_conversation(data: ConversationCreate):
+    """Create a new conversation"""
+    try:
+        conversation = conversations_db.create_conversation(data.id)
+        return conversation
+    except Exception as e:
+        logger.error(f"Error creating conversation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/conversations/{conversation_id}/messages")
+async def get_conversation_messages(conversation_id: str):
+    """Get messages for a conversation"""
+    try:
+        if not conversations_db.conversation_exists(conversation_id):
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        messages = conversations_db.get_conversation_messages(conversation_id)
+        return {"messages": messages}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting messages: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/conversations/{conversation_id}/messages")
+async def add_message(conversation_id: str, data: MessageCreate):
+    """Add a message to a conversation"""
+    try:
+        if not conversations_db.conversation_exists(conversation_id):
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        message = conversations_db.add_message(conversation_id, data.type, data.text)
+        return message
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding message: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/conversations/{conversation_id}")
+async def delete_conversation(conversation_id: str):
+    """Delete a conversation"""
+    try:
+        success = conversations_db.delete_conversation(conversation_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting conversation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.websocket("/chat")
 async def chat_endpoint(websocket: WebSocket):
     """WebSocket endpoint for chat"""
@@ -359,11 +441,15 @@ async def run_daily_routine():
 @app.on_event("startup")
 async def startup_event():
     """Initialize Sarah on server startup"""
-    global sarah_instance
+    global sarah_instance, conversations_db
 
     logger.info("=" * 60)
     logger.info("🚀 BLOOM AI AGENT - STARTING UP")
     logger.info("=" * 60)
+
+    # Initialize conversations database
+    conversations_db = ConversationsDB()
+    logger.info("✅ Conversations database initialized")
 
     sarah_instance = Sarah()
     sarah_instance.create_identity()
@@ -371,6 +457,7 @@ async def startup_event():
     logger.info("🌸 Sarah Rodriguez is online!")
     logger.info("💬 Chat WebSocket available at: /chat")
     logger.info("🎥 Screen WebSocket available at: /screen")
+    logger.info("📚 Conversation API available at: /api/conversations")
 
     # Start background routine
     asyncio.create_task(run_daily_routine())
