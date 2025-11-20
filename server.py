@@ -6,7 +6,7 @@ Proper HTTP server with WebSocket endpoints for Railway deployment
 import os
 import asyncio
 import logging
-from typing import Set, List, Dict
+from typing import Set, List, Dict, Optional
 from datetime import datetime
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
