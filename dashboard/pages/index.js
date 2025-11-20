@@ -9,6 +9,7 @@ export default function Dashboard() {
   // Conversation state
   const [conversations, setConversations] = useState([])
   const [currentConversationId, setCurrentConversationId] = useState(null)
+  const currentConversationIdRef = useRef(null) // Ref to avoid stale closure in WebSocket
   const [messages, setMessages] = useState([])
   const [chatInput, setChatInput] = useState('')
   const [chatConnected, setChatConnected] = useState(false)
@@ -17,6 +18,12 @@ export default function Dashboard() {
   const chatWsRef = useRef(null)
   const messagesEndRef = useRef(null)
   const chatMessagesRef = useRef(null)
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    currentConversationIdRef.current = currentConversationId
+    console.log('📡 Current conversation ID updated to:', currentConversationId)
+  }, [currentConversationId])
 
   // API base URL
   const getApiUrl = () => {
@@ -240,7 +247,7 @@ export default function Dashboard() {
 
             // Save system message to database
             try {
-              await fetch(`${getApiUrl()}/api/conversations/${currentConversationId}/messages`, {
+              await fetch(`${getApiUrl()}/api/conversations/${currentConversationIdRef.current}/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ type: 'system', text: data.message })
@@ -260,7 +267,7 @@ export default function Dashboard() {
 
             // Save Sarah's response to database
             try {
-              await fetch(`${getApiUrl()}/api/conversations/${currentConversationId}/messages`, {
+              await fetch(`${getApiUrl()}/api/conversations/${currentConversationIdRef.current}/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ type: 'sarah', text: data.message })
@@ -319,7 +326,7 @@ export default function Dashboard() {
 
     // Save to database via API
     try {
-      await fetch(`${getApiUrl()}/api/conversations/${currentConversationId}/messages`, {
+      await fetch(`${getApiUrl()}/api/conversations/${currentConversationIdRef.current}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'user', text: messageText })
