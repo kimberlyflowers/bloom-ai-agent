@@ -42,6 +42,7 @@ export default function Dashboard() {
       console.log('📡 Response data:', data)
 
       if (data && data.conversations && data.conversations.length > 0) {
+        console.log('📡 Found', data.conversations.length, 'conversations')
         setConversations(data.conversations)
 
         // Load the most recent conversation
@@ -50,6 +51,7 @@ export default function Dashboard() {
         await loadConversationMessages(mostRecent.id)
       } else {
         // Create first conversation
+        console.log('📡 No conversations found, creating new one...')
         await createNewConversation()
       }
     } catch (error) {
