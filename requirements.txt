@@ -6,6 +6,9 @@ uvicorn>=0.24.0
 python-dotenv>=1.0.0
 requests>=2.31.0
 playwright>=1.40.0              # Browser automation for Gmail, TikTok, etc.
+websockets>=12.0                # Live screen streaming
+pillow>=10.0.0                  # Screenshot capturing
+pyvirtualdisplay>=3.0           # Virtual display for headless browser
 
 # Platform integrations
 praw>=7.7.0                    # Reddit

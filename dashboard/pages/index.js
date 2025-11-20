@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 
 export default function Dashboard() {
   const [sarah, setSarah] = useState(null)
+  const [liveScreen, setLiveScreen] = useState(null)
+  const [screenConnected, setScreenConnected] = useState(false)
+  const wsRef = useRef(null)
 
   useEffect(() => {
     setSarah({
@@ -10,7 +13,58 @@ export default function Dashboard() {
       location: "Phoenix, Arizona",
       specialization: "TikTok growth & UGC creation"
     })
+
+    // Connect to live screen stream
+    connectToLiveScreen()
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close()
+      }
+    }
   }, [])
+
+  function connectToLiveScreen() {
+    try {
+      // Connect to Railway WebSocket server
+      // In production, replace with actual Railway URL
+      const ws = new WebSocket('ws://localhost:8765')
+
+      ws.onopen = () => {
+        console.log('📺 Connected to Sarah\'s screen!')
+        setScreenConnected(true)
+      }
+
+      ws.onmessage = (event) => {
+        const data = event.data
+
+        if (data.startsWith('FRAME:')) {
+          // Received a new frame
+          const frameData = data.substring(6)
+          setLiveScreen(`data:image/jpeg;base64,${frameData}`)
+        } else if (data.startsWith('CONNECTED:')) {
+          console.log('✅ Screen stream ready')
+        }
+      }
+
+      ws.onerror = (error) => {
+        console.error('❌ Screen stream error:', error)
+        setScreenConnected(false)
+      }
+
+      ws.onclose = () => {
+        console.log('🔴 Screen stream disconnected')
+        setScreenConnected(false)
+
+        // Auto-reconnect after 5 seconds
+        setTimeout(connectToLiveScreen, 5000)
+      }
+
+      wsRef.current = ws
+    } catch (error) {
+      console.error('Error connecting to screen stream:', error)
+    }
+  }
 
   if (!sarah) {
     return <div className="loading">Loading Sarah...</div>
@@ -52,6 +106,36 @@ export default function Dashboard() {
           <div className="metric-icon">💰</div>
           <div className="metric-label">Revenue</div>
           <div className="metric-value">$0</div>
+        </div>
+      </div>
+
+      {/* LIVE SCREEN VIEW - THE COOLEST FEATURE! */}
+      <div className="live-screen-card">
+        <div className="live-screen-header">
+          <h2>🎥 Sarah's Live Screen</h2>
+          <div className={screenConnected ? "stream-status connected" : "stream-status disconnected"}>
+            <div className="stream-dot"></div>
+            {screenConnected ? 'LIVE' : 'Offline'}
+          </div>
+        </div>
+
+        <div className="live-screen-viewer">
+          {liveScreen ? (
+            <img
+              src={liveScreen}
+              alt="Sarah's live screen"
+              className="live-screen-image"
+            />
+          ) : (
+            <div className="no-stream">
+              <div className="no-stream-icon">📺</div>
+              <p>{screenConnected ? 'Waiting for Sarah to start working...' : 'Connecting to live stream...'}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="live-screen-info">
+          <p>💡 Watch Sarah work in real-time! You'll see her create emails, browse TikTok, and more!</p>
         </div>
       </div>
 
@@ -220,6 +304,95 @@ export default function Dashboard() {
           font-size: 2rem;
           font-weight: bold;
           color: #111827;
+        }
+        .live-screen-card {
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 6px 12px rgba(236, 72, 153, 0.15);
+          padding: 1.5rem;
+          margin-bottom: 1.5rem;
+          border: 2px solid #fce7f3;
+        }
+        .live-screen-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 1rem;
+        }
+        .live-screen-header h2 {
+          font-size: 1.5rem;
+          font-weight: bold;
+          color: #111827;
+          margin: 0;
+        }
+        .stream-status {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.5rem 1rem;
+          border-radius: 9999px;
+          font-weight: 600;
+          font-size: 0.875rem;
+        }
+        .stream-status.connected {
+          background: #dcfce7;
+          color: #166534;
+        }
+        .stream-status.disconnected {
+          background: #fee2e2;
+          color: #991b1b;
+        }
+        .stream-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: currentColor;
+        }
+        .stream-status.connected .stream-dot {
+          animation: pulse 2s infinite;
+        }
+        .live-screen-viewer {
+          background: #111827;
+          border-radius: 8px;
+          aspect-ratio: 16 / 9;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          position: relative;
+          margin-bottom: 1rem;
+        }
+        .live-screen-image {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+        }
+        .no-stream {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 1rem;
+          color: #9ca3af;
+        }
+        .no-stream-icon {
+          font-size: 4rem;
+          opacity: 0.5;
+        }
+        .no-stream p {
+          margin: 0;
+          font-size: 1rem;
+        }
+        .live-screen-info {
+          background: #fef3c7;
+          border-left: 4px solid #f59e0b;
+          padding: 0.75rem;
+          border-radius: 4px;
+        }
+        .live-screen-info p {
+          margin: 0;
+          color: #92400e;
+          font-size: 0.875rem;
         }
         .card {
           background: white;
