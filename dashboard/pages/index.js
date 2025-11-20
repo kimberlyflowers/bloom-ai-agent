@@ -37,7 +37,7 @@ export default function Dashboard() {
       const response = await fetch(`${getApiUrl()}/api/conversations`)
       const data = await response.json()
 
-      if (data.conversations.length > 0) {
+      if (data && data.conversations && data.conversations.length > 0) {
         setConversations(data.conversations)
 
         // Load the most recent conversation
@@ -60,7 +60,9 @@ export default function Dashboard() {
     try {
       const response = await fetch(`${getApiUrl()}/api/conversations`)
       const data = await response.json()
-      setConversations(data.conversations)
+      if (data && data.conversations) {
+        setConversations(data.conversations)
+      }
     } catch (error) {
       console.error('Error refreshing conversations:', error)
     }
