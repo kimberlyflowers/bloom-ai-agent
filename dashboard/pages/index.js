@@ -20,6 +20,7 @@ export default function Dashboard() {
   const screenWsRef = useRef(null) // WebSocket for screen activity
   const messagesEndRef = useRef(null)
   const chatMessagesRef = useRef(null)
+  const screenActivityRef = useRef(null) // Ref for screen activity container
   const fileInputRef = useRef(null)
   const [uploadingFile, setUploadingFile] = useState(false)
 
@@ -227,6 +228,13 @@ export default function Dashboard() {
     }
   }, [messages])
 
+  // Auto-scroll screen activity to bottom when new activity arrives
+  useEffect(() => {
+    if (screenActivityRef.current) {
+      screenActivityRef.current.scrollTop = screenActivityRef.current.scrollHeight
+    }
+  }, [screenActivity])
+
   function connectToChat() {
     try {
       const baseUrl = getWebSocketUrl()
@@ -245,14 +253,22 @@ export default function Dashboard() {
           const data = JSON.parse(event.data)
 
           if (data.type === 'system') {
-            // Show system message, but don't save to database
+            // Show system message temporarily, but don't save to database or accumulate
+            // Only show if it's not already in the last few messages
             const systemMessage = {
               id: Date.now(),
               type: 'system',
               text: data.message,
               timestamp: new Date()
             }
-            setMessages(prev => [...prev, systemMessage])
+            setMessages(prev => {
+              // Don't add if last message was same system message
+              const lastMsg = prev[prev.length - 1]
+              if (lastMsg && lastMsg.type === 'system' && lastMsg.text === data.message) {
+                return prev
+              }
+              return [...prev, systemMessage]
+            })
           } else if (data.type === 'sarah_message') {
             const sarahMessage = {
               id: Date.now(),
@@ -557,28 +573,35 @@ export default function Dashboard() {
                 <p>Waiting for Sarah to start working...</p>
               </div>
             ) : (
-              <div className="screen-activity-feed">
-                {screenActivity.map((activity, index) => (
-                  <div key={activity.id || index} className={`activity-item activity-${activity.activity_type}`}>
-                    <div className="activity-icon">
-                      {activity.activity_type === 'reading' && '📖'}
-                      {activity.activity_type === 'thinking' && '🤔'}
-                      {activity.activity_type === 'responding' && '💬'}
-                      {activity.activity_type === 'file_upload' && '📎'}
-                      {activity.activity_type === 'analyzing' && '🔍'}
-                      {activity.activity_type === 'analysis_complete' && '✅'}
-                      {activity.activity_type === 'waiting' && '⏳'}
-                      {activity.activity_type === 'queued' && '📬'}
-                      {activity.activity_type === 'status' && '💼'}
-                    </div>
-                    <div className="activity-content">
-                      <div className="activity-text">{activity.content}</div>
-                      <div className="activity-time">
-                        {new Date(activity.timestamp).toLocaleTimeString()}
+              <div className="screen-activity-feed" ref={screenActivityRef}>
+                {screenActivity.map((activity, index) => {
+                  // Truncate long content
+                  const displayContent = activity.content.length > 80
+                    ? activity.content.substring(0, 80) + '...'
+                    : activity.content;
+
+                  return (
+                    <div key={activity.id || index} className={`activity-item activity-${activity.activity_type}`}>
+                      <div className="activity-icon">
+                        {activity.activity_type === 'reading' && '📖'}
+                        {activity.activity_type === 'thinking' && '🤔'}
+                        {activity.activity_type === 'responding' && '💬'}
+                        {activity.activity_type === 'file_upload' && '📎'}
+                        {activity.activity_type === 'analyzing' && '🔍'}
+                        {activity.activity_type === 'analysis_complete' && '✅'}
+                        {activity.activity_type === 'waiting' && '⏳'}
+                        {activity.activity_type === 'queued' && '📬'}
+                        {activity.activity_type === 'status' && '💼'}
+                      </div>
+                      <div className="activity-content">
+                        <div className="activity-text">{displayContent}</div>
+                        <div className="activity-time">
+                          {new Date(activity.timestamp).toLocaleTimeString()}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -608,7 +631,21 @@ export default function Dashboard() {
                   <div className="message-content">
                     {msg.type === 'sarah' && <div className="message-sender">Sarah Rodriguez</div>}
                     {msg.type === 'user' && <div className="message-sender">You</div>}
-                    <div className="message-text">{msg.text}</div>
+                    <div className="message-text">
+                      {msg.text}
+                      {msg.file && msg.file.type && msg.file.type.startsWith('image/') && msg.file.url && (
+                        <div className="message-file-preview">
+                          <img src={msg.file.url} alt={msg.file.name} />
+                        </div>
+                      )}
+                      {msg.file && msg.file.type && !msg.file.type.startsWith('image/') && msg.file.url && (
+                        <div className="message-file-link">
+                          <a href={msg.file.url} target="_blank" rel="noopener noreferrer">
+                            📄 {msg.file.name}
+                          </a>
+                        </div>
+                      )}
+                    </div>
                     <div className="message-time">
                       {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
@@ -1058,6 +1095,29 @@ export default function Dashboard() {
           user-select: text;
           cursor: text;
         }
+        .message-file-preview {
+          margin-top: 0.5rem;
+          border-radius: 8px;
+          overflow: hidden;
+          max-width: 400px;
+        }
+        .message-file-preview img {
+          width: 100%;
+          height: auto;
+          display: block;
+          border-radius: 8px;
+        }
+        .message-file-link {
+          margin-top: 0.5rem;
+        }
+        .message-file-link a {
+          color: #3b82f6;
+          text-decoration: none;
+          font-size: 0.875rem;
+        }
+        .message-file-link a:hover {
+          text-decoration: underline;
+        }
         .message-time {
           font-size: 0.75rem;
           color: #9ca3af;
@@ -1183,16 +1243,34 @@ export default function Dashboard() {
         .screen-activity-feed {
           display: flex;
           flex-direction: column;
-          gap: 0.75rem;
+          gap: 0.5rem;
+          max-height: calc(100% - 3rem);
+          overflow-y: auto;
+          padding-right: 0.5rem;
+        }
+        .screen-activity-feed::-webkit-scrollbar {
+          width: 6px;
+        }
+        .screen-activity-feed::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 3px;
+        }
+        .screen-activity-feed::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.2);
+          border-radius: 3px;
+        }
+        .screen-activity-feed::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.3);
         }
         .activity-item {
           display: flex;
-          gap: 0.75rem;
-          padding: 0.75rem;
+          gap: 0.5rem;
+          padding: 0.5rem;
           background: rgba(255, 255, 255, 0.05);
           border-radius: 6px;
           border-left: 3px solid #3b82f6;
           animation: slideIn 0.3s ease-out;
+          flex-shrink: 0;
         }
         @keyframes slideIn {
           from {
@@ -1229,8 +1307,9 @@ export default function Dashboard() {
           border-left-color: #ef4444;
         }
         .activity-icon {
-          font-size: 1.5rem;
+          font-size: 1.25rem;
           flex-shrink: 0;
+          line-height: 1;
         }
         .activity-content {
           flex: 1;
@@ -1238,14 +1317,16 @@ export default function Dashboard() {
         }
         .activity-text {
           color: #e2e8f0;
-          font-size: 0.875rem;
-          line-height: 1.5;
+          font-size: 0.8125rem;
+          line-height: 1.4;
           word-wrap: break-word;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
         .activity-time {
           color: #64748b;
-          font-size: 0.75rem;
-          margin-top: 0.25rem;
+          font-size: 0.6875rem;
+          margin-top: 0.125rem;
         }
         .stats-grid {
           display: grid;
