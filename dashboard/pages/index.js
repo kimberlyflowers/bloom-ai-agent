@@ -20,7 +20,9 @@ export default function Dashboard() {
     const railwayUrl = process.env.NEXT_PUBLIC_RAILWAY_WS_URL
     if (railwayUrl) {
       // Use Railway WebSocket URL (wss:// for secure connection)
-      return railwayUrl.replace(':8000', `:${port}`)
+      // Remove any existing port, then add the correct one
+      const baseUrl = railwayUrl.replace(/:\d+$/, '')
+      return `${baseUrl}:${port}`
     }
     // Fallback to localhost for development
     return `ws://localhost:${port}`
