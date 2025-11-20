@@ -244,9 +244,9 @@ Important:
             "content": user_message
         })
 
-        # Retry logic for overloaded errors
-        max_retries = 3
-        base_delay = 2  # seconds
+        # Retry logic for overloaded errors - increased resilience
+        max_retries = 5  # Increased from 3 to handle peak load better
+        base_delay = 3  # Increased from 2s for better spacing
 
         for attempt in range(max_retries):
             try:
@@ -258,6 +258,10 @@ Important:
                 )
 
                 sarah_response = response.content[0].text
+
+                # Log success if this was a retry
+                if attempt > 0:
+                    logger.info(f"✅ API call succeeded on attempt {attempt + 1}")
 
                 # Update conversation history
                 conversation_history.append({"role": "user", "content": user_message})
@@ -276,13 +280,13 @@ Important:
                 # Check if it's a 529 overloaded error
                 if "529" in error_str or "overloaded" in error_str.lower():
                     if attempt < max_retries - 1:
-                        wait_time = base_delay * (2 ** attempt)  # Exponential backoff: 2s, 4s, 8s
+                        wait_time = base_delay * (2 ** attempt)  # Exponential backoff: 3s, 6s, 12s, 24s, 48s
                         logger.warning(f"⚠️ API overloaded (attempt {attempt + 1}/{max_retries}). Retrying in {wait_time}s...")
                         await asyncio.sleep(wait_time)
                         continue
                     else:
-                        logger.error(f"❌ API still overloaded after {max_retries} attempts")
-                        return "I'm getting a lot of requests right now! 😅 Could you try again in a few moments? Thanks for your patience! 🌸"
+                        logger.error(f"❌ API still overloaded after {max_retries} attempts (~90 seconds of retries)")
+                        return "Wow, I'm really popular right now! 😅 The AI servers are super busy. Try again in about a minute and I should be back! 🌸💕"
                 else:
                     # Other errors - don't retry
                     logger.error(f"❌ Error generating response: {e}")
