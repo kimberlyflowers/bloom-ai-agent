@@ -14,6 +14,18 @@ export default function Dashboard() {
   const chatWsRef = useRef(null)
   const messagesEndRef = useRef(null)
 
+  // WebSocket URLs - use environment variable or localhost for development
+  const getWebSocketUrl = (port) => {
+    // Check if we have a Railway URL from environment variable
+    const railwayUrl = process.env.NEXT_PUBLIC_RAILWAY_WS_URL
+    if (railwayUrl) {
+      // Use Railway WebSocket URL (wss:// for secure connection)
+      return railwayUrl.replace(':8000', `:${port}`)
+    }
+    // Fallback to localhost for development
+    return `ws://localhost:${port}`
+  }
+
   useEffect(() => {
     setSarah({
       name: "Sarah Rodriguez",
@@ -46,8 +58,9 @@ export default function Dashboard() {
   function connectToLiveScreen() {
     try {
       // Connect to Railway WebSocket server
-      // In production, replace with actual Railway URL
-      const ws = new WebSocket('ws://localhost:8765')
+      const wsUrl = getWebSocketUrl(8765)
+      console.log('🎥 Connecting to screen stream:', wsUrl)
+      const ws = new WebSocket(wsUrl)
 
       ws.onopen = () => {
         console.log('📺 Connected to Sarah\'s screen!')
@@ -88,7 +101,9 @@ export default function Dashboard() {
   function connectToChat() {
     try {
       // Connect to chat WebSocket server (different port from screen stream)
-      const ws = new WebSocket('ws://localhost:8766')
+      const wsUrl = getWebSocketUrl(8766)
+      console.log('💬 Connecting to chat:', wsUrl)
+      const ws = new WebSocket(wsUrl)
 
       ws.onopen = () => {
         console.log('💬 Connected to Sarah\'s chat!')
