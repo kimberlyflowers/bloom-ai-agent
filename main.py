@@ -13,6 +13,7 @@ from src.identity_persistence import IdentityManager, Backstory, PersonalityTrai
 from src.relationship_management import RelationshipManager
 from src.ethical_framework import EthicalFramework
 from src.chat_server import SarahChatServer
+from src.sarah_browser import SarahBrowser
 
 # Setup logging
 logging.basicConfig(
@@ -34,13 +35,18 @@ class Sarah:
         self.relationships = RelationshipManager()
         self.ethics = EthicalFramework()
 
-        # Initialize chat server
+        # Initialize browser (headless mode for Railway)
+        self.browser = SarahBrowser(headless=True, stream_port=8765)
+        logger.info("✅ Browser initialized")
+
+        # Initialize chat server with browser
         anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
         if anthropic_api_key:
             self.chat_server = SarahChatServer(
                 anthropic_api_key=anthropic_api_key,
                 port=8766,
-                identity_manager=self.identity
+                identity_manager=self.identity,
+                browser=self.browser
             )
             logger.info("✅ Chat server initialized")
         else:
@@ -192,6 +198,15 @@ class Sarah:
 
         # Create identity on first run
         self.create_identity()
+
+        # Start browser first (enables screen streaming)
+        logger.info("🌐 Starting browser with screen streaming...")
+        browser_started = await self.browser.start()
+
+        if not browser_started:
+            logger.error("❌ Failed to start browser - screen streaming won't work")
+        else:
+            logger.info("✅ Browser ready! Screen streaming active on port 8765")
 
         # Start chat server in background
         if self.chat_server:

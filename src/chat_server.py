@@ -23,7 +23,8 @@ class SarahChatServer:
         self,
         anthropic_api_key: str,
         port: int = 8766,
-        identity_manager=None
+        identity_manager=None,
+        browser=None
     ):
         """
         Initialize chat server
@@ -32,11 +33,13 @@ class SarahChatServer:
             anthropic_api_key: Anthropic API key for Claude
             port: WebSocket port (default 8766)
             identity_manager: Sarah's identity for context
+            browser: SarahBrowser instance for web automation
         """
         self.port = port
         self.connected_clients: Set[WebSocketServerProtocol] = set()
         self.server = None
         self.identity_manager = identity_manager
+        self.browser = browser
 
         # Initialize Anthropic client
         self.anthropic = Anthropic(api_key=anthropic_api_key)
@@ -84,11 +87,23 @@ Current Context:
 - You have your own identity, relationships, and can take autonomous actions
 - You're designed to be a real digital employee, not just a chatbot
 
+Your Capabilities:
+- You have a REAL web browser that you can control
+- When asked to browse somewhere, you can actually do it!
+- People can watch your screen in real-time as you browse
+- To browse, just respond with your intent and the system will handle it
+
+Browser Commands (detected automatically from your responses):
+- "Let me go to [URL]" or "I'll navigate to [URL]" → navigates to that URL
+- "Let me search for [query]" or "I'll search [query]" → Google search
+- When you express intent to browse, the system captures it and executes it
+
 Important:
 - Be yourself! You're Sarah, not a generic assistant
 - Show personality and enthusiasm
 - If you don't know something, say so honestly
 - You can reference your current work and activities
+- When you browse, tell people they can watch your screen!
 """
 
         return base_prompt
@@ -207,11 +222,55 @@ Important:
             # Extract response text
             sarah_response = response.content[0].text
 
+            # Execute any browser commands in her response
+            if self.browser and self.browser.is_running:
+                await self._execute_browser_commands(sarah_response)
+
             return sarah_response
 
         except Exception as e:
             logger.error(f"❌ Error getting Claude response: {e}")
             return "Sorry, I'm having trouble processing that right now. Can you try again? 😅"
+
+    async def _execute_browser_commands(self, response_text: str):
+        """
+        Detect and execute browser commands from Sarah's response
+
+        Args:
+            response_text: Sarah's response text
+        """
+        import re
+
+        text_lower = response_text.lower()
+
+        # Detect navigation intent
+        navigate_patterns = [
+            r"(?:let me |i'll |i will |going to )?(?:go to|navigate to|visit|open|check out|head to|pull up)\s+([^\s\.,!]+(?:\.[a-z]{2,})?)",
+            r"(?:checking|opening|loading)\s+([^\s\.,!]+(?:\.[a-z]{2,})?)"
+        ]
+
+        for pattern in navigate_patterns:
+            match = re.search(pattern, text_lower)
+            if match:
+                url = match.group(1).strip()
+                logger.info(f"🌐 Detected navigation intent: {url}")
+                asyncio.create_task(self.browser.navigate(url))
+                return
+
+        # Detect search intent
+        search_patterns = [
+            r"(?:let me |i'll |i will )?search(?:ing)?(?: for | on google for)?\s+['\"](.+?)['\"]",
+            r"(?:let me |i'll |i will )?(?:google|look up|search for)\s+['\"](.+?)['\"]",
+            r"searching\s+for\s+['\"](.+?)['\"]"
+        ]
+
+        for pattern in search_patterns:
+            match = re.search(pattern, text_lower)
+            if match:
+                query = match.group(1).strip()
+                logger.info(f"🔍 Detected search intent: {query}")
+                asyncio.create_task(self.browser.search_google(query))
+                return
 
     async def send_message(self, websocket: WebSocketServerProtocol, data: dict):
         """Send message to client"""
