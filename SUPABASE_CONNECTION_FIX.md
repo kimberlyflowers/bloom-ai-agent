@@ -5,7 +5,7 @@
 Update the `SUPABASE_DB_URL` environment variable to:
 
 ```
-postgresql://postgres:t4zN3ujkf9X7txZV@aws-0-us-east-2.pooler.supabase.com:5432/postgres
+postgresql://postgres:P2NponYbQbgSGQxI@aws-0-us-east-2.pooler.supabase.com:5432/postgres
 ```
 
 ## 🎯 Why This Works
@@ -13,7 +13,7 @@ postgresql://postgres:t4zN3ujkf9X7txZV@aws-0-us-east-2.pooler.supabase.com:5432/
 1. **Hostname**: `aws-0-us-east-2.pooler.supabase.com` - The pooler endpoint DOES resolve (we got auth errors, not DNS errors)
 2. **Username**: `postgres` - Simple format confirmed by SQL queries (NOT `postgres.wazbpoujdmckkozjqyqs`)
 3. **Port**: `5432` - Session mode for persistent Railway server connections
-4. **Password**: `t4zN3ujkf9X7txZV` - Generated password (no special chars, no encoding needed)
+4. **Password**: `P2NponYbQbgSGQxI` - Reset password (no special chars, no encoding needed)
 5. **SSL**: Automatically added by our code (`?sslmode=require`)
 
 ## 🔍 What We Learned
