@@ -35,14 +35,17 @@ class Sarah:
         self.ethics = EthicalFramework()
 
         # Initialize chat server
+        # Use Railway's PORT if available, otherwise 8766 for local development
+        chat_port = int(os.getenv("PORT", "8766"))
         anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+
         if anthropic_api_key:
             self.chat_server = SarahChatServer(
                 anthropic_api_key=anthropic_api_key,
-                port=8766,
+                port=chat_port,
                 identity_manager=self.identity
             )
-            logger.info("✅ Chat server initialized")
+            logger.info(f"✅ Chat server initialized on port {chat_port}")
         else:
             logger.warning("⚠️ No ANTHROPIC_API_KEY - chat will not be available")
             self.chat_server = None

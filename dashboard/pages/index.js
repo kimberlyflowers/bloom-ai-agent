@@ -19,10 +19,12 @@ export default function Dashboard() {
     // Check if we have a Railway URL from environment variable
     const railwayUrl = process.env.NEXT_PUBLIC_RAILWAY_WS_URL
     if (railwayUrl) {
-      // Use Railway WebSocket URL (wss:// for secure connection)
-      return railwayUrl.replace(':8000', `:${port}`)
+      // Railway uses a single PORT for all connections
+      // Just use the Railway URL directly (wss:// for secure connection)
+      // Railway will route based on its internal PORT environment variable
+      return railwayUrl
     }
-    // Fallback to localhost for development
+    // Fallback to localhost for development (with specific ports)
     return `ws://localhost:${port}`
   }
 
@@ -35,7 +37,9 @@ export default function Dashboard() {
     })
 
     // Connect to live screen stream
-    connectToLiveScreen()
+    // NOTE: Temporarily disabled - Railway only supports one PORT
+    // We'll refactor to use single server with multiple endpoints later
+    // connectToLiveScreen()
 
     // Connect to chat server
     connectToChat()
