@@ -35,8 +35,16 @@ class Sarah:
         self.relationships = RelationshipManager()
         self.ethics = EthicalFramework()
 
+        # Get port configuration (Railway provides PORT env var)
+        # Use Railway's PORT if available, otherwise use defaults
+        railway_port = os.getenv("PORT")
+        screen_port = int(railway_port) if railway_port else 8765
+        chat_port = int(railway_port) + 1 if railway_port else 8766
+
+        logger.info(f"📡 Port configuration: screen={screen_port}, chat={chat_port}")
+
         # Initialize browser (headless mode for Railway)
-        self.browser = SarahBrowser(headless=True, stream_port=8765)
+        self.browser = SarahBrowser(headless=True, stream_port=screen_port)
         logger.info("✅ Browser initialized")
 
         # Initialize chat server with browser
@@ -44,7 +52,7 @@ class Sarah:
         if anthropic_api_key:
             self.chat_server = SarahChatServer(
                 anthropic_api_key=anthropic_api_key,
-                port=8766,
+                port=chat_port,
                 identity_manager=self.identity,
                 browser=self.browser
             )
