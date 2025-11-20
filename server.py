@@ -289,6 +289,13 @@ async def health():
     return {"status": "healthy", "agent": "sarah_001"}
 
 
+@app.websocket("/")
+async def root_websocket(websocket: WebSocket):
+    """Catch-all for root WebSocket connections - redirect to /chat"""
+    logger.warning(f"⚠️ WebSocket connection attempted to root /. Should use /chat instead.")
+    await websocket.close(code=1008, reason="Please connect to /chat endpoint")
+
+
 # Conversation Management API
 
 @app.get("/api/conversations")
