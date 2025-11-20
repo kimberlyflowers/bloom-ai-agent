@@ -55,6 +55,17 @@ export default function Dashboard() {
     }
   }
 
+  const refreshConversationsList = async () => {
+    // Refresh conversation list without changing current conversation
+    try {
+      const response = await fetch(`${getApiUrl()}/api/conversations`)
+      const data = await response.json()
+      setConversations(data.conversations)
+    } catch (error) {
+      console.error('Error refreshing conversations:', error)
+    }
+  }
+
   const loadConversationMessages = async (conversationId) => {
     try {
       const response = await fetch(`${getApiUrl()}/api/conversations/${conversationId}/messages`)
@@ -301,6 +312,9 @@ export default function Dashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'user', text: messageText })
       })
+
+      // Refresh conversations list to get updated title (if this was the first message)
+      await refreshConversationsList()
     } catch (error) {
       console.error('Error saving user message to database:', error)
     }
