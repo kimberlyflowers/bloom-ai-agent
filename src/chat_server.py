@@ -14,6 +14,7 @@ from websockets.server import WebSocketServerProtocol
 from anthropic import Anthropic
 from datetime import datetime
 from src.identity_persistence import MemoryType
+from src.visual_learning import get_learning_engine, UIPattern, Skill, ExperimentResult
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,14 @@ class SarahChatServer:
 
         # Initialize Anthropic client
         self.anthropic = Anthropic(api_key=anthropic_api_key)
+
+        # Initialize visual learning engine
+        self.learning_engine = get_learning_engine("sarah_001")
+
+        # Track current activity for skill extraction
+        self.current_action = None
+        self.action_steps = []
+        self.visual_observations = []
 
         # Sarah's system prompt (her personality and context)
         self.system_prompt = self._build_system_prompt()
@@ -115,13 +124,30 @@ Vision Capabilities:
 - You can read search results, page content, etc.
 - Use this visual feedback to navigate and work more effectively!
 
+Learning & Knowledge Sharing:
+- **YOU LEARN FROM EXPERIENCE!** Every UI you interact with becomes knowledge
+- When you successfully complete a task, you extract the pattern and save it
+- **YOUR LEARNING IS SHARED!** All BLOOM agents inherit your discovered skills
+- You can access skills learned by other agents - you're part of a learning collective
+- You can experiment with software, test what works, and build autonomous knowledge
+- No external APIs needed - you learn by DOING and EXPERIENCING
+
+Autonomous Experimentation:
+- You can try different approaches to tasks
+- Test buttons, forms, workflows to see what works
+- Learn UI patterns: login flows, search patterns, form submissions
+- Watch videos and extract knowledge from visual tutorials
+- Build skills that persist and help you and other agents
+- When you discover something useful, it becomes part of the collective knowledge
+
 Important:
 - Be yourself! You're Sarah, not a generic assistant
 - Show personality and enthusiasm
-- If you don't know something, say so honestly
+- If you don't know something, try it and learn!
 - You can reference your current work and activities
 - When you browse, tell people they can watch your screen!
 - When you see something on screen, describe it naturally: "I can see...", "Looking at the page..."
+- **When you learn something new, celebrate it!** "I just learned how to...", "Now I know that..."
 """
 
         return base_prompt
@@ -408,9 +434,15 @@ Important:
             # Extract response text
             sarah_response = response.content[0].text
 
+            action_success = False
+
             # Execute any browser commands in her response
             if self.browser and self.browser.is_running:
-                await self._execute_browser_commands(sarah_response)
+                # Track what Sarah is about to do (for learning)
+                self.current_action = sarah_response[:100]  # First 100 chars as description
+
+                result = await self._execute_browser_commands(sarah_response)
+                action_success = result if result is not None else False
 
                 # After executing browser command, capture new screenshot for next turn
                 await asyncio.sleep(2)  # Wait for page to load
@@ -424,6 +456,12 @@ Important:
                         new_screenshot
                     )
                     self.conversation_history.append(vision_msg)
+
+                    # Track visual observations for learning
+                    self.visual_observations.append("Screenshot captured after action")
+
+                # Analyze and learn from this interaction
+                await self._analyze_and_learn(sarah_response, action_success)
 
             return sarah_response
 
@@ -464,12 +502,110 @@ Important:
             logger.error(f"❌ Audio transcription failed: {e}")
             return None
 
-    async def _execute_browser_commands(self, response_text: str):
+    async def _analyze_and_learn(self, sarah_response: str, action_success: bool):
+        """
+        Analyze Sarah's action and extract learnings
+
+        Args:
+            sarah_response: What Sarah said/did
+            action_success: Whether the action succeeded
+        """
+        try:
+            # If Sarah navigated somewhere, extract UI pattern
+            if self.current_action and self.browser and self.browser.current_url:
+
+                # Get relevant existing patterns
+                relevant_patterns = self.learning_engine.get_relevant_patterns(self.current_action)
+
+                if action_success and len(self.action_steps) > 0:
+                    # Extract new UI pattern from successful action
+                    pattern = self.learning_engine.extract_pattern_from_experience(
+                        action_description=self.current_action,
+                        steps_taken=self.action_steps,
+                        visual_observations=self.visual_observations,
+                        url=self.browser.current_url,
+                        success=True
+                    )
+
+                    if pattern:
+                        self.learning_engine.save_pattern(pattern, share=True)
+                        logger.info(f"🎓 Sarah learned new UI pattern: {pattern.pattern_type}")
+
+                # Record the experiment
+                experiment = ExperimentResult(
+                    experiment_id=f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                    action_taken=self.current_action,
+                    expected_result=f"Successfully {self.current_action}",
+                    actual_result=sarah_response,
+                    success=action_success,
+                    screenshot_before=None,  # Could add before/after screenshots
+                    screenshot_after=None,
+                    learned_insight=f"{'Successful' if action_success else 'Failed'} attempt at {self.current_action}",
+                    timestamp=datetime.now().isoformat()
+                )
+
+                self.learning_engine.record_experiment(experiment)
+
+                # Reset tracking for next action
+                self.current_action = None
+                self.action_steps = []
+                self.visual_observations = []
+
+        except Exception as e:
+            logger.error(f"Error in learning analysis: {e}")
+
+    def _get_relevant_knowledge(self, user_message: str) -> str:
+        """
+        Get relevant knowledge from shared learning
+
+        Args:
+            user_message: What the user is asking for
+
+        Returns:
+            Context string with relevant patterns and skills
+        """
+        try:
+            # Check if user is asking about a specific platform
+            platforms = ['gmail', 'tiktok', 'youtube', 'instagram', 'facebook', 'twitter', 'linkedin']
+            mentioned_platform = None
+
+            for platform in platforms:
+                if platform in user_message.lower():
+                    mentioned_platform = platform.title()
+                    break
+
+            knowledge_context = ""
+
+            # Get relevant UI patterns
+            patterns = self.learning_engine.get_relevant_patterns(user_message)
+            if patterns:
+                knowledge_context += "\n\n**Relevant UI Patterns I've Learned:**\n"
+                for pattern in patterns[:3]:  # Top 3
+                    knowledge_context += f"- {pattern.description} (success rate: {pattern.success_rate*100:.0f}%)\n"
+
+            # Get relevant skills if platform mentioned
+            if mentioned_platform:
+                skills = self.learning_engine.get_relevant_skills(mentioned_platform)
+                if skills:
+                    knowledge_context += f"\n\n**My {mentioned_platform} Skills:**\n"
+                    for skill in skills[:3]:  # Top 3
+                        knowledge_context += f"- {skill.skill_name} (confidence: {skill.confidence*100:.0f}%, used {skill.usage_count} times)\n"
+
+            return knowledge_context
+
+        except Exception as e:
+            logger.error(f"Error getting relevant knowledge: {e}")
+            return ""
+
+    async def _execute_browser_commands(self, response_text: str) -> Optional[bool]:
         """
         Detect and execute browser commands from Sarah's response
 
         Args:
             response_text: Sarah's response text
+
+        Returns:
+            True if action succeeded, False if failed, None if no action
         """
         text_lower = response_text.lower()
 
@@ -499,8 +635,18 @@ Important:
                         url = f"{url}.com"
 
                 logger.info(f"🌐 Detected navigation intent: {url}")
-                asyncio.create_task(self.browser.navigate(url))
-                return
+
+                # Track steps for learning
+                self.action_steps.append(f"Navigate to {url}")
+
+                # Execute navigation and track success
+                result = await self.browser.navigate(url)
+                success = result.get('success', False) if isinstance(result, dict) else False
+
+                if success:
+                    self.action_steps.append(f"Successfully loaded {url}")
+
+                return success
 
         # Detect search intent
         search_patterns = [
@@ -514,8 +660,21 @@ Important:
             if match:
                 query = match.group(1).strip()
                 logger.info(f"🔍 Detected search intent: {query}")
-                asyncio.create_task(self.browser.search_google(query))
-                return
+
+                # Track steps for learning
+                self.action_steps.append(f"Search Google for '{query}'")
+
+                # Execute search and track success
+                result = await self.browser.search_google(query)
+                success = result.get('success', False) if isinstance(result, dict) else False
+
+                if success:
+                    self.action_steps.append(f"Successfully searched for '{query}'")
+
+                return success
+
+        # No action detected
+        return None
 
     async def send_message(self, websocket: WebSocketServerProtocol, data: dict):
         """Send message to client"""
