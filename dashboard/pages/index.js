@@ -13,6 +13,7 @@ export default function Dashboard() {
   const [isSending, setIsSending] = useState(false)
   const chatWsRef = useRef(null)
   const messagesEndRef = useRef(null)
+  const chatMessagesRef = useRef(null)
 
   // WebSocket URLs - use environment variable or localhost for development
   const getWebSocketUrl = (port) => {
@@ -54,9 +55,17 @@ export default function Dashboard() {
     }
   }, [])
 
-  // Auto-scroll chat to bottom when new messages arrive
+  // Smart auto-scroll: only scroll to bottom if user is already near the bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (!chatMessagesRef.current) return
+
+    const container = chatMessagesRef.current
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100
+
+    // Only auto-scroll if user is already near the bottom (within 100px)
+    if (isNearBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages])
 
   function connectToLiveScreen() {
@@ -272,7 +281,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="chat-messages">
+        <div className="chat-messages" ref={chatMessagesRef}>
           {messages.length === 0 ? (
             <div className="no-messages">
               <div className="no-messages-icon">💬</div>
@@ -764,6 +773,7 @@ export default function Dashboard() {
           padding: 0.75rem 1rem;
           border-radius: 12px;
           box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+          user-select: text;
         }
         .message-user .message-content {
           background: #eff6ff;
@@ -780,6 +790,8 @@ export default function Dashboard() {
           line-height: 1.5;
           word-wrap: break-word;
           white-space: pre-wrap;
+          user-select: text;
+          cursor: text;
         }
         .message-time {
           font-size: 0.75rem;
