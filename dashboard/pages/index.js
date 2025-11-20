@@ -180,12 +180,15 @@ export default function Dashboard() {
   }
 
   // WebSocket URLs - use environment variable or localhost for development
-  const getWebSocketUrl = (port) => {
+  const getWebSocketUrl = () => {
     const railwayUrl = process.env.NEXT_PUBLIC_RAILWAY_WS_URL
     if (railwayUrl) {
-      return railwayUrl
+      // Railway URL should be in format: wss://your-app.railway.app
+      // Remove any trailing slashes or ports
+      return railwayUrl.replace(/:\d+$/, '').replace(/\/$/, '')
     }
-    return `ws://localhost:${port}`
+    // Local development
+    return 'ws://localhost:8080'
   }
 
   useEffect(() => {
@@ -226,12 +229,9 @@ export default function Dashboard() {
 
   function connectToChat() {
     try {
-      const baseUrl = getWebSocketUrl(8766)
-      // Add /chat path if not already present
-      let wsUrl = baseUrl
-      if (!baseUrl.includes('localhost') && !baseUrl.endsWith('/chat')) {
-        wsUrl = `${baseUrl}/chat`
-      }
+      const baseUrl = getWebSocketUrl()
+      // Add /chat path
+      const wsUrl = `${baseUrl}/chat`
       console.log('💬 Connecting to chat:', wsUrl)
       const ws = new WebSocket(wsUrl)
 
@@ -300,12 +300,9 @@ export default function Dashboard() {
 
   function connectToScreen() {
     try {
-      const baseUrl = getWebSocketUrl(8766)
+      const baseUrl = getWebSocketUrl()
       // Add /screen path
-      let wsUrl = baseUrl
-      if (!baseUrl.includes('localhost') && !baseUrl.endsWith('/screen')) {
-        wsUrl = `${baseUrl}/screen`
-      }
+      const wsUrl = `${baseUrl}/screen`
       console.log('🎥 Connecting to screen:', wsUrl)
       const ws = new WebSocket(wsUrl)
 
