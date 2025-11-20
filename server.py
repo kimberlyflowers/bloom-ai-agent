@@ -8,10 +8,12 @@ import asyncio
 import logging
 from typing import Set, List, Dict
 from datetime import datetime
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
+import shutil
+from pathlib import Path
 
 # Import Sarah's systems
 from src.identity_persistence import IdentityManager, Backstory, PersonalityTraits, WritingStyle
@@ -395,6 +397,41 @@ async def delete_conversation(conversation_id: str):
         raise
     except Exception as e:
         logger.error(f"Error deleting conversation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/upload")
+async def upload_file(file: UploadFile = File(...), conversation_id: str = Form(...)):
+    """Upload a file (image, video, document) for Sarah to analyze"""
+    try:
+        # Create uploads directory if it doesn't exist
+        uploads_dir = Path("uploads")
+        uploads_dir.mkdir(exist_ok=True)
+
+        # Generate unique filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_filename = f"{timestamp}_{file.filename}"
+        file_path = uploads_dir / safe_filename
+
+        # Save file
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        logger.info(f"📎 File uploaded: {safe_filename} ({file.content_type})")
+
+        # For now, return local path
+        # TODO: Upload to Supabase Storage for permanent hosting
+        return {
+            "success": True,
+            "filename": safe_filename,
+            "original_name": file.filename,
+            "content_type": file.content_type,
+            "size": file_path.stat().st_size,
+            "url": f"/uploads/{safe_filename}",  # Temporary local URL
+            "conversation_id": conversation_id
+        }
+    except Exception as e:
+        logger.error(f"Error uploading file: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

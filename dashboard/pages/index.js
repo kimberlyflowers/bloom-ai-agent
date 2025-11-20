@@ -18,6 +18,8 @@ export default function Dashboard() {
   const chatWsRef = useRef(null)
   const messagesEndRef = useRef(null)
   const chatMessagesRef = useRef(null)
+  const fileInputRef = useRef(null)
+  const [uploadingFile, setUploadingFile] = useState(false)
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -332,6 +334,60 @@ export default function Dashboard() {
     }
   }
 
+  async function handleFileUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file || !currentConversationIdRef.current) return
+
+    setUploadingFile(true)
+
+    try {
+      // Create form data
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('conversation_id', currentConversationIdRef.current)
+
+      // Upload file
+      const response = await fetch(`${getApiUrl()}/api/upload`, {
+        method: 'POST',
+        body: formData
+      })
+
+      const data = await response.json()
+
+      // Show file in chat
+      const fileMessage = {
+        id: Date.now(),
+        type: 'user',
+        text: `📎 ${file.name}`,
+        file: {
+          name: file.name,
+          type: file.type,
+          url: data.url
+        },
+        timestamp: new Date()
+      }
+      setMessages(prev => [...prev, fileMessage])
+
+      // Send to Sarah via WebSocket
+      chatWsRef.current.send(JSON.stringify({
+        type: 'user_message',
+        message: `[File uploaded: ${file.name}]`,
+        file: data,
+        conversation_id: currentConversationIdRef.current
+      }))
+
+      console.log('✅ File uploaded:', data)
+    } catch (error) {
+      console.error('Error uploading file:', error)
+      alert('Failed to upload file. Please try again.')
+    } finally {
+      setUploadingFile(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
   if (!sarah) {
     return <div className="loading">Loading Sarah...</div>
   }
@@ -429,6 +485,22 @@ export default function Dashboard() {
           </div>
 
           <form onSubmit={sendMessage} className="chat-input-container">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+              accept="image/*,video/*,.pdf,.doc,.docx,.txt"
+              style={{ display: 'none' }}
+            />
+            <button
+              type="button"
+              className="file-upload-button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!chatConnected || uploadingFile}
+              title="Upload file (images, videos, docs)"
+            >
+              {uploadingFile ? '⏳' : '📎'}
+            </button>
             <input
               type="text"
               className="chat-input"
@@ -903,6 +975,28 @@ export default function Dashboard() {
           display: flex;
           gap: 0.75rem;
           flex-shrink: 0;
+        }
+        .file-upload-button {
+          padding: 0.75rem;
+          background: #f3f4f6;
+          color: #6b7280;
+          border: 2px solid #e5e7eb;
+          border-radius: 8px;
+          font-size: 1.25rem;
+          cursor: pointer;
+          transition: all 0.2s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 48px;
+        }
+        .file-upload-button:hover:not(:disabled) {
+          background: #e5e7eb;
+          border-color: #a855f7;
+        }
+        .file-upload-button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
         .chat-input {
           flex: 1;
