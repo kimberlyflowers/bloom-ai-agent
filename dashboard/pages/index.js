@@ -182,11 +182,15 @@ export default function Dashboard() {
 
   // WebSocket URLs - use environment variable or localhost for development
   const getWebSocketUrl = () => {
-    const railwayUrl = process.env.NEXT_PUBLIC_RAILWAY_WS_URL
-    if (railwayUrl) {
-      // Railway URL should be in format: wss://your-app.railway.app
-      // Remove any trailing slashes or ports
-      return railwayUrl.replace(/:\d+$/, '').replace(/\/$/, '')
+    // Check if we're in production (Vercel)
+    if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+      // Production - use Railway
+      const envUrl = process.env.NEXT_PUBLIC_RAILWAY_WS_URL
+      if (envUrl) {
+        return envUrl.replace(/:\d+$/, '').replace(/\/$/, '')
+      }
+      // Fallback to Railway URL if env var not set
+      return 'wss://bloom-ai-agent-production.up.railway.app'
     }
     // Local development
     return 'ws://localhost:8080'
@@ -481,25 +485,32 @@ export default function Dashboard() {
         </div>
 
         <div className="conversations-list">
-          {(conversations || []).map(conv => (
-            <div
-              key={conv.id}
-              className={`conversation-item ${conv.id === currentConversationId ? 'active' : ''}`}
-              onClick={() => switchConversation(conv.id)}
-            >
-              <div className="conversation-content">
-                <div className="conversation-title">{getConversationTitle(conv)}</div>
-                <div className="conversation-date">{formatDate(conv.updatedAt)}</div>
-              </div>
-              <button
-                className="delete-conversation-btn"
-                onClick={(e) => deleteConversation(conv.id, e)}
-                title="Delete conversation"
-              >
-                ×
-              </button>
+          {(!conversations || conversations.length === 0) ? (
+            <div className="no-conversations">
+              <p>No conversations yet</p>
+              <p className="hint">Click + to start chatting</p>
             </div>
-          ))}
+          ) : (
+            conversations.map(conv => (
+              <div
+                key={conv.id}
+                className={`conversation-item ${conv.id === currentConversationId ? 'active' : ''}`}
+                onClick={() => switchConversation(conv.id)}
+              >
+                <div className="conversation-content">
+                  <div className="conversation-title">{getConversationTitle(conv)}</div>
+                  <div className="conversation-date">{formatDate(conv.updatedAt)}</div>
+                </div>
+                <button
+                  className="delete-conversation-btn"
+                  onClick={(e) => deleteConversation(conv.id, e)}
+                  title="Delete conversation"
+                >
+                  ×
+                </button>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
@@ -530,27 +541,27 @@ export default function Dashboard() {
         {/* KPI Stats */}
         <div className="stats-grid">
           <div className="stat-card">
-            <div className="stat-icon">💰</div>
+            <div className="stat-icon">💚</div>
             <div className="stat-content">
-              <div className="stat-label">Revenue Generated</div>
-              <div className="stat-value">$0</div>
-              <div className="stat-change">Coming soon</div>
+              <div className="stat-label">Health Score</div>
+              <div className="stat-value">{chatConnected && screenConnected ? '100%' : chatConnected ? '75%' : '0%'}</div>
+              <div className="stat-change">{chatConnected ? '✅ Online' : '🔴 Connecting...'}</div>
             </div>
           </div>
           <div className="stat-card">
-            <div className="stat-icon">📈</div>
+            <div className="stat-icon">💬</div>
             <div className="stat-content">
-              <div className="stat-label">ROI</div>
-              <div className="stat-value">-</div>
-              <div className="stat-change">Tracking starts when Sarah works</div>
+              <div className="stat-label">Conversations</div>
+              <div className="stat-value">{conversations.length}</div>
+              <div className="stat-change">Total chats</div>
             </div>
           </div>
           <div className="stat-card">
-            <div className="stat-icon">✅</div>
+            <div className="stat-icon">📨</div>
             <div className="stat-content">
-              <div className="stat-label">Tasks Completed</div>
-              <div className="stat-value">0</div>
-              <div className="stat-change">This week</div>
+              <div className="stat-label">Messages</div>
+              <div className="stat-value">{messages.filter(m => m.type !== 'system').length}</div>
+              <div className="stat-change">This conversation</div>
             </div>
           </div>
         </div>
@@ -570,7 +581,8 @@ export default function Dashboard() {
             {screenActivity.length === 0 ? (
               <div className="screen-placeholder">
                 <div className="screen-icon">💤</div>
-                <p>Waiting for Sarah to start working...</p>
+                <p>Ready and waiting for tasks...</p>
+                <p className="screen-hint">Sarah will show her work here in real-time</p>
               </div>
             ) : (
               <div className="screen-activity-feed" ref={screenActivityRef}>
@@ -785,6 +797,18 @@ export default function Dashboard() {
           flex: 1;
           overflow-y: auto;
           padding: 0.5rem;
+        }
+        .no-conversations {
+          padding: 3rem 1.5rem;
+          text-align: center;
+          color: #9ca3af;
+        }
+        .no-conversations p {
+          margin: 0.5rem 0;
+        }
+        .no-conversations .hint {
+          font-size: 0.875rem;
+          color: #6b7280;
         }
         .conversation-item {
           padding: 0.75rem;
@@ -1226,14 +1250,20 @@ export default function Dashboard() {
           font-weight: 600;
         }
         .screen-placeholder {
-          color: #e2e8f0;
+          color: #ffffff;
           text-align: center;
           padding: 6rem 2rem;
         }
         .screen-placeholder p {
-          color: #cbd5e1;
+          color: #ffffff;
           font-size: 1.125rem;
           margin-top: 1rem;
+          font-weight: 500;
+        }
+        .screen-placeholder .screen-hint {
+          color: #94a3b8;
+          font-size: 0.875rem;
+          font-weight: 400;
         }
         .screen-icon {
           font-size: 5rem;
