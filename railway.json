@@ -4,7 +4,7 @@
     "builder": "nixpacks"
   },
   "deploy": {
-    "startCommand": "python server.py",
+    "startCommand": "playwright install --with-deps chromium && python server.py",
     "restartPolicyType": "always"
   }
 }
