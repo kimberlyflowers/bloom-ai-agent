@@ -54,6 +54,10 @@ conversations_db: ConversationsDB = None
 conversation_history = []  # Track conversation context for AI responses
 MAX_HISTORY = 20
 
+# Message queue for when Sarah is "busy" (API overloaded)
+message_queue: List[Dict] = []
+is_processing_queue = False
+
 
 class Sarah:
     """Sarah Rodriguez - Digital Employee at BLOOM"""
@@ -286,7 +290,8 @@ Important:
                         continue
                     else:
                         logger.error(f"❌ API still overloaded after {max_retries} attempts (~90 seconds of retries)")
-                        return "Wow, I'm really popular right now! 😅 The AI servers are super busy. Try again in about a minute and I should be back! 🌸💕"
+                        # Return special marker to indicate queuing is needed
+                        return "__SARAH_BUSY__"
                 else:
                     # Other errors - don't retry
                     logger.error(f"❌ Error generating response: {e}")
@@ -393,6 +398,82 @@ async def delete_conversation(conversation_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# Helper functions for message queue
+
+def get_auto_reply_message() -> str:
+    """Get a natural, human-sounding auto-reply when Sarah is busy"""
+    import random
+
+    messages = [
+        "Hey! I'm in the middle of something right now but I saw your message! Give me just a few minutes and I'll get back to you 🌸",
+        "Oh hi! I'm swamped at the moment but I'll respond to this in just a bit! Thanks for your patience 💕",
+        "Hey there! Super busy right now but I have your message - I'll reply in a few minutes! 🌸",
+        "Hi! I'm tied up for just a moment but I'll get back to you really soon! Talk in a bit 😊",
+        "Hey! In a meeting right now but I saw this - give me a few minutes and I'll reply! 🌸💕"
+    ]
+
+    return random.choice(messages)
+
+
+async def process_message_queue():
+    """Background task to process queued messages when API is available again"""
+    global is_processing_queue, message_queue
+
+    while True:
+        try:
+            # Check every 30 seconds
+            await asyncio.sleep(30)
+
+            if not message_queue or is_processing_queue:
+                continue
+
+            is_processing_queue = True
+            logger.info(f"📬 Processing message queue... {len(message_queue)} messages waiting")
+
+            # Process messages one by one
+            while message_queue:
+                queued_item = message_queue[0]  # Peek at first item
+
+                try:
+                    # Try to generate response
+                    response = await sarah_instance.generate_response(queued_item['message'])
+
+                    if response == "__SARAH_BUSY__":
+                        # Still overloaded, wait longer
+                        logger.warning("⏸️ API still overloaded, pausing queue processing")
+                        break
+
+                    # Success! Send the response
+                    ws = queued_item['websocket']
+                    if ws in chat_clients:  # Check if websocket still connected
+                        await ws.send_json({
+                            'type': 'sarah_message',
+                            'message': response
+                        })
+                        logger.info(f"✅ Sent queued response to {queued_item['client_id']}")
+                    else:
+                        logger.info(f"⚠️ Client {queued_item['client_id']} disconnected, skipping message")
+
+                    # Remove processed message from queue
+                    message_queue.pop(0)
+
+                    # Small delay between messages to avoid overwhelming API
+                    await asyncio.sleep(2)
+
+                except Exception as e:
+                    logger.error(f"Error processing queued message: {e}")
+                    # Remove problematic message
+                    message_queue.pop(0)
+
+            if not message_queue:
+                logger.info("✅ Message queue empty")
+
+        except Exception as e:
+            logger.error(f"Error in queue processor: {e}")
+        finally:
+            is_processing_queue = False
+
+
 @app.websocket("/chat")
 async def chat_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time chat (persistence handled by frontend via REST API)"""
@@ -421,13 +502,33 @@ async def chat_endpoint(websocket: WebSocket):
 
                 # Generate Sarah's response
                 sarah_response = await sarah_instance.generate_response(user_message)
-                logger.info(f"💬 Sarah: {sarah_response[:100]}...")
 
-                # Send response back (frontend will persist via REST API)
-                await websocket.send_json({
-                    'type': 'sarah_message',
-                    'message': sarah_response
-                })
+                # Check if Sarah is "busy" (API overloaded)
+                if sarah_response == "__SARAH_BUSY__":
+                    # Queue the message for later
+                    message_queue.append({
+                        'websocket': websocket,
+                        'message': user_message,
+                        'conversation_id': conversation_id,
+                        'timestamp': datetime.now(),
+                        'client_id': client_id
+                    })
+                    logger.info(f"📬 Queued message from {client_id}. Queue size: {len(message_queue)}")
+
+                    # Send human-sounding auto-reply
+                    auto_reply = get_auto_reply_message()
+                    await websocket.send_json({
+                        'type': 'sarah_message',
+                        'message': auto_reply
+                    })
+                    logger.info(f"💬 Sarah (auto-reply): {auto_reply}")
+                else:
+                    # Normal response
+                    logger.info(f"💬 Sarah: {sarah_response[:100]}...")
+                    await websocket.send_json({
+                        'type': 'sarah_message',
+                        'message': sarah_response
+                    })
 
             elif data.get('type') == 'ping':
                 await websocket.send_json({'type': 'pong'})
@@ -494,8 +595,10 @@ async def startup_event():
     logger.info("🎥 Screen WebSocket available at: /screen")
     logger.info("📚 Conversation API available at: /api/conversations")
 
-    # Start background routine
+    # Start background routines
     asyncio.create_task(run_daily_routine())
+    asyncio.create_task(process_message_queue())
+    logger.info("📬 Message queue processor started")
 
 
 if __name__ == "__main__":
