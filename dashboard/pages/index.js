@@ -1143,10 +1143,11 @@ export default function Dashboard() {
           background: #0f172a;
           border-radius: 8px;
           padding: 1rem;
-          min-height: 300px;
-          max-height: 500px;
+          width: 100%;
+          aspect-ratio: 16 / 9;
           overflow-y: auto;
           border: 1px solid #1e293b;
+          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
         }
         .screen-status {
           margin-bottom: 1rem;
@@ -1161,19 +1162,26 @@ export default function Dashboard() {
         }
         .status-indicator.connected {
           color: #10b981;
+          font-weight: 600;
         }
         .status-indicator.disconnected {
           color: #ef4444;
+          font-weight: 600;
         }
         .screen-placeholder {
-          color: #64748b;
+          color: #e2e8f0;
           text-align: center;
-          padding: 4rem 2rem;
+          padding: 6rem 2rem;
+        }
+        .screen-placeholder p {
+          color: #cbd5e1;
+          font-size: 1.125rem;
+          margin-top: 1rem;
         }
         .screen-icon {
-          font-size: 4rem;
+          font-size: 5rem;
           margin-bottom: 1rem;
-          opacity: 0.5;
+          opacity: 0.7;
         }
         .screen-activity-feed {
           display: flex;
