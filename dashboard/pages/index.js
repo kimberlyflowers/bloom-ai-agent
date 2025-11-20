@@ -604,6 +604,17 @@ export default function Dashboard() {
                         {activity.activity_type === 'waiting' && '⏳'}
                         {activity.activity_type === 'queued' && '📬'}
                         {activity.activity_type === 'status' && '💼'}
+                        {activity.activity_type === 'browser_starting' && '🌐'}
+                        {activity.activity_type === 'browser_ready' && '✅'}
+                        {activity.activity_type === 'navigating' && '🔄'}
+                        {activity.activity_type === 'page_loaded' && '✅'}
+                        {activity.activity_type === 'clicking' && '🖱️'}
+                        {activity.activity_type === 'clicked' && '✅'}
+                        {activity.activity_type === 'typing' && '⌨️'}
+                        {activity.activity_type === 'typed' && '✅'}
+                        {activity.activity_type === 'screenshot' && '📸'}
+                        {activity.activity_type === 'browser_closed' && '❌'}
+                        {activity.activity_type === 'error' && '⚠️'}
                       </div>
                       <div className="activity-content">
                         <div className="activity-text">{displayContent}</div>
