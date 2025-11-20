@@ -424,14 +424,16 @@ export default function Dashboard() {
             </div>
           ))}
         </div>
-
-        <button
-          className="toggle-sidebar-btn"
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-        >
-          {sidebarOpen ? '◀' : '▶'}
-        </button>
       </div>
+
+      {/* Toggle Button - Outside sidebar so it's always visible */}
+      <button
+        className="toggle-sidebar-btn"
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+        style={{ left: sidebarOpen ? '300px' : '0' }}
+      >
+        {sidebarOpen ? '◀' : '▶'}
+      </button>
 
       {/* Main Content */}
       <div className="main-content">
@@ -445,6 +447,46 @@ export default function Dashboard() {
           <div className="status-badge">
             <div className="status-dot"></div>
             Online
+          </div>
+        </div>
+
+        {/* KPI Stats */}
+        <div className="stats-grid">
+          <div className="stat-card">
+            <div className="stat-icon">💰</div>
+            <div className="stat-content">
+              <div className="stat-label">Revenue Generated</div>
+              <div className="stat-value">$0</div>
+              <div className="stat-change">Coming soon</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon">📈</div>
+            <div className="stat-content">
+              <div className="stat-label">ROI</div>
+              <div className="stat-value">-</div>
+              <div className="stat-change">Tracking starts when Sarah works</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon">✅</div>
+            <div className="stat-content">
+              <div className="stat-label">Tasks Completed</div>
+              <div className="stat-value">0</div>
+              <div className="stat-change">This week</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Sarah's Live Screen */}
+        <div className="card">
+          <h2>🎥 Sarah&apos;s Screen</h2>
+          <div className="screen-window">
+            <div className="screen-placeholder">
+              <div className="screen-icon">🖥️</div>
+              <p>Screen sharing coming soon!</p>
+              <p className="screen-hint">You&apos;ll be able to see what Sarah is working on in real-time</p>
+            </div>
           </div>
         </div>
 
@@ -517,46 +559,6 @@ export default function Dashboard() {
               {isSending ? '...' : '➤'}
             </button>
           </form>
-        </div>
-
-        {/* Sarah's Live Screen */}
-        <div className="card">
-          <h2>🎥 Sarah&apos;s Screen</h2>
-          <div className="screen-window">
-            <div className="screen-placeholder">
-              <div className="screen-icon">🖥️</div>
-              <p>Screen sharing coming soon!</p>
-              <p className="screen-hint">You&apos;ll be able to see what Sarah is working on in real-time</p>
-            </div>
-          </div>
-        </div>
-
-        {/* KPI Stats */}
-        <div className="stats-grid">
-          <div className="stat-card">
-            <div className="stat-icon">💰</div>
-            <div className="stat-content">
-              <div className="stat-label">Revenue Generated</div>
-              <div className="stat-value">$0</div>
-              <div className="stat-change">Coming soon</div>
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon">📈</div>
-            <div className="stat-content">
-              <div className="stat-label">ROI</div>
-              <div className="stat-value">-</div>
-              <div className="stat-change">Tracking starts when Sarah works</div>
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon">✅</div>
-            <div className="stat-content">
-              <div className="stat-label">Tasks Completed</div>
-              <div className="stat-value">0</div>
-              <div className="stat-change">This week</div>
-            </div>
-          </div>
         </div>
 
         {/* Activity */}
@@ -710,7 +712,6 @@ export default function Dashboard() {
         }
         .toggle-sidebar-btn {
           position: fixed;
-          left: 0;
           top: 50%;
           transform: translateY(-50%);
           width: 32px;
@@ -722,11 +723,8 @@ export default function Dashboard() {
           cursor: pointer;
           font-size: 1rem;
           color: #6b7280;
-          transition: all 0.2s;
-          z-index: 10;
-        }
-        .sidebar.open .toggle-sidebar-btn {
-          left: 300px;
+          transition: left 0.3s ease;
+          z-index: 50;
         }
         .toggle-sidebar-btn:hover {
           background: #f3f4f6;
