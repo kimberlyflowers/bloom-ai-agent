@@ -6,26 +6,151 @@ export default function Dashboard() {
   const [screenConnected, setScreenConnected] = useState(false)
   const wsRef = useRef(null)
 
-  // Chat state
+  // Conversation state
+  const [conversations, setConversations] = useState([])
+  const [currentConversationId, setCurrentConversationId] = useState(null)
   const [messages, setMessages] = useState([])
   const [chatInput, setChatInput] = useState('')
   const [chatConnected, setChatConnected] = useState(false)
   const [isSending, setIsSending] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const chatWsRef = useRef(null)
   const messagesEndRef = useRef(null)
   const chatMessagesRef = useRef(null)
 
-  // WebSocket URLs - use environment variable or localhost for development
-  const getWebSocketUrl = (port) => {
-    // Check if we have a Railway URL from environment variable
+  // API base URL
+  const getApiUrl = () => {
     const railwayUrl = process.env.NEXT_PUBLIC_RAILWAY_WS_URL
     if (railwayUrl) {
-      // Railway uses a single PORT for all connections
-      // Just use the Railway URL directly (wss:// for secure connection)
-      // Railway will route based on its internal PORT environment variable
+      return railwayUrl.replace('wss://', 'https://').replace('ws://', 'http://')
+    }
+    return 'http://localhost:8080'
+  }
+
+  // Load conversations from API on mount
+  useEffect(() => {
+    loadConversations()
+  }, [])
+
+  const loadConversations = async () => {
+    try {
+      const response = await fetch(`${getApiUrl()}/api/conversations`)
+      const data = await response.json()
+
+      if (data.conversations.length > 0) {
+        setConversations(data.conversations)
+
+        // Load the most recent conversation
+        const mostRecent = data.conversations[0]
+        setCurrentConversationId(mostRecent.id)
+        await loadConversationMessages(mostRecent.id)
+      } else {
+        // Create first conversation
+        await createNewConversation()
+      }
+    } catch (error) {
+      console.error('Error loading conversations:', error)
+      // Fallback to creating new conversation
+      await createNewConversation()
+    }
+  }
+
+  const loadConversationMessages = async (conversationId) => {
+    try {
+      const response = await fetch(`${getApiUrl()}/api/conversations/${conversationId}/messages`)
+      const data = await response.json()
+
+      // Convert API messages to frontend format
+      const formattedMessages = data.messages.map(msg => ({
+        id: msg.id,
+        type: msg.type,
+        text: msg.text,
+        timestamp: new Date(msg.timestamp)
+      }))
+
+      setMessages(formattedMessages)
+    } catch (error) {
+      console.error('Error loading messages:', error)
+      setMessages([])
+    }
+  }
+
+  const createNewConversation = async () => {
+    try {
+      const newId = Date.now().toString()
+
+      const response = await fetch(`${getApiUrl()}/api/conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: newId })
+      })
+
+      const newConv = await response.json()
+
+      setConversations(prev => [newConv, ...prev])
+      setCurrentConversationId(newConv.id)
+      setMessages([])
+    } catch (error) {
+      console.error('Error creating conversation:', error)
+    }
+  }
+
+  const switchConversation = async (convId) => {
+    setCurrentConversationId(convId)
+    await loadConversationMessages(convId)
+  }
+
+  const deleteConversation = async (convId, e) => {
+    e.stopPropagation()
+
+    try {
+      await fetch(`${getApiUrl()}/api/conversations/${convId}`, {
+        method: 'DELETE'
+      })
+
+      const updated = conversations.filter(c => c.id !== convId)
+      setConversations(updated)
+
+      // If deleting current conversation, switch to another
+      if (convId === currentConversationId) {
+        if (updated.length > 0) {
+          await switchConversation(updated[0].id)
+        } else {
+          await createNewConversation()
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting conversation:', error)
+    }
+  }
+
+  const getConversationTitle = (conv) => {
+    // Title is managed by the API based on first user message
+    return conv.title || 'New conversation'
+  }
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMs = now - date
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+
+    if (diffMins < 1) return 'Just now'
+    if (diffMins < 60) return `${diffMins}m ago`
+    if (diffHours < 24) return `${diffHours}h ago`
+    if (diffDays < 7) return `${diffDays}d ago`
+
+    return date.toLocaleDateString()
+  }
+
+  // WebSocket URLs - use environment variable or localhost for development
+  const getWebSocketUrl = (port) => {
+    const railwayUrl = process.env.NEXT_PUBLIC_RAILWAY_WS_URL
+    if (railwayUrl) {
       return railwayUrl
     }
-    // Fallback to localhost for development (with specific ports)
     return `ws://localhost:${port}`
   }
 
@@ -37,12 +162,6 @@ export default function Dashboard() {
       specialization: "TikTok growth & UGC creation"
     })
 
-    // Connect to live screen stream
-    // NOTE: Temporarily disabled - Railway only supports one PORT
-    // We'll refactor to use single server with multiple endpoints later
-    // connectToLiveScreen()
-
-    // Connect to chat server
     connectToChat()
 
     return () => {
@@ -62,60 +181,14 @@ export default function Dashboard() {
     const container = chatMessagesRef.current
     const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100
 
-    // Only auto-scroll if user is already near the bottom (within 100px)
     if (isNearBottom) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
   }, [messages])
 
-  function connectToLiveScreen() {
-    try {
-      // Connect to Railway WebSocket server
-      const wsUrl = getWebSocketUrl(8765)
-      console.log('🎥 Connecting to screen stream:', wsUrl)
-      const ws = new WebSocket(wsUrl)
-
-      ws.onopen = () => {
-        console.log('📺 Connected to Sarah\'s screen!')
-        setScreenConnected(true)
-      }
-
-      ws.onmessage = (event) => {
-        const data = event.data
-
-        if (data.startsWith('FRAME:')) {
-          // Received a new frame
-          const frameData = data.substring(6)
-          setLiveScreen(`data:image/jpeg;base64,${frameData}`)
-        } else if (data.startsWith('CONNECTED:')) {
-          console.log('✅ Screen stream ready')
-        }
-      }
-
-      ws.onerror = (error) => {
-        console.error('❌ Screen stream error:', error)
-        setScreenConnected(false)
-      }
-
-      ws.onclose = () => {
-        console.log('🔴 Screen stream disconnected')
-        setScreenConnected(false)
-
-        // Auto-reconnect after 5 seconds
-        setTimeout(connectToLiveScreen, 5000)
-      }
-
-      wsRef.current = ws
-    } catch (error) {
-      console.error('Error connecting to screen stream:', error)
-    }
-  }
-
   function connectToChat() {
     try {
-      // Connect to chat WebSocket endpoint
       const baseUrl = getWebSocketUrl(8766)
-      // Add /chat path for FastAPI WebSocket endpoint
       const wsUrl = baseUrl.includes('localhost') ? baseUrl : `${baseUrl}/chat`
       console.log('💬 Connecting to chat:', wsUrl)
       const ws = new WebSocket(wsUrl)
@@ -125,27 +198,49 @@ export default function Dashboard() {
         setChatConnected(true)
       }
 
-      ws.onmessage = (event) => {
+      ws.onmessage = async (event) => {
         try {
           const data = JSON.parse(event.data)
 
           if (data.type === 'system') {
-            // System message (welcome, etc.)
-            setMessages(prev => [...prev, {
+            const systemMessage = {
               id: Date.now(),
               type: 'system',
               text: data.message,
               timestamp: new Date()
-            }])
+            }
+            setMessages(prev => [...prev, systemMessage])
+
+            // Save system message to database
+            try {
+              await fetch(`${getApiUrl()}/api/conversations/${currentConversationId}/messages`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'system', text: data.message })
+              })
+            } catch (error) {
+              console.error('Error saving system message to database:', error)
+            }
           } else if (data.type === 'sarah_message') {
-            // Message from Sarah
-            setMessages(prev => [...prev, {
+            const sarahMessage = {
               id: Date.now(),
               type: 'sarah',
               text: data.message,
               timestamp: new Date()
-            }])
+            }
+            setMessages(prev => [...prev, sarahMessage])
             setIsSending(false)
+
+            // Save Sarah's response to database
+            try {
+              await fetch(`${getApiUrl()}/api/conversations/${currentConversationId}/messages`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'sarah', text: data.message })
+              })
+            } catch (error) {
+              console.error('Error saving Sarah message to database:', error)
+            }
           }
         } catch (error) {
           console.error('Error parsing chat message:', error)
@@ -160,8 +255,6 @@ export default function Dashboard() {
       ws.onclose = () => {
         console.log('🔴 Chat disconnected')
         setChatConnected(false)
-
-        // Auto-reconnect after 5 seconds
         setTimeout(connectToChat, 5000)
       }
 
@@ -171,31 +264,42 @@ export default function Dashboard() {
     }
   }
 
-  function sendMessage(e) {
+  async function sendMessage(e) {
     e.preventDefault()
 
     if (!chatInput.trim() || !chatConnected || isSending) {
       return
     }
 
-    // Add user message to UI
+    const messageText = chatInput
     const userMessage = {
       id: Date.now(),
       type: 'user',
-      text: chatInput,
+      text: messageText,
       timestamp: new Date()
     }
+
+    // Add to UI immediately
     setMessages(prev => [...prev, userMessage])
-
-    // Send to Sarah via WebSocket
-    chatWsRef.current.send(JSON.stringify({
-      type: 'user_message',
-      message: chatInput
-    }))
-
-    // Clear input and set sending state
     setChatInput('')
     setIsSending(true)
+
+    // Send via WebSocket for real-time response
+    chatWsRef.current.send(JSON.stringify({
+      type: 'user_message',
+      message: messageText
+    }))
+
+    // Save to database via API
+    try {
+      await fetch(`${getApiUrl()}/api/conversations/${currentConversationId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'user', text: messageText })
+      })
+    } catch (error) {
+      console.error('Error saving user message to database:', error)
+    }
   }
 
   if (!sarah) {
@@ -203,195 +307,294 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="container">
-      {/* Header */}
-      <div className="header">
-        <div className="avatar">SR</div>
-        <div className="header-info">
-          <h1>{sarah.name}</h1>
-          <p>🌸 AI Agent Employee • {sarah.role} at BLOOM</p>
-        </div>
-        <div className="status-badge">
-          <div className="status-dot"></div>
-          Online
-        </div>
-      </div>
-
-      {/* Metrics */}
-      <div className="metrics">
-        <div className="metric-card pink">
-          <div className="metric-icon">💝</div>
-          <div className="metric-label">Trust Score</div>
-          <div className="metric-value">50.0</div>
-        </div>
-        <div className="metric-card blue">
-          <div className="metric-icon">🤝</div>
-          <div className="metric-label">Relationships</div>
-          <div className="metric-value">0</div>
-        </div>
-        <div className="metric-card purple">
-          <div className="metric-icon">✨</div>
-          <div className="metric-label">Value Provided</div>
-          <div className="metric-value">0</div>
-        </div>
-        <div className="metric-card green">
-          <div className="metric-icon">💰</div>
-          <div className="metric-label">Revenue</div>
-          <div className="metric-value">$0</div>
-        </div>
-      </div>
-
-      {/* LIVE SCREEN VIEW - THE COOLEST FEATURE! */}
-      <div className="live-screen-card">
-        <div className="live-screen-header">
-          <h2>🎥 Sarah's Live Screen</h2>
-          <div className={screenConnected ? "stream-status connected" : "stream-status disconnected"}>
-            <div className="stream-dot"></div>
-            {screenConnected ? 'LIVE' : 'Offline'}
-          </div>
-        </div>
-
-        <div className="live-screen-viewer">
-          {liveScreen ? (
-            <img
-              src={liveScreen}
-              alt="Sarah's live screen"
-              className="live-screen-image"
-            />
-          ) : (
-            <div className="no-stream">
-              <div className="no-stream-icon">📺</div>
-              <p>{screenConnected ? 'Waiting for Sarah to start working...' : 'Connecting to live stream...'}</p>
-            </div>
-          )}
-        </div>
-
-        <div className="live-screen-info">
-          <p>💡 Watch Sarah work in real-time! You'll see her create emails, browse TikTok, and more!</p>
-        </div>
-      </div>
-
-      {/* CHAT WITH SARAH - TALK TO HER IN REAL-TIME! */}
-      <div className="chat-card">
-        <div className="chat-header">
-          <h2>💬 Chat with Sarah</h2>
-          <div className={chatConnected ? "stream-status connected" : "stream-status disconnected"}>
-            <div className="stream-dot"></div>
-            {chatConnected ? 'Online' : 'Offline'}
-          </div>
-        </div>
-
-        <div className="chat-messages" ref={chatMessagesRef}>
-          {messages.length === 0 ? (
-            <div className="no-messages">
-              <div className="no-messages-icon">💬</div>
-              <p>Start a conversation with Sarah!</p>
-              <p className="no-messages-hint">Ask her about her work, TikTok strategies, or anything else 🌸</p>
-            </div>
-          ) : (
-            messages.map(msg => (
-              <div key={msg.id} className={`message message-${msg.type}`}>
-                {msg.type === 'sarah' && <div className="message-avatar">SR</div>}
-                <div className="message-content">
-                  {msg.type === 'sarah' && <div className="message-sender">Sarah Rodriguez</div>}
-                  {msg.type === 'user' && <div className="message-sender">You</div>}
-                  <div className="message-text">{msg.text}</div>
-                  <div className="message-time">
-                    {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-                </div>
-                {msg.type === 'user' && <div className="message-avatar-user">You</div>}
-              </div>
-            ))
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        <form onSubmit={sendMessage} className="chat-input-container">
-          <input
-            type="text"
-            className="chat-input"
-            placeholder={chatConnected ? "Type a message to Sarah..." : "Connecting to chat..."}
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            disabled={!chatConnected || isSending}
-          />
-          <button
-            type="submit"
-            className="chat-send-button"
-            disabled={!chatConnected || !chatInput.trim() || isSending}
-          >
-            {isSending ? '...' : '➤'}
+    <div className="dashboard-container">
+      {/* Sidebar */}
+      <div className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
+        <div className="sidebar-header">
+          <h2>💬 Conversations</h2>
+          <button onClick={() => createNewConversation()} className="new-conversation-btn" title="New conversation">
+            +
           </button>
-        </form>
+        </div>
+
+        <div className="conversations-list">
+          {conversations.map(conv => (
+            <div
+              key={conv.id}
+              className={`conversation-item ${conv.id === currentConversationId ? 'active' : ''}`}
+              onClick={() => switchConversation(conv.id)}
+            >
+              <div className="conversation-content">
+                <div className="conversation-title">{getConversationTitle(conv)}</div>
+                <div className="conversation-date">{formatDate(conv.updatedAt)}</div>
+              </div>
+              <button
+                className="delete-conversation-btn"
+                onClick={(e) => deleteConversation(conv.id, e)}
+                title="Delete conversation"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <button
+          className="toggle-sidebar-btn"
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+        >
+          {sidebarOpen ? '◀' : '▶'}
+        </button>
       </div>
 
-      {/* Activity */}
-      <div className="card">
-        <h2>Current Activity</h2>
-        <div className="activity">
-          <div className="activity-icon">😴</div>
-          <div>
-            <p className="activity-text">Sleeping for 1 hour...</p>
-            <p className="activity-time">
-              Next check-in at {new Date(Date.now() + 3600000).toLocaleTimeString()}
-            </p>
+      {/* Main Content */}
+      <div className="main-content">
+        {/* Header */}
+        <div className="header">
+          <div className="avatar">SR</div>
+          <div className="header-info">
+            <h1>{sarah.name}</h1>
+            <p>🌸 AI Agent Employee • {sarah.role} at BLOOM</p>
+          </div>
+          <div className="status-badge">
+            <div className="status-dot"></div>
+            Online
           </div>
         </div>
-      </div>
 
-      {/* Identity */}
-      <div className="card">
-        <h2>Sarah&apos;s Identity</h2>
-        <div className="details">
-          <div className="detail">
-            <strong>Location:</strong> {sarah.location}
+        {/* Chat Card */}
+        <div className="chat-card">
+          <div className="chat-header">
+            <h2>💬 Chat with Sarah</h2>
+            <div className={chatConnected ? "stream-status connected" : "stream-status disconnected"}>
+              <div className="stream-dot"></div>
+              {chatConnected ? 'Online' : 'Offline'}
+            </div>
           </div>
-          <div className="detail">
-            <strong>Email:</strong> sarah@trybloom.ai
+
+          <div className="chat-messages" ref={chatMessagesRef}>
+            {messages.length === 0 ? (
+              <div className="no-messages">
+                <div className="no-messages-icon">💬</div>
+                <p>Start a conversation with Sarah!</p>
+                <p className="no-messages-hint">Ask her about her work, TikTok strategies, or anything else 🌸</p>
+              </div>
+            ) : (
+              messages.map(msg => (
+                <div key={msg.id} className={`message message-${msg.type}`}>
+                  {msg.type === 'sarah' && <div className="message-avatar">SR</div>}
+                  <div className="message-content">
+                    {msg.type === 'sarah' && <div className="message-sender">Sarah Rodriguez</div>}
+                    {msg.type === 'user' && <div className="message-sender">You</div>}
+                    <div className="message-text">{msg.text}</div>
+                    <div className="message-time">
+                      {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                  {msg.type === 'user' && <div className="message-avatar-user">You</div>}
+                </div>
+              ))
+            )}
+            <div ref={messagesEndRef} />
           </div>
-          <div className="detail">
-            <strong>Specialization:</strong> {sarah.specialization}
-          </div>
-          <div className="detail">
-            <strong>Role:</strong> {sarah.role}
+
+          <form onSubmit={sendMessage} className="chat-input-container">
+            <input
+              type="text"
+              className="chat-input"
+              placeholder={chatConnected ? "Type a message to Sarah..." : "Connecting to chat..."}
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              disabled={!chatConnected || isSending}
+            />
+            <button
+              type="submit"
+              className="chat-send-button"
+              disabled={!chatConnected || !chatInput.trim() || isSending}
+            >
+              {isSending ? '...' : '➤'}
+            </button>
+          </form>
+        </div>
+
+        {/* Activity */}
+        <div className="card">
+          <h2>Current Activity</h2>
+          <div className="activity">
+            <div className="activity-icon">💬</div>
+            <div>
+              <p className="activity-text">Chatting with you!</p>
+              <p className="activity-time">
+                {conversations.find(c => c.id === currentConversationId)?.messages.length || 0} messages in this conversation
+              </p>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Daily Routine */}
-      <div className="card">
-        <h2>Daily Routine</h2>
-        <div className="routine">
-          <div className="routine-item complete">
-            <span>📧</span> Check email
-            <span className="routine-check">✓</span>
-          </div>
-          <div className="routine-item complete">
-            <span>💝</span> Manage relationships
-            <span className="routine-check">✓</span>
-          </div>
-          <div className="routine-item complete">
-            <span>✅</span> Update metrics
-            <span className="routine-check">✓</span>
-          </div>
-          <div className="routine-item active">
-            <span>😴</span> Sleep 1 hour
-            <span className="routine-check">⋯</span>
+        {/* Identity */}
+        <div className="card">
+          <h2>Sarah&apos;s Identity</h2>
+          <div className="details">
+            <div className="detail">
+              <strong>Location:</strong> {sarah.location}
+            </div>
+            <div className="detail">
+              <strong>Email:</strong> sarah@trybloom.ai
+            </div>
+            <div className="detail">
+              <strong>Specialization:</strong> {sarah.specialization}
+            </div>
+            <div className="detail">
+              <strong>Role:</strong> {sarah.role}
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="footer">
-        <p>🌸 Powered by BLOOM AI Agents • Running 24/7 on Railway</p>
+        <div className="footer">
+          <p>🌸 Powered by BLOOM AI Agents • Running 24/7 on Railway</p>
+        </div>
       </div>
 
       <style jsx>{`
-        .container {
+        .dashboard-container {
+          display: flex;
           min-height: 100vh;
           background: linear-gradient(to bottom right, #fdf2f8, #fae8ff);
-          padding: 2rem;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        /* Sidebar */
+        .sidebar {
+          width: 300px;
+          background: white;
+          border-right: 1px solid #e5e7eb;
+          display: flex;
+          flex-direction: column;
+          transition: transform 0.3s ease;
+        }
+        .sidebar.closed {
+          transform: translateX(-100%);
+          position: absolute;
+        }
+        .sidebar-header {
+          padding: 1.5rem;
+          border-bottom: 1px solid #e5e7eb;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .sidebar-header h2 {
+          font-size: 1.25rem;
+          font-weight: bold;
+          color: #111827;
+          margin: 0;
+        }
+        .new-conversation-btn {
+          width: 36px;
+          height: 36px;
+          border-radius: 8px;
+          border: none;
+          background: linear-gradient(135deg, #a855f7, #9333ea);
+          color: white;
+          font-size: 1.5rem;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: opacity 0.2s;
+        }
+        .new-conversation-btn:hover {
+          opacity: 0.9;
+        }
+        .conversations-list {
+          flex: 1;
+          overflow-y: auto;
+          padding: 0.5rem;
+        }
+        .conversation-item {
+          padding: 0.75rem;
+          margin-bottom: 0.5rem;
+          border-radius: 8px;
+          cursor: pointer;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          transition: background 0.2s;
+        }
+        .conversation-item:hover {
+          background: #f3f4f6;
+        }
+        .conversation-item.active {
+          background: #ede9fe;
+          border-left: 3px solid #a855f7;
+        }
+        .conversation-content {
+          flex: 1;
+          min-width: 0;
+        }
+        .conversation-title {
+          font-size: 0.875rem;
+          font-weight: 500;
+          color: #111827;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .conversation-date {
+          font-size: 0.75rem;
+          color: #6b7280;
+          margin-top: 0.25rem;
+        }
+        .delete-conversation-btn {
+          width: 24px;
+          height: 24px;
+          border-radius: 4px;
+          border: none;
+          background: transparent;
+          color: #9ca3af;
+          font-size: 1.5rem;
+          cursor: pointer;
+          display: none;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+        }
+        .conversation-item:hover .delete-conversation-btn {
+          display: flex;
+        }
+        .delete-conversation-btn:hover {
+          background: #fee2e2;
+          color: #dc2626;
+        }
+        .toggle-sidebar-btn {
+          position: fixed;
+          left: 0;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 32px;
+          height: 64px;
+          border: none;
+          background: white;
+          border-radius: 0 8px 8px 0;
+          box-shadow: 2px 0 6px rgba(0, 0, 0, 0.1);
+          cursor: pointer;
+          font-size: 1rem;
+          color: #6b7280;
+          transition: all 0.2s;
+          z-index: 10;
+        }
+        .sidebar.open .toggle-sidebar-btn {
+          left: 300px;
+        }
+        .toggle-sidebar-btn:hover {
+          background: #f3f4f6;
+        }
+
+        /* Main Content */
+        .main-content {
+          flex: 1;
+          padding: 2rem;
+          overflow-y: auto;
         }
         .loading {
           min-height: 100vh;
@@ -456,57 +659,25 @@ export default function Dashboard() {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.5; }
         }
-        .metrics {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 1.5rem;
-          margin-bottom: 1.5rem;
-        }
-        .metric-card {
+        .chat-card {
           background: white;
           border-radius: 12px;
-          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          box-shadow: 0 6px 12px rgba(168, 85, 247, 0.15);
           padding: 1.5rem;
-        }
-        .metric-icon {
-          width: 48px;
-          height: 48px;
-          border-radius: 8px;
+          margin-bottom: 1.5rem;
+          border: 2px solid #f3e8ff;
           display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 1.5rem;
-          margin-bottom: 0.75rem;
+          flex-direction: column;
+          height: 600px;
         }
-        .pink .metric-icon { background: linear-gradient(135deg, #ec4899, #db2777); }
-        .blue .metric-icon { background: linear-gradient(135deg, #3b82f6, #2563eb); }
-        .purple .metric-icon { background: linear-gradient(135deg, #a855f7, #9333ea); }
-        .green .metric-icon { background: linear-gradient(135deg, #10b981, #059669); }
-        .metric-label {
-          color: #6b7280;
-          font-size: 0.875rem;
-          margin-bottom: 0.25rem;
-        }
-        .metric-value {
-          font-size: 2rem;
-          font-weight: bold;
-          color: #111827;
-        }
-        .live-screen-card {
-          background: white;
-          border-radius: 12px;
-          box-shadow: 0 6px 12px rgba(236, 72, 153, 0.15);
-          padding: 1.5rem;
-          margin-bottom: 1.5rem;
-          border: 2px solid #fce7f3;
-        }
-        .live-screen-header {
+        .chat-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
           margin-bottom: 1rem;
+          flex-shrink: 0;
         }
-        .live-screen-header h2 {
+        .chat-header h2 {
           font-size: 1.5rem;
           font-weight: bold;
           color: #111827;
@@ -537,157 +708,6 @@ export default function Dashboard() {
         }
         .stream-status.connected .stream-dot {
           animation: pulse 2s infinite;
-        }
-        .live-screen-viewer {
-          background: #111827;
-          border-radius: 8px;
-          aspect-ratio: 16 / 9;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          overflow: hidden;
-          position: relative;
-          margin-bottom: 1rem;
-        }
-        .live-screen-image {
-          width: 100%;
-          height: 100%;
-          object-fit: contain;
-        }
-        .no-stream {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 1rem;
-          color: #9ca3af;
-        }
-        .no-stream-icon {
-          font-size: 4rem;
-          opacity: 0.5;
-        }
-        .no-stream p {
-          margin: 0;
-          font-size: 1rem;
-        }
-        .live-screen-info {
-          background: #fef3c7;
-          border-left: 4px solid #f59e0b;
-          padding: 0.75rem;
-          border-radius: 4px;
-        }
-        .live-screen-info p {
-          margin: 0;
-          color: #92400e;
-          font-size: 0.875rem;
-        }
-        .card {
-          background: white;
-          border-radius: 12px;
-          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-          padding: 1.5rem;
-          margin-bottom: 1.5rem;
-        }
-        .card h2 {
-          font-size: 1.5rem;
-          font-weight: bold;
-          color: #111827;
-          margin: 0 0 1rem 0;
-        }
-        .activity {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-        }
-        .activity-icon {
-          font-size: 3rem;
-        }
-        .activity-text {
-          font-size: 1.125rem;
-          font-weight: 500;
-          color: #111827;
-          margin: 0;
-        }
-        .activity-time {
-          color: #6b7280;
-          font-size: 0.875rem;
-          margin: 0.25rem 0 0 0;
-        }
-        .details {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 1rem;
-        }
-        .detail {
-          border-left: 3px solid #ec4899;
-          padding-left: 0.75rem;
-          color: #111827;
-        }
-        .detail strong {
-          color: #6b7280;
-          font-size: 0.875rem;
-          display: block;
-          margin-bottom: 0.25rem;
-        }
-        .routine {
-          display: flex;
-          flex-direction: column;
-          gap: 0.75rem;
-        }
-        .routine-item {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          padding: 0.75rem;
-          background: #f9fafb;
-          border-radius: 8px;
-        }
-        .routine-item span:first-child {
-          font-size: 1.5rem;
-        }
-        .routine-check {
-          margin-left: auto;
-          padding: 0.25rem 0.75rem;
-          border-radius: 9999px;
-          font-size: 0.875rem;
-          font-weight: 500;
-        }
-        .routine-item.complete .routine-check {
-          background: #dcfce7;
-          color: #166534;
-        }
-        .routine-item.active .routine-check {
-          background: #fef3c7;
-          color: #92400e;
-        }
-        .footer {
-          text-align: center;
-          color: #6b7280;
-          margin-top: 2rem;
-        }
-        .chat-card {
-          background: white;
-          border-radius: 12px;
-          box-shadow: 0 6px 12px rgba(168, 85, 247, 0.15);
-          padding: 1.5rem;
-          margin-bottom: 1.5rem;
-          border: 2px solid #f3e8ff;
-          display: flex;
-          flex-direction: column;
-          height: 600px;
-        }
-        .chat-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 1rem;
-          flex-shrink: 0;
-        }
-        .chat-header h2 {
-          font-size: 1.5rem;
-          font-weight: bold;
-          color: #111827;
-          margin: 0;
         }
         .chat-messages {
           flex: 1;
@@ -835,6 +855,70 @@ export default function Dashboard() {
         .chat-send-button:disabled {
           opacity: 0.5;
           cursor: not-allowed;
+        }
+        .card {
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          padding: 1.5rem;
+          margin-bottom: 1.5rem;
+        }
+        .card h2 {
+          font-size: 1.5rem;
+          font-weight: bold;
+          color: #111827;
+          margin: 0 0 1rem 0;
+        }
+        .activity {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+        }
+        .activity-icon {
+          font-size: 3rem;
+        }
+        .activity-text {
+          font-size: 1.125rem;
+          font-weight: 500;
+          color: #111827;
+          margin: 0;
+        }
+        .activity-time {
+          color: #6b7280;
+          font-size: 0.875rem;
+          margin: 0.25rem 0 0 0;
+        }
+        .details {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 1rem;
+        }
+        .detail {
+          border-left: 3px solid #ec4899;
+          padding-left: 0.75rem;
+          color: #111827;
+        }
+        .detail strong {
+          color: #6b7280;
+          font-size: 0.875rem;
+          display: block;
+          margin-bottom: 0.25rem;
+        }
+        .footer {
+          text-align: center;
+          color: #6b7280;
+          margin-top: 2rem;
+        }
+
+        @media (max-width: 768px) {
+          .sidebar {
+            position: absolute;
+            z-index: 20;
+            height: 100vh;
+          }
+          .main-content {
+            padding: 1rem;
+          }
         }
       `}</style>
     </div>
