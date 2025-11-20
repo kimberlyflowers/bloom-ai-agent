@@ -442,6 +442,46 @@ export default function Dashboard() {
           </form>
         </div>
 
+        {/* Sarah's Live Screen */}
+        <div className="card">
+          <h2>🎥 Sarah&apos;s Screen</h2>
+          <div className="screen-window">
+            <div className="screen-placeholder">
+              <div className="screen-icon">🖥️</div>
+              <p>Screen sharing coming soon!</p>
+              <p className="screen-hint">You&apos;ll be able to see what Sarah is working on in real-time</p>
+            </div>
+          </div>
+        </div>
+
+        {/* KPI Stats */}
+        <div className="stats-grid">
+          <div className="stat-card">
+            <div className="stat-icon">💰</div>
+            <div className="stat-content">
+              <div className="stat-label">Revenue Generated</div>
+              <div className="stat-value">$0</div>
+              <div className="stat-change">Coming soon</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon">📈</div>
+            <div className="stat-content">
+              <div className="stat-label">ROI</div>
+              <div className="stat-value">-</div>
+              <div className="stat-change">Tracking starts when Sarah works</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon">✅</div>
+            <div className="stat-content">
+              <div className="stat-label">Tasks Completed</div>
+              <div className="stat-value">0</div>
+              <div className="stat-change">This week</div>
+            </div>
+          </div>
+        </div>
+
         {/* Activity */}
         <div className="card">
           <h2>Current Activity</h2>
@@ -893,6 +933,63 @@ export default function Dashboard() {
           font-weight: bold;
           color: #111827;
           margin: 0 0 1rem 0;
+        }
+        .screen-window {
+          background: #f9fafb;
+          border-radius: 8px;
+          padding: 3rem;
+          text-align: center;
+          border: 2px dashed #e5e7eb;
+        }
+        .screen-placeholder {
+          color: #6b7280;
+        }
+        .screen-icon {
+          font-size: 4rem;
+          margin-bottom: 1rem;
+          opacity: 0.5;
+        }
+        .screen-hint {
+          font-size: 0.875rem;
+          color: #9ca3af;
+          margin-top: 0.5rem;
+        }
+        .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 1rem;
+          margin-bottom: 1.5rem;
+        }
+        .stat-card {
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          padding: 1.5rem;
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+        }
+        .stat-icon {
+          font-size: 2.5rem;
+        }
+        .stat-content {
+          flex: 1;
+        }
+        .stat-label {
+          font-size: 0.875rem;
+          color: #6b7280;
+          font-weight: 500;
+          margin-bottom: 0.25rem;
+        }
+        .stat-value {
+          font-size: 1.875rem;
+          font-weight: bold;
+          color: #111827;
+          margin-bottom: 0.25rem;
+        }
+        .stat-change {
+          font-size: 0.75rem;
+          color: #9ca3af;
         }
         .activity {
           display: flex;
