@@ -714,6 +714,31 @@ async def get_conversations():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/conversations/debug/all")
+async def debug_all_conversations():
+    """Debug endpoint: Get all conversations with full message history"""
+    try:
+        conversations = conversations_db.get_all_conversations()
+
+        # Enrich each conversation with its messages
+        detailed_conversations = []
+        for conv in conversations:
+            messages = conversations_db.get_conversation_messages(conv['id'])
+            detailed_conversations.append({
+                **conv,
+                'message_count': len(messages),
+                'messages': messages
+            })
+
+        return {
+            "total_conversations": len(detailed_conversations),
+            "conversations": detailed_conversations
+        }
+    except Exception as e:
+        logger.error(f"Error getting debug conversations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/conversations")
 async def create_conversation(data: ConversationCreate):
     """Create a new conversation"""
