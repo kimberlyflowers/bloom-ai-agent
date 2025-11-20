@@ -84,16 +84,14 @@ class SarahBrowser:
             # Connect page to screen streamer
             self.streamer.set_browser_page(self.page)
 
-            # Start screen streaming server
-            asyncio.create_task(self.streamer.start_server())
-
-            # Start streaming loop
-            asyncio.create_task(self.streamer.stream_browser())
+            # NOTE: Don't start screen streaming server here!
+            # The unified WebSocket server will handle connections
+            # We only start the streaming loop
 
             self.is_running = True
 
             logger.info("✅ Sarah's browser is ready!")
-            logger.info(f"📺 Screen streaming on port {self.stream_port}")
+            logger.info(f"📺 Screen streaming will be available via unified server")
 
             return True
 
