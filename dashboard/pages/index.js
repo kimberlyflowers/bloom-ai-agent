@@ -189,7 +189,11 @@ export default function Dashboard() {
   function connectToChat() {
     try {
       const baseUrl = getWebSocketUrl(8766)
-      const wsUrl = baseUrl.includes('localhost') ? baseUrl : `${baseUrl}/chat`
+      // Add /chat path if not already present
+      let wsUrl = baseUrl
+      if (!baseUrl.includes('localhost') && !baseUrl.endsWith('/chat')) {
+        wsUrl = `${baseUrl}/chat`
+      }
       console.log('💬 Connecting to chat:', wsUrl)
       const ws = new WebSocket(wsUrl)
 
