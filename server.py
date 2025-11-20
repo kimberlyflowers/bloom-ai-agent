@@ -30,11 +30,11 @@ logger = logging.getLogger(__name__)
 # Initialize FastAPI app
 app = FastAPI(title="BLOOM AI Agent API")
 
-# Add CORS middleware
+# Add CORS middleware - allow all origins for Vercel preview URLs
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your Vercel domain
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
