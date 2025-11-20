@@ -244,30 +244,49 @@ Important:
             "content": user_message
         })
 
-        try:
-            response = self.anthropic.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=1024,
-                system=self.get_system_prompt(),
-                messages=messages
-            )
+        # Retry logic for overloaded errors
+        max_retries = 3
+        base_delay = 2  # seconds
 
-            sarah_response = response.content[0].text
+        for attempt in range(max_retries):
+            try:
+                response = self.anthropic.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=1024,
+                    system=self.get_system_prompt(),
+                    messages=messages
+                )
 
-            # Update conversation history
-            conversation_history.append({"role": "user", "content": user_message})
-            conversation_history.append({"role": "assistant", "content": sarah_response})
+                sarah_response = response.content[0].text
 
-            # Keep history manageable
-            if len(conversation_history) > MAX_HISTORY * 2:
-                conversation_history.pop(0)
-                conversation_history.pop(0)
+                # Update conversation history
+                conversation_history.append({"role": "user", "content": user_message})
+                conversation_history.append({"role": "assistant", "content": sarah_response})
 
-            return sarah_response
+                # Keep history manageable
+                if len(conversation_history) > MAX_HISTORY * 2:
+                    conversation_history.pop(0)
+                    conversation_history.pop(0)
 
-        except Exception as e:
-            logger.error(f"❌ Error generating response: {e}")
-            return f"Oops! I ran into an issue: {str(e)}. Let me try to help anyway - what did you want to know? 🌸"
+                return sarah_response
+
+            except Exception as e:
+                error_str = str(e)
+
+                # Check if it's a 529 overloaded error
+                if "529" in error_str or "overloaded" in error_str.lower():
+                    if attempt < max_retries - 1:
+                        wait_time = base_delay * (2 ** attempt)  # Exponential backoff: 2s, 4s, 8s
+                        logger.warning(f"⚠️ API overloaded (attempt {attempt + 1}/{max_retries}). Retrying in {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                        continue
+                    else:
+                        logger.error(f"❌ API still overloaded after {max_retries} attempts")
+                        return "I'm getting a lot of requests right now! 😅 Could you try again in a few moments? Thanks for your patience! 🌸"
+                else:
+                    # Other errors - don't retry
+                    logger.error(f"❌ Error generating response: {e}")
+                    return f"Oops! I ran into an issue: {str(e)}. Let me try to help anyway - what did you want to know? 🌸"
 
 
 # API Routes
