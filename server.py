@@ -248,9 +248,9 @@ Important:
             "content": user_message
         })
 
-        # Retry logic for overloaded errors - increased resilience
-        max_retries = 5  # Increased from 3 to handle peak load better
-        base_delay = 3  # Increased from 2s for better spacing
+        # Quick attempt - fail fast to give user immediate feedback
+        max_retries = 2  # Just 2 quick attempts
+        base_delay = 3  # seconds
 
         for attempt in range(max_retries):
             try:
@@ -284,13 +284,13 @@ Important:
                 # Check if it's a 529 overloaded error
                 if "529" in error_str or "overloaded" in error_str.lower():
                     if attempt < max_retries - 1:
-                        wait_time = base_delay * (2 ** attempt)  # Exponential backoff: 3s, 6s, 12s, 24s, 48s
+                        wait_time = base_delay  # Just 3 seconds
                         logger.warning(f"⚠️ API overloaded (attempt {attempt + 1}/{max_retries}). Retrying in {wait_time}s...")
                         await asyncio.sleep(wait_time)
                         continue
                     else:
-                        logger.error(f"❌ API still overloaded after {max_retries} attempts (~90 seconds of retries)")
-                        # Return special marker to indicate queuing is needed
+                        logger.warning(f"⚠️ API overloaded after {max_retries} quick attempts - queueing message")
+                        # Return special marker to queue immediately (total wait: ~6 seconds)
                         return "__SARAH_BUSY__"
                 else:
                     # Other errors - don't retry

@@ -237,26 +237,9 @@ export default function Dashboard() {
           const data = JSON.parse(event.data)
 
           if (data.type === 'system') {
-            const systemMessage = {
-              id: Date.now(),
-              type: 'system',
-              text: data.message,
-              timestamp: new Date()
-            }
-            setMessages(prev => [...prev, systemMessage])
-
-            // Save system message to database (skip if no conversation yet)
-            if (currentConversationIdRef.current) {
-              try {
-                await fetch(`${getApiUrl()}/api/conversations/${currentConversationIdRef.current}/messages`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ type: 'system', text: data.message })
-                })
-              } catch (error) {
-                console.error('Error saving system message to database:', error)
-              }
-            }
+            // Don't display or save "Connected to Sarah" messages - they're just connection noise
+            // User can see connection status in the header already
+            console.log('🔔 System message (not displayed):', data.message)
           } else if (data.type === 'sarah_message') {
             const sarahMessage = {
               id: Date.now(),
