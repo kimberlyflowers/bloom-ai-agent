@@ -1,27 +1,29 @@
-# 🔧 SUPABASE CONNECTION - CORRECT FORMAT
+# 🔧 SUPABASE CONNECTION - CORRECT FORMAT (FINAL!)
 
 ## ✅ Use This Connection String in Railway
 
 Update the `SUPABASE_DB_URL` environment variable to:
 
 ```
-postgresql://postgres:P2NponYbQbgSGQxI@aws-0-us-east-2.pooler.supabase.com:5432/postgres
+postgresql://postgres.wazbpoujdmckkozjqyqs:P2NponYbQbgSGQxI@aws-1-us-east-2.pooler.supabase.com:5432/postgres
 ```
 
-## 🎯 Why This Works
+## 🎯 Why This FINALLY Works
 
-1. **Hostname**: `aws-0-us-east-2.pooler.supabase.com` - The pooler endpoint DOES resolve (we got auth errors, not DNS errors)
-2. **Username**: `postgres` - Simple format confirmed by SQL queries (NOT `postgres.wazbpoujdmckkozjqyqs`)
-3. **Port**: `5432` - Session mode for persistent Railway server connections
-4. **Password**: `P2NponYbQbgSGQxI` - Reset password (no special chars, no encoding needed)
-5. **SSL**: Automatically added by our code (`?sslmode=require`)
+1. **Method**: Session Pooler (IPv4 compatible - required for Railway!)
+2. **Hostname**: `aws-1-us-east-2.pooler.supabase.com` (It's aws-1, not aws-0!)
+3. **Username**: `postgres.wazbpoujdmckkozjqyqs` (Dotted format for Session Pooler!)
+4. **Port**: `5432` (Session mode for persistent connections)
+5. **Password**: `P2NponYbQbgSGQxI` (Reset password)
+6. **SSL**: Automatically added by our code (`?sslmode=require`)
 
-## 🔍 What We Learned
+## 🔍 What We Learned (The Hard Way!)
 
-- The direct connection host `wazbpoujdmckkozjqyqs.db.us-east-2.supabase.co` fails DNS resolution from Railway
-- The pooler host `aws-0-us-east-2.pooler.supabase.com` DOES resolve
-- We were using the wrong username format with the pooler (dotted instead of simple)
-- This combination should work!
+- Direct connection uses **IPv6** - Railway doesn't support IPv6
+- Must use **Session Pooler** for IPv4 compatibility
+- Session Pooler uses **dotted username** format: `postgres.projectref`
+- Session Pooler hostname is **`aws-1`** not `aws-0`
+- This is the EXACT format from Supabase Connect UI!
 
 ## 📋 Steps to Update
 
