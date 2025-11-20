@@ -5,15 +5,19 @@ This integrates:
 - Async Playwright browser automation
 - Live screen streaming to dashboard
 - Command interface for chat server
+- Advanced vision-guided interactions
+- Multi-step workflow execution
 
 When Sarah browses the web, you can watch her screen in real-time!
+She can interact with ANY website like a human using vision!
 """
 
 import asyncio
 import logging
-from typing import Optional
+from typing import Optional, Dict, List, Any
 from playwright.async_api import async_playwright, Browser, Page, BrowserContext
 from src.live_screen_stream import PlaywrightScreenStreamer
+from src.advanced_browser_control import AdvancedBrowserController
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +52,9 @@ class SarahBrowser:
 
         # Screen streamer
         self.streamer = PlaywrightScreenStreamer(port=stream_port, fps=2)
+
+        # Advanced browser controller (vision-guided interactions)
+        self.advanced = AdvancedBrowserController()
 
         # State
         self.is_running = False
@@ -84,6 +91,9 @@ class SarahBrowser:
             # Connect page to screen streamer
             self.streamer.set_browser_page(self.page)
 
+            # Connect page to advanced controller (vision-guided interactions)
+            self.advanced.set_page(self.page)
+
             # NOTE: Don't start screen streaming server here!
             # The unified WebSocket server will handle connections
             # We only start the streaming loop
@@ -92,6 +102,7 @@ class SarahBrowser:
 
             logger.info("✅ Sarah's browser is ready!")
             logger.info(f"📺 Screen streaming will be available via unified server")
+            logger.info(f"🎯 Advanced vision-guided interactions enabled")
 
             return True
 
