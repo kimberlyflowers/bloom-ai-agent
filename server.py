@@ -356,6 +356,44 @@ async def health():
     return {"status": "healthy", "agent": "sarah_001"}
 
 
+@app.get("/queue/status")
+async def queue_status():
+    """Check message queue status"""
+    queue_info = []
+    for msg in message_queue:
+        age_seconds = (datetime.now() - msg['timestamp']).total_seconds()
+        queue_info.append({
+            'client_id': msg['client_id'],
+            'message_preview': msg['message'][:50] + '...' if len(msg['message']) > 50 else msg['message'],
+            'age_minutes': round(age_seconds / 60, 1),
+            'timestamp': msg['timestamp'].isoformat()
+        })
+
+    return {
+        "queue_length": len(message_queue),
+        "is_processing": is_processing_queue,
+        "messages": queue_info
+    }
+
+
+@app.post("/queue/clear")
+async def clear_queue():
+    """Manually clear the message queue (use when API is stuck)"""
+    global message_queue, is_processing_queue
+
+    count = len(message_queue)
+    message_queue.clear()
+    is_processing_queue = False
+
+    logger.info(f"🗑️ Queue manually cleared - removed {count} messages")
+
+    return {
+        "success": True,
+        "cleared": count,
+        "message": f"Cleared {count} queued messages"
+    }
+
+
 @app.websocket("/")
 async def root_websocket(websocket: WebSocket):
     """Catch-all for root WebSocket connections - redirect to /chat"""
@@ -504,6 +542,12 @@ def get_auto_reply_message() -> str:
     """Get a natural, human-sounding auto-reply when Sarah is busy"""
     import random
 
+    # Check queue age - if messages are old, be more honest
+    if message_queue:
+        oldest_age = max((datetime.now() - msg['timestamp']).total_seconds() for msg in message_queue)
+        if oldest_age > 300:  # More than 5 minutes
+            return "Hey! I'm experiencing some technical difficulties right now (my AI servers are overloaded). I've got your message saved and I'll respond as soon as things are back to normal. Sorry for the wait! 🌸"
+
     messages = [
         "Hey! I'm in the middle of something right now but I saw your message! Give me just a few minutes and I'll get back to you 🌸",
         "Oh hi! I'm swamped at the moment but I'll respond to this in just a bit! Thanks for your patience 💕",
@@ -525,14 +569,35 @@ async def process_message_queue():
             await asyncio.sleep(30)
 
             if not message_queue or is_processing_queue:
+                # Clean up expired messages (older than 15 minutes)
+                if message_queue:
+                    now = datetime.now()
+                    original_count = len(message_queue)
+                    message_queue[:] = [
+                        msg for msg in message_queue
+                        if (now - msg['timestamp']).total_seconds() < 900  # 15 minutes
+                    ]
+                    expired = original_count - len(message_queue)
+                    if expired > 0:
+                        logger.warning(f"🗑️ Removed {expired} expired messages from queue (older than 15min)")
                 continue
 
             is_processing_queue = True
             logger.info(f"📬 Processing message queue... {len(message_queue)} messages waiting")
 
             # Process messages one by one
-            while message_queue:
+            attempts_this_round = 0
+            max_attempts_per_round = 3  # Only try 3 messages per round to avoid getting stuck
+
+            while message_queue and attempts_this_round < max_attempts_per_round:
                 queued_item = message_queue[0]  # Peek at first item
+
+                # Check if message expired (older than 15 minutes)
+                age_seconds = (datetime.now() - queued_item['timestamp']).total_seconds()
+                if age_seconds > 900:
+                    logger.warning(f"🗑️ Removing expired message (age: {age_seconds/60:.1f} minutes)")
+                    message_queue.pop(0)
+                    continue
 
                 try:
                     # Try to generate response
@@ -540,7 +605,7 @@ async def process_message_queue():
 
                     if response == "__SARAH_BUSY__":
                         # Still overloaded, wait longer
-                        logger.warning("⏸️ API still overloaded, pausing queue processing")
+                        logger.warning(f"⏸️ API still overloaded after attempt {attempts_this_round + 1}, pausing queue processing")
                         break
 
                     # Success! Send the response
@@ -552,10 +617,13 @@ async def process_message_queue():
                         })
                         logger.info(f"✅ Sent queued response to {queued_item['client_id']}")
                     else:
-                        logger.info(f"⚠️ Client {queued_item['client_id']} disconnected, skipping message")
+                        logger.warning(f"⚠️ Client {queued_item['client_id']} disconnected, sending error notification")
+                        # Client disconnected, just discard the message
+                        logger.info(f"📝 Discarded message: {queued_item['message'][:50]}...")
 
                     # Remove processed message from queue
                     message_queue.pop(0)
+                    attempts_this_round += 1
 
                     # Small delay between messages to avoid overwhelming API
                     await asyncio.sleep(2)
@@ -564,6 +632,7 @@ async def process_message_queue():
                     logger.error(f"Error processing queued message: {e}")
                     # Remove problematic message
                     message_queue.pop(0)
+                    attempts_this_round += 1
 
             if not message_queue:
                 logger.info("✅ Message queue empty")
