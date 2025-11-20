@@ -6,8 +6,9 @@ WebSocket server for bidirectional communication between dashboard and Sarah
 import asyncio
 import json
 import logging
-from typing import Set, Optional
+from typing import Set, Optional, List, Dict, Any
 import re
+import base64
 import websockets
 from websockets.server import WebSocketServerProtocol
 from anthropic import Anthropic
@@ -98,11 +99,21 @@ Your Capabilities:
 - When asked to browse somewhere, you can actually do it!
 - People can watch your screen in real-time as you browse
 - To browse, just respond with your intent and the system will handle it
+- **YOU CAN SEE YOUR SCREEN!** After navigating or taking actions, you'll receive screenshots showing what's actually on the page
+- **YOU CAN HEAR!** Users can send voice messages and you'll hear what they say
 
 Browser Commands (detected automatically from your responses):
 - "Let me go to [URL]" or "I'll navigate to [URL]" → navigates to that URL
 - "Let me search for [query]" or "I'll search [query]" → Google search
 - When you express intent to browse, the system captures it and executes it
+- After each action, you'll see a screenshot of what happened!
+
+Vision Capabilities:
+- You receive screenshots after browser actions
+- You can see buttons, text, images, forms on the page
+- You can describe what you see and verify your actions worked
+- You can read search results, page content, etc.
+- Use this visual feedback to navigate and work more effectively!
 
 Important:
 - Be yourself! You're Sarah, not a generic assistant
@@ -110,6 +121,7 @@ Important:
 - If you don't know something, say so honestly
 - You can reference your current work and activities
 - When you browse, tell people they can watch your screen!
+- When you see something on screen, describe it naturally: "I can see...", "Looking at the page..."
 """
 
         return base_prompt
@@ -181,6 +193,69 @@ Important:
         except Exception as e:
             logger.error(f"❌ Error saving message to memory: {e}")
 
+    async def _capture_screen_context(self) -> Optional[str]:
+        """
+        Capture current browser screenshot for vision context
+
+        Returns:
+            Base64-encoded JPEG screenshot, or None if unavailable
+        """
+        if not self.browser or not self.browser.is_running:
+            return None
+
+        try:
+            # Take screenshot
+            screenshot_bytes = await self.browser.screenshot(full_page=False)
+
+            if screenshot_bytes:
+                # Encode to base64
+                screenshot_base64 = base64.b64encode(screenshot_bytes).decode('utf-8')
+                logger.info("📸 Captured screenshot for Sarah's vision")
+                return screenshot_base64
+
+        except Exception as e:
+            logger.error(f"❌ Failed to capture screenshot: {e}")
+
+        return None
+
+    def _format_message_for_api(self, role: str, content: str, screenshot: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Format a message for Claude API with optional vision
+
+        Args:
+            role: 'user' or 'assistant'
+            content: Text message
+            screenshot: Optional base64-encoded screenshot
+
+        Returns:
+            Message formatted for Claude API
+        """
+        if screenshot and role == 'user':
+            # Multimodal message with image
+            return {
+                'role': role,
+                'content': [
+                    {
+                        'type': 'text',
+                        'text': content
+                    },
+                    {
+                        'type': 'image',
+                        'source': {
+                            'type': 'base64',
+                            'media_type': 'image/jpeg',
+                            'data': screenshot
+                        }
+                    }
+                ]
+            }
+        else:
+            # Text-only message
+            return {
+                'role': role,
+                'content': content
+            }
+
     async def start_server(self):
         """Start WebSocket server"""
         logger.info(f"🗣️ Starting Sarah's chat server on port {self.port}...")
@@ -236,17 +311,18 @@ Important:
                 # User sent a message - get Sarah's response
                 logger.info(f"💬 User: {content}")
 
-                # Add to conversation history
-                self.conversation_history.append({
-                    'role': 'user',
-                    'content': content
-                })
+                # Capture current screen if browser is active (for context)
+                screenshot = await self._capture_screen_context()
+
+                # Add to conversation history (with vision if available)
+                user_msg = self._format_message_for_api('user', content, screenshot)
+                self.conversation_history.append(user_msg)
 
                 # Save user message to persistent memory
                 self._save_message_to_memory('user', content)
 
                 # Get Sarah's response from Claude
-                response = await self.get_sarah_response(content)
+                response = await self.get_sarah_response()
 
                 # Add to conversation history
                 self.conversation_history.append({
@@ -269,6 +345,40 @@ Important:
 
                 logger.info(f"💬 Sarah: {response[:100]}...")
 
+            elif msg_type == 'audio_message':
+                # User sent voice message - transcribe and process
+                logger.info("🎤 Received audio message from user")
+
+                audio_data = data.get('audio')  # Base64-encoded audio
+                transcription = await self._transcribe_audio(audio_data)
+
+                if transcription:
+                    logger.info(f"🎧 Transcribed: {transcription}")
+
+                    # Process as regular message
+                    screenshot = await self._capture_screen_context()
+                    user_msg = self._format_message_for_api('user', f"[Voice message] {transcription}", screenshot)
+                    self.conversation_history.append(user_msg)
+
+                    self._save_message_to_memory('user', f"[Voice] {transcription}")
+
+                    response = await self.get_sarah_response()
+
+                    self.conversation_history.append({
+                        'role': 'assistant',
+                        'content': response
+                    })
+
+                    self._save_message_to_memory('assistant', response)
+
+                    if len(self.conversation_history) > self.max_history:
+                        self.conversation_history = self.conversation_history[-self.max_history:]
+
+                    await self.send_message(websocket, {
+                        'type': 'sarah_message',
+                        'message': response
+                    })
+
             elif msg_type == 'ping':
                 # Keep-alive ping
                 await self.send_message(websocket, {'type': 'pong'})
@@ -278,18 +388,15 @@ Important:
         except Exception as e:
             logger.error(f"Error handling message: {e}")
 
-    async def get_sarah_response(self, user_message: str) -> str:
+    async def get_sarah_response(self) -> str:
         """
-        Get Sarah's response using Claude API
-
-        Args:
-            user_message: Message from user
+        Get Sarah's response using Claude API with vision support
 
         Returns:
             Sarah's response
         """
         try:
-            # Call Claude API
+            # Call Claude API with conversation history (including any screenshots)
             response = await asyncio.to_thread(
                 self.anthropic.messages.create,
                 model="claude-sonnet-4-20250514",
@@ -305,11 +412,57 @@ Important:
             if self.browser and self.browser.is_running:
                 await self._execute_browser_commands(sarah_response)
 
+                # After executing browser command, capture new screenshot for next turn
+                await asyncio.sleep(2)  # Wait for page to load
+                new_screenshot = await self._capture_screen_context()
+
+                if new_screenshot:
+                    # Add visual feedback to conversation
+                    vision_msg = self._format_message_for_api(
+                        'user',
+                        '[System: Here is what you see on screen now after your action]',
+                        new_screenshot
+                    )
+                    self.conversation_history.append(vision_msg)
+
             return sarah_response
 
         except Exception as e:
             logger.error(f"❌ Error getting Claude response: {e}")
+            logger.exception(e)
             return "Sorry, I'm having trouble processing that right now. Can you try again? 😅"
+
+    async def _transcribe_audio(self, audio_base64: str) -> Optional[str]:
+        """
+        Transcribe audio using OpenAI Whisper API
+
+        Args:
+            audio_base64: Base64-encoded audio data
+
+        Returns:
+            Transcribed text or None if failed
+        """
+        try:
+            # Decode base64 audio
+            audio_bytes = base64.b64decode(audio_base64)
+
+            # TODO: Implement Whisper API integration
+            # For now, return placeholder
+            logger.warning("⚠️ Audio transcription not yet implemented - need Whisper API key")
+            return None
+
+            # Future implementation:
+            # import openai
+            # client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            # response = client.audio.transcriptions.create(
+            #     model="whisper-1",
+            #     file=audio_bytes
+            # )
+            # return response.text
+
+        except Exception as e:
+            logger.error(f"❌ Audio transcription failed: {e}")
+            return None
 
     async def _execute_browser_commands(self, response_text: str):
         """
