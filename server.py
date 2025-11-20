@@ -21,6 +21,7 @@ from src.relationship_management import RelationshipManager
 from src.ethical_framework import EthicalFramework
 from anthropic import Anthropic
 from conversations_db import ConversationsDB
+from file_handler import FileHandler
 
 # Setup logging
 logging.basicConfig(
@@ -53,6 +54,7 @@ class ConversationCreate(BaseModel):
 sarah_instance = None
 chat_clients: Set[WebSocket] = set()
 conversations_db: ConversationsDB = None
+file_handler: FileHandler = None
 conversation_history = []  # Track conversation context for AI responses
 MAX_HISTORY = 20
 
@@ -413,23 +415,26 @@ async def upload_file(file: UploadFile = File(...), conversation_id: str = Form(
         safe_filename = f"{timestamp}_{file.filename}"
         file_path = uploads_dir / safe_filename
 
-        # Save file
+        # Save file temporarily
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
         logger.info(f"📎 File uploaded: {safe_filename} ({file.content_type})")
 
-        # For now, return local path
-        # TODO: Upload to Supabase Storage for permanent hosting
-        return {
-            "success": True,
-            "filename": safe_filename,
-            "original_name": file.filename,
-            "content_type": file.content_type,
-            "size": file_path.stat().st_size,
-            "url": f"/uploads/{safe_filename}",  # Temporary local URL
-            "conversation_id": conversation_id
-        }
+        # Use FileHandler for advanced processing
+        # (Supabase Storage, Vision API, PDF parsing, etc.)
+        result = await file_handler.upload_file(
+            file_path=file_path,
+            filename=safe_filename,
+            content_type=file.content_type,
+            conversation_id=conversation_id
+        )
+
+        # Add original filename to result
+        result['original_name'] = file.filename
+
+        return result
+
     except Exception as e:
         logger.error(f"Error uploading file: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -614,7 +619,7 @@ async def run_daily_routine():
 @app.on_event("startup")
 async def startup_event():
     """Initialize Sarah on server startup"""
-    global sarah_instance, conversations_db
+    global sarah_instance, conversations_db, file_handler
 
     logger.info("=" * 60)
     logger.info("🚀 BLOOM AI AGENT - STARTING UP")
@@ -624,6 +629,10 @@ async def startup_event():
     conversations_db = ConversationsDB()
     logger.info("✅ Conversations database initialized")
 
+    # Initialize file handler (Supabase Storage, Vision API, etc.)
+    file_handler = FileHandler()
+    logger.info("📎 File handler initialized")
+
     sarah_instance = Sarah()
     sarah_instance.create_identity()
 
@@ -631,6 +640,7 @@ async def startup_event():
     logger.info("💬 Chat WebSocket available at: /chat")
     logger.info("🎥 Screen WebSocket available at: /screen")
     logger.info("📚 Conversation API available at: /api/conversations")
+    logger.info("📎 File upload available at: /api/upload")
 
     # Start background routines
     asyncio.create_task(run_daily_routine())

@@ -10,6 +10,12 @@ websockets>=12.0                # Live screen streaming
 pillow>=10.0.0                  # Screenshot capturing
 pyvirtualdisplay>=3.0           # Virtual display for headless browser
 psycopg2-binary>=2.9.9          # PostgreSQL adapter for Supabase
+supabase>=2.0.0                 # Supabase client for Storage
+pypdf>=3.17.0                   # PDF parsing
+python-docx>=1.1.0              # Word document parsing
+python-magic>=0.4.27            # File type detection
+google-auth>=2.25.0             # Google Drive auth
+google-api-python-client>=2.110.0  # Google Drive API
 
 # Platform integrations
 praw>=7.7.0                    # Reddit
