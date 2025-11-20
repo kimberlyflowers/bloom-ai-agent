@@ -7,9 +7,12 @@ import asyncio
 import json
 import logging
 from typing import Set, Optional
+import re
 import websockets
 from websockets.server import WebSocketServerProtocol
 from anthropic import Anthropic
+from datetime import datetime
+from src.identity_persistence import MemoryType
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +51,11 @@ class SarahChatServer:
         self.system_prompt = self._build_system_prompt()
 
         # Conversation history (keep last 20 messages for context)
-        self.conversation_history = []
         self.max_history = 20
+        self.conversation_history = []
+
+        # Load conversation history from persistent memory
+        self._load_conversation_history()
 
     def _build_system_prompt(self) -> str:
         """Build Sarah's system prompt with her identity"""
@@ -107,6 +113,73 @@ Important:
 """
 
         return base_prompt
+
+    def _load_conversation_history(self):
+        """Load conversation history from persistent memory"""
+        if not self.identity_manager:
+            logger.warning("⚠️ No identity_manager - conversation won't persist across restarts")
+            return
+
+        try:
+            # Get recent conversation memories (last 20)
+            agent_id = "sarah_001"
+            all_memories = self.identity_manager.get_memories(
+                agent_id=agent_id,
+                memory_type=MemoryType.INTERACTION
+            )
+
+            # Sort by timestamp and get recent ones
+            recent_memories = sorted(all_memories, key=lambda m: m.timestamp)[-self.max_history:]
+
+            # Reconstruct conversation history
+            for memory in recent_memories:
+                # Memory content format: "User: {message}" or "Sarah: {message}"
+                if memory.content.startswith("User: "):
+                    self.conversation_history.append({
+                        'role': 'user',
+                        'content': memory.content[6:]  # Remove "User: " prefix
+                    })
+                elif memory.content.startswith("Sarah: "):
+                    self.conversation_history.append({
+                        'role': 'assistant',
+                        'content': memory.content[7:]  # Remove "Sarah: " prefix
+                    })
+
+            if self.conversation_history:
+                logger.info(f"✅ Loaded {len(self.conversation_history)} messages from persistent memory")
+            else:
+                logger.info("📝 No previous conversation history found - starting fresh")
+
+        except Exception as e:
+            logger.error(f"❌ Error loading conversation history: {e}")
+
+    def _save_message_to_memory(self, role: str, content: str):
+        """Save a message to persistent memory"""
+        if not self.identity_manager:
+            return
+
+        try:
+            agent_id = "sarah_001"
+
+            # Format the message
+            if role == 'user':
+                memory_content = f"User: {content}"
+            else:
+                memory_content = f"Sarah: {content}"
+
+            # Save as interaction memory
+            self.identity_manager.add_memory(
+                agent_id=agent_id,
+                memory_type=MemoryType.INTERACTION,
+                content=memory_content,
+                context="Dashboard chat conversation",
+                platform="Dashboard WebSocket",
+                importance=5,
+                tags=["chat", "conversation"]
+            )
+
+        except Exception as e:
+            logger.error(f"❌ Error saving message to memory: {e}")
 
     async def start_server(self):
         """Start WebSocket server"""
@@ -169,6 +242,9 @@ Important:
                     'content': content
                 })
 
+                # Save user message to persistent memory
+                self._save_message_to_memory('user', content)
+
                 # Get Sarah's response from Claude
                 response = await self.get_sarah_response(content)
 
@@ -177,6 +253,9 @@ Important:
                     'role': 'assistant',
                     'content': response
                 })
+
+                # Save Sarah's response to persistent memory
+                self._save_message_to_memory('assistant', response)
 
                 # Keep history manageable
                 if len(self.conversation_history) > self.max_history:
@@ -239,20 +318,33 @@ Important:
         Args:
             response_text: Sarah's response text
         """
-        import re
-
         text_lower = response_text.lower()
 
-        # Detect navigation intent
+        # Detect navigation intent with improved URL extraction
         navigate_patterns = [
-            r"(?:let me |i'll |i will |going to )?(?:go to|navigate to|visit|open|check out|head to|pull up)\s+([^\s\.,!]+(?:\.[a-z]{2,})?)",
-            r"(?:checking|opening|loading)\s+([^\s\.,!]+(?:\.[a-z]{2,})?)"
+            # Matches "go to google.com", "navigate to github.com", etc.
+            r"(?:let me |i'll |i will |going to )?(?:go to|navigate to|visit|open|check out|head to|pull up)\s+([a-z0-9][\w\-\.]*(?:\.[a-z]{2,})?)",
+            # Matches "checking google.com", "opening github.com", etc.
+            r"(?:checking|opening|loading)\s+([a-z0-9][\w\-\.]*(?:\.[a-z]{2,})?)"
         ]
 
         for pattern in navigate_patterns:
             match = re.search(pattern, text_lower)
             if match:
+                # Extract URL and clean it
                 url = match.group(1).strip()
+
+                # Remove trailing punctuation (quotes, parentheses, etc.)
+                url = re.sub(r'["\'\)\],;]+$', '', url)
+
+                # Add .com to common domains if no TLD present
+                if '.' not in url:
+                    common_domains = ['google', 'facebook', 'twitter', 'instagram',
+                                     'tiktok', 'youtube', 'linkedin', 'github',
+                                     'reddit', 'amazon', 'netflix', 'spotify']
+                    if url.lower() in common_domains:
+                        url = f"{url}.com"
+
                 logger.info(f"🌐 Detected navigation intent: {url}")
                 asyncio.create_task(self.browser.navigate(url))
                 return
