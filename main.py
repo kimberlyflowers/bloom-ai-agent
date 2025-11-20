@@ -12,6 +12,7 @@ from datetime import datetime
 from src.identity_persistence import IdentityManager, Backstory, PersonalityTraits, WritingStyle
 from src.relationship_management import RelationshipManager
 from src.ethical_framework import EthicalFramework
+from src.chat_server import SarahChatServer
 
 # Setup logging
 logging.basicConfig(
@@ -32,6 +33,19 @@ class Sarah:
         self.identity = IdentityManager()
         self.relationships = RelationshipManager()
         self.ethics = EthicalFramework()
+
+        # Initialize chat server
+        anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+        if anthropic_api_key:
+            self.chat_server = SarahChatServer(
+                anthropic_api_key=anthropic_api_key,
+                port=8766,
+                identity_manager=self.identity
+            )
+            logger.info("✅ Chat server initialized")
+        else:
+            logger.warning("⚠️ No ANTHROPIC_API_KEY - chat will not be available")
+            self.chat_server = None
 
         logger.info("✅ Sarah is fully initialized!")
 
@@ -178,6 +192,11 @@ class Sarah:
 
         # Create identity on first run
         self.create_identity()
+
+        # Start chat server in background
+        if self.chat_server:
+            asyncio.create_task(self.chat_server.start_server())
+            logger.info("💬 Chat server started - ready for conversations!")
 
         # Run daily routine
         while True:

@@ -6,6 +6,14 @@ export default function Dashboard() {
   const [screenConnected, setScreenConnected] = useState(false)
   const wsRef = useRef(null)
 
+  // Chat state
+  const [messages, setMessages] = useState([])
+  const [chatInput, setChatInput] = useState('')
+  const [chatConnected, setChatConnected] = useState(false)
+  const [isSending, setIsSending] = useState(false)
+  const chatWsRef = useRef(null)
+  const messagesEndRef = useRef(null)
+
   useEffect(() => {
     setSarah({
       name: "Sarah Rodriguez",
@@ -17,12 +25,23 @@ export default function Dashboard() {
     // Connect to live screen stream
     connectToLiveScreen()
 
+    // Connect to chat server
+    connectToChat()
+
     return () => {
       if (wsRef.current) {
         wsRef.current.close()
       }
+      if (chatWsRef.current) {
+        chatWsRef.current.close()
+      }
     }
   }, [])
+
+  // Auto-scroll chat to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
   function connectToLiveScreen() {
     try {
@@ -64,6 +83,89 @@ export default function Dashboard() {
     } catch (error) {
       console.error('Error connecting to screen stream:', error)
     }
+  }
+
+  function connectToChat() {
+    try {
+      // Connect to chat WebSocket server (different port from screen stream)
+      const ws = new WebSocket('ws://localhost:8766')
+
+      ws.onopen = () => {
+        console.log('💬 Connected to Sarah\'s chat!')
+        setChatConnected(true)
+      }
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+
+          if (data.type === 'system') {
+            // System message (welcome, etc.)
+            setMessages(prev => [...prev, {
+              id: Date.now(),
+              type: 'system',
+              text: data.message,
+              timestamp: new Date()
+            }])
+          } else if (data.type === 'sarah_message') {
+            // Message from Sarah
+            setMessages(prev => [...prev, {
+              id: Date.now(),
+              type: 'sarah',
+              text: data.message,
+              timestamp: new Date()
+            }])
+            setIsSending(false)
+          }
+        } catch (error) {
+          console.error('Error parsing chat message:', error)
+        }
+      }
+
+      ws.onerror = (error) => {
+        console.error('❌ Chat error:', error)
+        setChatConnected(false)
+      }
+
+      ws.onclose = () => {
+        console.log('🔴 Chat disconnected')
+        setChatConnected(false)
+
+        // Auto-reconnect after 5 seconds
+        setTimeout(connectToChat, 5000)
+      }
+
+      chatWsRef.current = ws
+    } catch (error) {
+      console.error('Error connecting to chat:', error)
+    }
+  }
+
+  function sendMessage(e) {
+    e.preventDefault()
+
+    if (!chatInput.trim() || !chatConnected || isSending) {
+      return
+    }
+
+    // Add user message to UI
+    const userMessage = {
+      id: Date.now(),
+      type: 'user',
+      text: chatInput,
+      timestamp: new Date()
+    }
+    setMessages(prev => [...prev, userMessage])
+
+    // Send to Sarah via WebSocket
+    chatWsRef.current.send(JSON.stringify({
+      type: 'user_message',
+      message: chatInput
+    }))
+
+    // Clear input and set sending state
+    setChatInput('')
+    setIsSending(true)
   }
 
   if (!sarah) {
@@ -137,6 +239,61 @@ export default function Dashboard() {
         <div className="live-screen-info">
           <p>💡 Watch Sarah work in real-time! You'll see her create emails, browse TikTok, and more!</p>
         </div>
+      </div>
+
+      {/* CHAT WITH SARAH - TALK TO HER IN REAL-TIME! */}
+      <div className="chat-card">
+        <div className="chat-header">
+          <h2>💬 Chat with Sarah</h2>
+          <div className={chatConnected ? "stream-status connected" : "stream-status disconnected"}>
+            <div className="stream-dot"></div>
+            {chatConnected ? 'Online' : 'Offline'}
+          </div>
+        </div>
+
+        <div className="chat-messages">
+          {messages.length === 0 ? (
+            <div className="no-messages">
+              <div className="no-messages-icon">💬</div>
+              <p>Start a conversation with Sarah!</p>
+              <p className="no-messages-hint">Ask her about her work, TikTok strategies, or anything else 🌸</p>
+            </div>
+          ) : (
+            messages.map(msg => (
+              <div key={msg.id} className={`message message-${msg.type}`}>
+                {msg.type === 'sarah' && <div className="message-avatar">SR</div>}
+                <div className="message-content">
+                  {msg.type === 'sarah' && <div className="message-sender">Sarah Rodriguez</div>}
+                  {msg.type === 'user' && <div className="message-sender">You</div>}
+                  <div className="message-text">{msg.text}</div>
+                  <div className="message-time">
+                    {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+                {msg.type === 'user' && <div className="message-avatar-user">You</div>}
+              </div>
+            ))
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        <form onSubmit={sendMessage} className="chat-input-container">
+          <input
+            type="text"
+            className="chat-input"
+            placeholder={chatConnected ? "Type a message to Sarah..." : "Connecting to chat..."}
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            disabled={!chatConnected || isSending}
+          />
+          <button
+            type="submit"
+            className="chat-send-button"
+            disabled={!chatConnected || !chatInput.trim() || isSending}
+          >
+            {isSending ? '...' : '➤'}
+          </button>
+        </form>
       </div>
 
       {/* Activity */}
@@ -477,6 +634,174 @@ export default function Dashboard() {
           text-align: center;
           color: #6b7280;
           margin-top: 2rem;
+        }
+        .chat-card {
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 6px 12px rgba(168, 85, 247, 0.15);
+          padding: 1.5rem;
+          margin-bottom: 1.5rem;
+          border: 2px solid #f3e8ff;
+          display: flex;
+          flex-direction: column;
+          height: 600px;
+        }
+        .chat-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 1rem;
+          flex-shrink: 0;
+        }
+        .chat-header h2 {
+          font-size: 1.5rem;
+          font-weight: bold;
+          color: #111827;
+          margin: 0;
+        }
+        .chat-messages {
+          flex: 1;
+          overflow-y: auto;
+          padding: 1rem;
+          background: #f9fafb;
+          border-radius: 8px;
+          margin-bottom: 1rem;
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
+        .no-messages {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 100%;
+          gap: 0.5rem;
+          color: #9ca3af;
+        }
+        .no-messages-icon {
+          font-size: 4rem;
+          opacity: 0.5;
+        }
+        .no-messages p {
+          margin: 0;
+          font-size: 1rem;
+        }
+        .no-messages-hint {
+          font-size: 0.875rem !important;
+          color: #6b7280;
+        }
+        .message {
+          display: flex;
+          gap: 0.75rem;
+          align-items: flex-start;
+        }
+        .message-sarah {
+          align-self: flex-start;
+        }
+        .message-user {
+          align-self: flex-end;
+          flex-direction: row-reverse;
+        }
+        .message-system {
+          align-self: center;
+          background: #fef3c7;
+          padding: 0.5rem 1rem;
+          border-radius: 8px;
+          font-size: 0.875rem;
+          color: #92400e;
+        }
+        .message-avatar {
+          width: 40px;
+          height: 40px;
+          background: linear-gradient(135deg, #ec4899, #a855f7);
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-weight: bold;
+          font-size: 0.875rem;
+          flex-shrink: 0;
+        }
+        .message-avatar-user {
+          width: 40px;
+          height: 40px;
+          background: linear-gradient(135deg, #3b82f6, #2563eb);
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-weight: bold;
+          font-size: 0.875rem;
+          flex-shrink: 0;
+        }
+        .message-content {
+          max-width: 70%;
+          background: white;
+          padding: 0.75rem 1rem;
+          border-radius: 12px;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+        .message-user .message-content {
+          background: #eff6ff;
+        }
+        .message-sender {
+          font-weight: 600;
+          font-size: 0.875rem;
+          color: #6b7280;
+          margin-bottom: 0.25rem;
+        }
+        .message-text {
+          color: #111827;
+          font-size: 0.9375rem;
+          line-height: 1.5;
+          word-wrap: break-word;
+          white-space: pre-wrap;
+        }
+        .message-time {
+          font-size: 0.75rem;
+          color: #9ca3af;
+          margin-top: 0.25rem;
+        }
+        .chat-input-container {
+          display: flex;
+          gap: 0.75rem;
+          flex-shrink: 0;
+        }
+        .chat-input {
+          flex: 1;
+          padding: 0.75rem 1rem;
+          border: 2px solid #e5e7eb;
+          border-radius: 8px;
+          font-size: 0.9375rem;
+          transition: border-color 0.2s;
+        }
+        .chat-input:focus {
+          outline: none;
+          border-color: #a855f7;
+        }
+        .chat-input:disabled {
+          background: #f3f4f6;
+          cursor: not-allowed;
+        }
+        .chat-send-button {
+          padding: 0.75rem 1.5rem;
+          background: linear-gradient(135deg, #a855f7, #9333ea);
+          color: white;
+          border: none;
+          border-radius: 8px;
+          font-size: 1.25rem;
+          cursor: pointer;
+          transition: opacity 0.2s;
+        }
+        .chat-send-button:hover:not(:disabled) {
+          opacity: 0.9;
+        }
+        .chat-send-button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
       `}</style>
     </div>
