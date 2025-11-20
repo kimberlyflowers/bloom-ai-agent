@@ -53,6 +53,7 @@ class ConversationCreate(BaseModel):
 # Global Sarah instance
 sarah_instance = None
 chat_clients: Set[WebSocket] = set()
+screen_clients: Set[WebSocket] = set()  # Clients watching Sarah's screen
 conversations_db: ConversationsDB = None
 file_handler: FileHandler = None
 conversation_history = []  # Track conversation context for AI responses
@@ -239,6 +240,13 @@ Important:
         if not self.anthropic:
             return "Sorry, I'm having trouble connecting to my AI brain right now. Please check that the ANTHROPIC_API_KEY is set!"
 
+        # Broadcast that Sarah is reading the message
+        await broadcast_screen_activity(
+            'reading',
+            f'Reading message: "{user_message[:50]}{"..." if len(user_message) > 50 else ""}"',
+            {'message_length': len(user_message)}
+        )
+
         # Build messages for Claude
         messages = []
 
@@ -251,6 +259,13 @@ Important:
             "role": "user",
             "content": user_message
         })
+
+        # Broadcast that Sarah is thinking
+        await broadcast_screen_activity(
+            'thinking',
+            'Generating response...',
+            {'conversation_history_size': len(conversation_history)}
+        )
 
         # Quick attempt - fail fast to give user immediate feedback
         max_retries = 2  # Just 2 quick attempts
@@ -271,6 +286,13 @@ Important:
                 if attempt > 0:
                     logger.info(f"✅ API call succeeded on attempt {attempt + 1}")
 
+                # Broadcast that response is ready
+                await broadcast_screen_activity(
+                    'responding',
+                    f'Response generated: "{sarah_response[:50]}{"..." if len(sarah_response) > 50 else ""}"',
+                    {'response_length': len(sarah_response)}
+                )
+
                 # Update conversation history
                 conversation_history.append({"role": "user", "content": user_message})
                 conversation_history.append({"role": "assistant", "content": sarah_response})
@@ -290,10 +312,20 @@ Important:
                     if attempt < max_retries - 1:
                         wait_time = base_delay  # Just 3 seconds
                         logger.warning(f"⚠️ API overloaded (attempt {attempt + 1}/{max_retries}). Retrying in {wait_time}s...")
+                        await broadcast_screen_activity(
+                            'waiting',
+                            f'API busy, retrying in {wait_time} seconds...',
+                            {'attempt': attempt + 1, 'max_retries': max_retries}
+                        )
                         await asyncio.sleep(wait_time)
                         continue
                     else:
                         logger.warning(f"⚠️ API overloaded after {max_retries} quick attempts - queueing message")
+                        await broadcast_screen_activity(
+                            'queued',
+                            'High demand right now - message queued for processing',
+                            {'queue_size': len(message_queue) + 1}
+                        )
                         # Return special marker to queue immediately (total wait: ~6 seconds)
                         return "__SARAH_BUSY__"
                 else:
@@ -421,13 +453,39 @@ async def upload_file(file: UploadFile = File(...), conversation_id: str = Form(
 
         logger.info(f"📎 File uploaded: {safe_filename} ({file.content_type})")
 
+        # Broadcast file upload activity
+        await broadcast_screen_activity(
+            'file_upload',
+            f'Received file: {file.filename}',
+            {'filename': file.filename, 'content_type': file.content_type}
+        )
+
         # Use FileHandler for advanced processing
         # (Supabase Storage, Vision API, PDF parsing, etc.)
+        await broadcast_screen_activity(
+            'analyzing',
+            f'Analyzing {file.filename}...',
+            {'file_type': file.content_type}
+        )
+
         result = await file_handler.upload_file(
             file_path=file_path,
             filename=safe_filename,
             content_type=file.content_type,
             conversation_id=conversation_id
+        )
+
+        # Broadcast analysis complete
+        analysis_summary = "File processed"
+        if result.get('analysis', {}).get('type') == 'image':
+            analysis_summary = "Image analyzed with Vision API"
+        elif result.get('analysis', {}).get('type') in ['pdf', 'docx']:
+            analysis_summary = f"Extracted text from {result['analysis']['type'].upper()}"
+
+        await broadcast_screen_activity(
+            'analysis_complete',
+            analysis_summary,
+            {'filename': file.filename, 'analysis': result.get('analysis', {})}
         )
 
         # Add original filename to result
@@ -516,6 +574,35 @@ async def process_message_queue():
             is_processing_queue = False
 
 
+# Helper functions for screen broadcasting
+
+async def broadcast_screen_activity(activity_type: str, content: str, data: dict = None):
+    """Broadcast Sarah's activity to all screen viewers"""
+    if not screen_clients:
+        return
+
+    activity_data = {
+        'type': 'screen_activity',
+        'activity_type': activity_type,
+        'content': content,
+        'timestamp': datetime.now().isoformat(),
+        'data': data or {}
+    }
+
+    disconnected_clients = set()
+
+    for client in screen_clients:
+        try:
+            await client.send_json(activity_data)
+        except Exception as e:
+            logger.warning(f"Failed to send screen update to client: {e}")
+            disconnected_clients.add(client)
+
+    # Remove disconnected clients
+    for client in disconnected_clients:
+        screen_clients.discard(client)
+
+
 @app.websocket("/chat")
 async def chat_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time chat (persistence handled by frontend via REST API)"""
@@ -585,20 +672,44 @@ async def chat_endpoint(websocket: WebSocket):
 
 @app.websocket("/screen")
 async def screen_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for screen streaming (future feature)"""
+    """WebSocket endpoint for viewing Sarah's live screen activity"""
     await websocket.accept()
+    screen_clients.add(websocket)
 
-    logger.info(f"🎥 Screen stream client connected")
+    client_id = f"{websocket.client.host}:{websocket.client.port}"
+    logger.info(f"🎥 Screen viewer connected: {client_id}")
 
     try:
-        await websocket.send_text("CONNECTED:Sarah's Live Screen 🌸")
+        # Send welcome message
+        await websocket.send_json({
+            'type': 'screen_connected',
+            'message': "Connected to Sarah's Screen 🌸",
+            'timestamp': datetime.now().isoformat()
+        })
 
-        # Keep connection alive
+        # Send initial status
+        await websocket.send_json({
+            'type': 'screen_activity',
+            'activity_type': 'status',
+            'content': 'Ready and waiting for tasks...',
+            'timestamp': datetime.now().isoformat(),
+            'data': {}
+        })
+
+        # Keep connection alive and listen for commands
         while True:
-            await websocket.receive_text()
+            data = await websocket.receive_json()
+
+            # Handle ping/pong for keepalive
+            if data.get('type') == 'ping':
+                await websocket.send_json({'type': 'pong'})
 
     except WebSocketDisconnect:
-        logger.info(f"🎥 Screen stream client disconnected")
+        logger.info(f"🎥 Screen viewer disconnected: {client_id}")
+    except Exception as e:
+        logger.error(f"❌ Error in screen endpoint: {e}")
+    finally:
+        screen_clients.discard(websocket)
 
 
 async def run_daily_routine():

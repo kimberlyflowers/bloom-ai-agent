@@ -4,6 +4,7 @@ export default function Dashboard() {
   const [sarah, setSarah] = useState(null)
   const [liveScreen, setLiveScreen] = useState(null)
   const [screenConnected, setScreenConnected] = useState(false)
+  const [screenActivity, setScreenActivity] = useState([]) // Activity feed for screen
   const wsRef = useRef(null)
 
   // Conversation state
@@ -16,6 +17,7 @@ export default function Dashboard() {
   const [isSending, setIsSending] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const chatWsRef = useRef(null)
+  const screenWsRef = useRef(null) // WebSocket for screen activity
   const messagesEndRef = useRef(null)
   const chatMessagesRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -195,6 +197,7 @@ export default function Dashboard() {
     })
 
     connectToChat()
+    connectToScreen()
 
     return () => {
       if (wsRef.current) {
@@ -202,6 +205,9 @@ export default function Dashboard() {
       }
       if (chatWsRef.current) {
         chatWsRef.current.close()
+      }
+      if (screenWsRef.current) {
+        screenWsRef.current.close()
       }
     }
   }, [])
@@ -289,6 +295,64 @@ export default function Dashboard() {
       chatWsRef.current = ws
     } catch (error) {
       console.error('Error connecting to chat:', error)
+    }
+  }
+
+  function connectToScreen() {
+    try {
+      const baseUrl = getWebSocketUrl(8766)
+      // Add /screen path
+      let wsUrl = baseUrl
+      if (!baseUrl.includes('localhost') && !baseUrl.endsWith('/screen')) {
+        wsUrl = `${baseUrl}/screen`
+      }
+      console.log('🎥 Connecting to screen:', wsUrl)
+      const ws = new WebSocket(wsUrl)
+
+      ws.onopen = () => {
+        console.log('🎥 Connected to Sarah\'s screen!')
+        setScreenConnected(true)
+      }
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+
+          if (data.type === 'screen_connected') {
+            console.log('🎥 Screen ready:', data.message)
+          } else if (data.type === 'screen_activity') {
+            // Add activity to feed (keep last 20 items)
+            setScreenActivity(prev => {
+              const newActivity = {
+                id: Date.now(),
+                activity_type: data.activity_type,
+                content: data.content,
+                timestamp: data.timestamp,
+                data: data.data
+              }
+              const updated = [...prev, newActivity]
+              return updated.slice(-20) // Keep last 20 activities
+            })
+          }
+        } catch (error) {
+          console.error('Error parsing screen message:', error)
+        }
+      }
+
+      ws.onerror = (error) => {
+        console.error('❌ Screen error:', error)
+        setScreenConnected(false)
+      }
+
+      ws.onclose = () => {
+        console.log('🔴 Screen disconnected')
+        setScreenConnected(false)
+        setTimeout(connectToScreen, 5000) // Reconnect after 5 seconds
+      }
+
+      screenWsRef.current = ws
+    } catch (error) {
+      console.error('Error connecting to screen:', error)
     }
   }
 
@@ -482,11 +546,44 @@ export default function Dashboard() {
         <div className="card">
           <h2>🎥 Sarah&apos;s Screen</h2>
           <div className="screen-window">
-            <div className="screen-placeholder">
-              <div className="screen-icon">🖥️</div>
-              <p>Screen sharing coming soon!</p>
-              <p className="screen-hint">You&apos;ll be able to see what Sarah is working on in real-time</p>
+            <div className="screen-status">
+              {screenConnected ? (
+                <span className="status-indicator connected">🟢 Live</span>
+              ) : (
+                <span className="status-indicator disconnected">🔴 Connecting...</span>
+              )}
             </div>
+
+            {screenActivity.length === 0 ? (
+              <div className="screen-placeholder">
+                <div className="screen-icon">💤</div>
+                <p>Waiting for Sarah to start working...</p>
+              </div>
+            ) : (
+              <div className="screen-activity-feed">
+                {screenActivity.map((activity, index) => (
+                  <div key={activity.id || index} className={`activity-item activity-${activity.activity_type}`}>
+                    <div className="activity-icon">
+                      {activity.activity_type === 'reading' && '📖'}
+                      {activity.activity_type === 'thinking' && '🤔'}
+                      {activity.activity_type === 'responding' && '💬'}
+                      {activity.activity_type === 'file_upload' && '📎'}
+                      {activity.activity_type === 'analyzing' && '🔍'}
+                      {activity.activity_type === 'analysis_complete' && '✅'}
+                      {activity.activity_type === 'waiting' && '⏳'}
+                      {activity.activity_type === 'queued' && '📬'}
+                      {activity.activity_type === 'status' && '💼'}
+                    </div>
+                    <div className="activity-content">
+                      <div className="activity-text">{activity.content}</div>
+                      <div className="activity-time">
+                        {new Date(activity.timestamp).toLocaleTimeString()}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -1043,24 +1140,107 @@ export default function Dashboard() {
           margin: 0 0 1rem 0;
         }
         .screen-window {
-          background: #f9fafb;
+          background: #0f172a;
           border-radius: 8px;
-          padding: 3rem;
-          text-align: center;
-          border: 2px dashed #e5e7eb;
+          padding: 1rem;
+          min-height: 300px;
+          max-height: 500px;
+          overflow-y: auto;
+          border: 1px solid #1e293b;
+        }
+        .screen-status {
+          margin-bottom: 1rem;
+          padding: 0.5rem;
+          text-align: right;
+        }
+        .status-indicator {
+          font-size: 0.75rem;
+          padding: 0.25rem 0.75rem;
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.1);
+        }
+        .status-indicator.connected {
+          color: #10b981;
+        }
+        .status-indicator.disconnected {
+          color: #ef4444;
         }
         .screen-placeholder {
-          color: #6b7280;
+          color: #64748b;
+          text-align: center;
+          padding: 4rem 2rem;
         }
         .screen-icon {
           font-size: 4rem;
           margin-bottom: 1rem;
           opacity: 0.5;
         }
-        .screen-hint {
+        .screen-activity-feed {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+        }
+        .activity-item {
+          display: flex;
+          gap: 0.75rem;
+          padding: 0.75rem;
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 6px;
+          border-left: 3px solid #3b82f6;
+          animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .activity-item.activity-reading {
+          border-left-color: #3b82f6;
+        }
+        .activity-item.activity-thinking {
+          border-left-color: #8b5cf6;
+        }
+        .activity-item.activity-responding {
+          border-left-color: #10b981;
+        }
+        .activity-item.activity-file_upload {
+          border-left-color: #f59e0b;
+        }
+        .activity-item.activity-analyzing {
+          border-left-color: #06b6d4;
+        }
+        .activity-item.activity-analysis_complete {
+          border-left-color: #10b981;
+        }
+        .activity-item.activity-waiting {
+          border-left-color: #fbbf24;
+        }
+        .activity-item.activity-queued {
+          border-left-color: #ef4444;
+        }
+        .activity-icon {
+          font-size: 1.5rem;
+          flex-shrink: 0;
+        }
+        .activity-content {
+          flex: 1;
+          min-width: 0;
+        }
+        .activity-text {
+          color: #e2e8f0;
           font-size: 0.875rem;
-          color: #9ca3af;
-          margin-top: 0.5rem;
+          line-height: 1.5;
+          word-wrap: break-word;
+        }
+        .activity-time {
+          color: #64748b;
+          font-size: 0.75rem;
+          margin-top: 0.25rem;
         }
         .stats-grid {
           display: grid;
