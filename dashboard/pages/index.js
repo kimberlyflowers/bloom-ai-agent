@@ -342,7 +342,7 @@ export default function Dashboard() {
         </div>
 
         <div className="conversations-list">
-          {conversations.map(conv => (
+          {(conversations || []).map(conv => (
             <div
               key={conv.id}
               className={`conversation-item ${conv.id === currentConversationId ? 'active' : ''}`}
