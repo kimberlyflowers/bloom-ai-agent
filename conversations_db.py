@@ -60,6 +60,33 @@ class ConversationsDB:
             logger.error(f"Failed to connect to Supabase: {e}")
             raise
 
+    def is_connection_alive(self) -> bool:
+        """Check if database connection is alive"""
+        if not self.conn or self.conn.closed:
+            return False
+
+        try:
+            # Try a simple query to test connection
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT 1")
+            cursor.close()
+            return True
+        except Exception:
+            return False
+
+    def ensure_connection(self):
+        """Ensure database connection is alive, reconnect if needed"""
+        if not self.is_connection_alive():
+            logger.warning("⚠️ Database connection lost, reconnecting...")
+            try:
+                if self.conn and not self.conn.closed:
+                    self.conn.close()
+            except Exception:
+                pass
+
+            self.connect()
+            logger.info("✅ Database connection restored")
+
     def create_tables(self):
         """Create database tables if they don't exist"""
         cursor = self.conn.cursor()
@@ -107,6 +134,7 @@ class ConversationsDB:
 
     def create_conversation(self, conversation_id: str) -> Dict:
         """Create a new conversation"""
+        self.ensure_connection()
         cursor = self.conn.cursor()
         now = datetime.now()
 
@@ -132,6 +160,7 @@ class ConversationsDB:
 
     def get_all_conversations(self) -> List[Dict]:
         """Get all conversations ordered by most recent"""
+        self.ensure_connection()
         cursor = self.conn.cursor()
 
         try:
@@ -167,6 +196,7 @@ class ConversationsDB:
 
     def get_conversation_messages(self, conversation_id: str) -> List[Dict]:
         """Get all messages for a conversation"""
+        self.ensure_connection()
         cursor = self.conn.cursor()
 
         try:
@@ -193,6 +223,7 @@ class ConversationsDB:
 
     def add_message(self, conversation_id: str, msg_type: str, text: str) -> Dict:
         """Add a message to a conversation"""
+        self.ensure_connection()
         cursor = self.conn.cursor()
         now = datetime.now()
 
@@ -244,6 +275,7 @@ class ConversationsDB:
 
     def delete_conversation(self, conversation_id: str) -> bool:
         """Delete a conversation and all its messages"""
+        self.ensure_connection()
         cursor = self.conn.cursor()
 
         try:
@@ -266,6 +298,7 @@ class ConversationsDB:
 
     def conversation_exists(self, conversation_id: str) -> bool:
         """Check if a conversation exists"""
+        self.ensure_connection()
         cursor = self.conn.cursor()
 
         try:
