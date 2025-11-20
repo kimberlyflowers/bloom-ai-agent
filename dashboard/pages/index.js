@@ -237,9 +237,14 @@ export default function Dashboard() {
           const data = JSON.parse(event.data)
 
           if (data.type === 'system') {
-            // Don't display or save "Connected to Sarah" messages - they're just connection noise
-            // User can see connection status in the header already
-            console.log('🔔 System message (not displayed):', data.message)
+            // Show system message, but don't save to database
+            const systemMessage = {
+              id: Date.now(),
+              type: 'system',
+              text: data.message,
+              timestamp: new Date()
+            }
+            setMessages(prev => [...prev, systemMessage])
           } else if (data.type === 'sarah_message') {
             const sarahMessage = {
               id: Date.now(),
@@ -820,11 +825,22 @@ export default function Dashboard() {
         }
         .message-system {
           align-self: center;
-          background: #fef3c7;
-          padding: 0.5rem 1rem;
-          border-radius: 8px;
-          font-size: 0.875rem;
-          color: #92400e;
+          background: transparent;
+          padding: 0.25rem 0.5rem;
+          border-radius: 4px;
+          font-size: 0.75rem;
+          color: #9ca3af;
+          text-align: center;
+          max-width: 100%;
+        }
+        .message-system .message-content {
+          background: transparent;
+          box-shadow: none;
+          padding: 0;
+        }
+        .message-system .message-text {
+          color: #9ca3af;
+          font-size: 0.75rem;
         }
         .message-avatar {
           width: 40px;
