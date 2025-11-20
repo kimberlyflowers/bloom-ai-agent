@@ -391,7 +391,7 @@ async def delete_conversation(conversation_id: str):
 
 @app.websocket("/chat")
 async def chat_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for chat"""
+    """WebSocket endpoint for real-time chat (persistence handled by frontend via REST API)"""
     await websocket.accept()
     chat_clients.add(websocket)
 
@@ -411,13 +411,15 @@ async def chat_endpoint(websocket: WebSocket):
 
             if data.get('type') == 'user_message':
                 user_message = data.get('message', '')
-                logger.info(f"💬 User: {user_message}")
+                conversation_id = data.get('conversation_id')
+
+                logger.info(f"💬 User ({conversation_id}): {user_message}")
 
                 # Generate Sarah's response
                 sarah_response = await sarah_instance.generate_response(user_message)
                 logger.info(f"💬 Sarah: {sarah_response[:100]}...")
 
-                # Send response back
+                # Send response back (frontend will persist via REST API)
                 await websocket.send_json({
                     'type': 'sarah_message',
                     'message': sarah_response

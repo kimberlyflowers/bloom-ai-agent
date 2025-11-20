@@ -322,10 +322,11 @@ export default function Dashboard() {
     setChatInput('')
     setIsSending(true)
 
-    // Send via WebSocket for real-time response
+    // Send via WebSocket for real-time response (with conversation_id for server-side persistence)
     chatWsRef.current.send(JSON.stringify({
       type: 'user_message',
-      message: messageText
+      message: messageText,
+      conversation_id: currentConversationIdRef.current
     }))
 
     // Save to database via API
