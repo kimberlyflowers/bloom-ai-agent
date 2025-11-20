@@ -22,6 +22,17 @@ class ConversationsDB:
         if not self.connection_string:
             raise ValueError("SUPABASE_DB_URL environment variable is required!")
 
+        # Debug: Log connection string format (mask password)
+        if self.connection_string:
+            # Show first 50 chars to see the username format
+            masked_string = self.connection_string[:50] + "..." if len(self.connection_string) > 50 else self.connection_string
+            logger.info(f"🔍 DEBUG - Connection string start: {masked_string}")
+            # Check if it has the critical dot after postgres
+            if "postgres." in self.connection_string:
+                logger.info("✅ Connection string has postgres. format (CORRECT)")
+            else:
+                logger.warning("⚠️ Connection string missing postgres. format (MIGHT BE WRONG)")
+
         self.conn = None
         self.connect()
         self.create_tables()
