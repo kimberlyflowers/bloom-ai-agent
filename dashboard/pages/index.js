@@ -104,8 +104,10 @@ export default function Dashboard() {
 
   function connectToChat() {
     try {
-      // Connect to chat WebSocket server (different port from screen stream)
-      const wsUrl = getWebSocketUrl(8766)
+      // Connect to chat WebSocket endpoint
+      const baseUrl = getWebSocketUrl(8766)
+      // Add /chat path for FastAPI WebSocket endpoint
+      const wsUrl = baseUrl.includes('localhost') ? baseUrl : `${baseUrl}/chat`
       console.log('💬 Connecting to chat:', wsUrl)
       const ws = new WebSocket(wsUrl)
 
