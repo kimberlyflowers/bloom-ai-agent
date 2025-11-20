@@ -97,6 +97,7 @@ export default function Dashboard() {
   const createNewConversation = async () => {
     try {
       const newId = Date.now().toString()
+      console.log('📡 Creating conversation with ID:', newId)
 
       const response = await fetch(`${getApiUrl()}/api/conversations`, {
         method: 'POST',
@@ -104,11 +105,14 @@ export default function Dashboard() {
         body: JSON.stringify({ id: newId })
       })
 
+      console.log('📡 Create response status:', response.status)
       const newConv = await response.json()
+      console.log('📡 Created conversation:', newConv)
 
       setConversations(prev => [newConv, ...prev])
       setCurrentConversationId(newConv.id)
       setMessages([])
+      console.log('📡 Conversation ID set to:', newConv.id)
     } catch (error) {
       console.error('Error creating conversation:', error)
     }
