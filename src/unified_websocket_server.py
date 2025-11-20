@@ -57,14 +57,15 @@ class UnifiedWebSocketServer:
             await self.server.wait_closed()
             logger.info("🔴 Unified server stopped")
 
-    async def handle_connection(self, websocket: WebSocketServerProtocol, path: str):
+    async def handle_connection(self, websocket):
         """
         Route incoming connections based on path
 
         Args:
-            websocket: WebSocket connection
-            path: Request path (/chat or /screen)
+            websocket: WebSocket connection (has request.path attribute)
         """
+        # Get path from the websocket request
+        path = websocket.request.path
         client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
         logger.info(f"🔌 New connection from {client_id} to path: {path}")
 
