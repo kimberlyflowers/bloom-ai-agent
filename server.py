@@ -51,6 +51,7 @@ class ConversationCreate(BaseModel):
 sarah_instance = None
 chat_clients: Set[WebSocket] = set()
 conversations_db: ConversationsDB = None
+conversation_history = []  # Track conversation context for AI responses
 MAX_HISTORY = 20
 
 
@@ -225,6 +226,8 @@ Important:
 
     async def generate_response(self, user_message: str) -> str:
         """Generate Sarah's response using Claude"""
+        global conversation_history
+
         if not self.anthropic:
             return "Sorry, I'm having trouble connecting to my AI brain right now. Please check that the ANTHROPIC_API_KEY is set!"
 
