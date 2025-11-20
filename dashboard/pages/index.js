@@ -585,16 +585,17 @@ export default function Dashboard() {
                 <p className="screen-hint">Sarah will show her work here in real-time</p>
               </div>
             ) : (
-              <div className="screen-activity-feed" ref={screenActivityRef}>
-                {screenActivity.map((activity, index) => {
-                  // Truncate long content
-                  const displayContent = activity.content.length > 80
-                    ? activity.content.substring(0, 80) + '...'
+              <div className="screen-current-activity">
+                {(() => {
+                  // Show only the LATEST activity (last item in array)
+                  const activity = screenActivity[screenActivity.length - 1];
+                  const displayContent = activity.content.length > 120
+                    ? activity.content.substring(0, 120) + '...'
                     : activity.content;
 
                   return (
-                    <div key={activity.id || index} className={`activity-item activity-${activity.activity_type}`}>
-                      <div className="activity-icon">
+                    <div key={activity.id} className={`current-activity-item activity-${activity.activity_type}`}>
+                      <div className="current-activity-icon">
                         {activity.activity_type === 'reading' && '📖'}
                         {activity.activity_type === 'thinking' && '🤔'}
                         {activity.activity_type === 'responding' && '💬'}
@@ -616,15 +617,15 @@ export default function Dashboard() {
                         {activity.activity_type === 'browser_closed' && '❌'}
                         {activity.activity_type === 'error' && '⚠️'}
                       </div>
-                      <div className="activity-content">
-                        <div className="activity-text">{displayContent}</div>
-                        <div className="activity-time">
+                      <div className="current-activity-content">
+                        <div className="current-activity-text">{displayContent}</div>
+                        <div className="current-activity-time">
                           {new Date(activity.timestamp).toLocaleTimeString()}
                         </div>
                       </div>
                     </div>
                   );
-                })}
+                })()}
               </div>
             )}
           </div>
@@ -1281,93 +1282,101 @@ export default function Dashboard() {
           margin-bottom: 1rem;
           opacity: 0.7;
         }
-        .screen-activity-feed {
+        .screen-current-activity {
           display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
-          max-height: calc(100% - 3rem);
-          overflow-y: auto;
-          padding-right: 0.5rem;
+          align-items: center;
+          justify-content: center;
+          height: 100%;
+          padding: 2rem;
         }
-        .screen-activity-feed::-webkit-scrollbar {
-          width: 6px;
-        }
-        .screen-activity-feed::-webkit-scrollbar-track {
-          background: rgba(255, 255, 255, 0.05);
-          border-radius: 3px;
-        }
-        .screen-activity-feed::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.2);
-          border-radius: 3px;
-        }
-        .screen-activity-feed::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.3);
-        }
-        .activity-item {
+        .current-activity-item {
           display: flex;
-          gap: 0.5rem;
-          padding: 0.5rem;
-          background: rgba(255, 255, 255, 0.05);
-          border-radius: 6px;
-          border-left: 3px solid #3b82f6;
-          animation: slideIn 0.3s ease-out;
-          flex-shrink: 0;
+          gap: 1rem;
+          padding: 1.5rem;
+          background: rgba(255, 255, 255, 0.08);
+          border-radius: 12px;
+          border-left: 4px solid #3b82f6;
+          animation: slideInFade 0.4s ease-out;
+          max-width: 600px;
+          width: 100%;
         }
-        @keyframes slideIn {
+        @keyframes slideInFade {
           from {
             opacity: 0;
-            transform: translateY(-10px);
+            transform: translateX(-20px);
           }
           to {
             opacity: 1;
-            transform: translateY(0);
+            transform: translateX(0);
           }
         }
-        .activity-item.activity-reading {
+        .current-activity-item.activity-reading {
           border-left-color: #3b82f6;
         }
-        .activity-item.activity-thinking {
+        .current-activity-item.activity-thinking {
           border-left-color: #8b5cf6;
         }
-        .activity-item.activity-responding {
+        .current-activity-item.activity-responding {
           border-left-color: #10b981;
         }
-        .activity-item.activity-file_upload {
+        .current-activity-item.activity-file_upload {
           border-left-color: #f59e0b;
         }
-        .activity-item.activity-analyzing {
+        .current-activity-item.activity-analyzing {
           border-left-color: #06b6d4;
         }
-        .activity-item.activity-analysis_complete {
+        .current-activity-item.activity-analysis_complete {
           border-left-color: #10b981;
         }
-        .activity-item.activity-waiting {
+        .current-activity-item.activity-waiting {
           border-left-color: #fbbf24;
         }
-        .activity-item.activity-queued {
+        .current-activity-item.activity-queued {
           border-left-color: #ef4444;
         }
-        .activity-icon {
-          font-size: 1.25rem;
+        .current-activity-item.activity-browser_starting,
+        .current-activity-item.activity-navigating {
+          border-left-color: #3b82f6;
+        }
+        .current-activity-item.activity-browser_ready,
+        .current-activity-item.activity-page_loaded,
+        .current-activity-item.activity-clicked,
+        .current-activity-item.activity-typed {
+          border-left-color: #10b981;
+        }
+        .current-activity-item.activity-clicking,
+        .current-activity-item.activity-typing {
+          border-left-color: #06b6d4;
+        }
+        .current-activity-item.activity-screenshot {
+          border-left-color: #8b5cf6;
+        }
+        .current-activity-item.activity-browser_closed {
+          border-left-color: #64748b;
+        }
+        .current-activity-item.activity-error {
+          border-left-color: #ef4444;
+        }
+        .current-activity-icon {
+          font-size: 2.5rem;
           flex-shrink: 0;
           line-height: 1;
         }
-        .activity-content {
+        .current-activity-content {
           flex: 1;
           min-width: 0;
         }
-        .activity-text {
-          color: #e2e8f0;
-          font-size: 0.8125rem;
-          line-height: 1.4;
+        .current-activity-text {
+          color: #ffffff;
+          font-size: 1.125rem;
+          line-height: 1.5;
           word-wrap: break-word;
-          overflow: hidden;
-          text-overflow: ellipsis;
+          font-weight: 500;
         }
-        .activity-time {
-          color: #64748b;
-          font-size: 0.6875rem;
-          margin-top: 0.125rem;
+        .current-activity-time {
+          color: #94a3b8;
+          font-size: 0.875rem;
+          margin-top: 0.5rem;
         }
         .stats-grid {
           display: grid;
