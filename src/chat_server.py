@@ -522,11 +522,47 @@ Important:
             return sarah_response
 
         except Exception as e:
-            logger.error(f"❌ Error getting Claude response: {type(e).__name__}: {e}")
+            error_name = type(e).__name__
+            logger.error(f"❌ Error getting Claude response: {error_name}: {e}")
+
+            # SPECIAL HANDLING: BadRequestError (likely image/token size issue)
+            if error_name == "BadRequestError":
+                logger.warning("🔧 BadRequestError detected - trying without screenshot...")
+
+                try:
+                    # Remove last message if it contains an image
+                    if self.conversation_history and len(self.conversation_history) > 0:
+                        last_msg = self.conversation_history[-1]
+                        if isinstance(last_msg.get('content'), list):
+                            # Has image - remove it and retry with text only
+                            for item in last_msg['content']:
+                                if item.get('type') == 'text':
+                                    # Retry with just the text, no image
+                                    self.conversation_history[-1] = {
+                                        'role': last_msg['role'],
+                                        'content': item['text']
+                                    }
+                                    break
+
+                    # Retry API call without screenshot
+                    response = await asyncio.to_thread(
+                        self.anthropic.messages.create,
+                        model="claude-sonnet-4-20250514",
+                        max_tokens=1024,
+                        system=self.system_prompt,
+                        messages=self.conversation_history
+                    )
+
+                    logger.info("✅ Retry without screenshot succeeded!")
+                    return response.content[0].text
+
+                except Exception as retry_error:
+                    logger.error(f"❌ Retry failed: {retry_error}")
+                    return "Sorry, I'm having trouble processing that request. The image might be too large. Can you try asking again? 😅"
+
             logger.exception(e)  # Full stack trace to Railway logs
 
             # Give user more context about the error
-            error_type = type(e).__name__
             if "timeout" in str(e).lower():
                 return "Oops! That took too long. The page might be slow to load. Can you try again? 😅"
             elif "connection" in str(e).lower() or "network" in str(e).lower():
@@ -534,7 +570,7 @@ Important:
             elif "screenshot" in str(e).lower() or "page" in str(e).lower():
                 return "I'm having trouble capturing what I see right now. The page might still be loading! Let me know if you want to try again. 😊"
             else:
-                return f"Sorry, I ran into a technical issue ({error_type}). Can you try again? 😅"
+                return f"Sorry, I ran into a technical issue ({error_name}). Can you try again? 😅"
 
     async def _transcribe_audio(self, audio_base64: str) -> Optional[str]:
         """
