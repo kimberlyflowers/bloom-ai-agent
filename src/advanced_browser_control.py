@@ -56,9 +56,46 @@ class AdvancedBrowserController:
         try:
             # Strategy: Try multiple selectors based on description
             desc_lower = description.lower()
+            selectors = []
+
+            # Cookie dialog detection (high priority)
+            if any(word in desc_lower for word in ['cookie', 'accept', 'consent', 'alles', 'tout', 'alle', 'gdpr']):
+                # International cookie consent buttons
+                selectors.extend([
+                    # English
+                    'button:has-text("Accept")',
+                    'button:has-text("Accept all")',
+                    'button:has-text("Accept All")',
+                    'button:has-text("I Accept")',
+                    'button:has-text("OK")',
+                    '[aria-label*="Accept"]',
+                    # Dutch
+                    'button:has-text("Accepteren")',
+                    'button:has-text("Alles accepteren")',
+                    'button:has-text("Akkoord")',
+                    # French
+                    'button:has-text("Accepter")',
+                    'button:has-text("Tout accepter")',
+                    "button:has-text(\"J'accepte\")",
+                    # German
+                    'button:has-text("Akzeptieren")',
+                    'button:has-text("Alle akzeptieren")',
+                    'button:has-text("Einverstanden")',
+                    # Spanish
+                    'button:has-text("Aceptar")',
+                    'button:has-text("Aceptar todo")',
+                    # Common selectors
+                    '[class*="accept"]',
+                    '[class*="consent"]',
+                    '[id*="accept"]',
+                    '[data-testid*="accept"]',
+                    'button[class*="cookie"]',
+                    'a:has-text("Accept")',
+                    'div[role="button"]:has-text("Accept")'
+                ])
 
             # Extract key terms
-            if 'button' in desc_lower:
+            elif 'button' in desc_lower:
                 # Try button selectors
                 if 'login' in desc_lower or 'sign in' in desc_lower:
                     selectors = [
@@ -109,6 +146,26 @@ class AdvancedBrowserController:
                         }
                 except:
                     continue
+
+            # If nothing worked, try clicking the first visible button (last resort for cookie dialogs)
+            if 'cookie' in desc_lower or 'accept' in desc_lower:
+                try:
+                    all_buttons = await self.page.query_selector_all('button')
+                    for button in all_buttons:
+                        is_visible = await button.is_visible()
+                        if is_visible:
+                            text = await button.inner_text()
+                            # Check if button text contains acceptance words
+                            if any(word in text.lower() for word in ['accept', 'ok', 'akkoord', 'accepter', 'akzeptieren', 'aceptar']):
+                                await button.click()
+                                logger.info(f"✅ Clicked button with text: {text}")
+                                return {
+                                    'success': True,
+                                    'message': f'Clicked button: {text}',
+                                    'selector': 'button (text match)'
+                                }
+                except Exception as e:
+                    logger.warning(f"Fallback click failed: {e}")
 
             return {
                 'success': False,

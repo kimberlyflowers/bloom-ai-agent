@@ -161,13 +161,14 @@ Important:
         try:
             # Get recent conversation memories (last 20)
             agent_id = "sarah_001"
-            all_memories = self.identity_manager.get_memories(
+            all_memories = self.identity_manager.get_relevant_memories(
                 agent_id=agent_id,
-                memory_type=MemoryType.INTERACTION
+                context="Dashboard chat conversation",
+                limit=self.max_history
             )
 
-            # Sort by timestamp and get recent ones
-            recent_memories = sorted(all_memories, key=lambda m: m.timestamp)[-self.max_history:]
+            # Already sorted and limited by get_relevant_memories
+            recent_memories = all_memories
 
             # Reconstruct conversation history
             for memory in recent_memories:
