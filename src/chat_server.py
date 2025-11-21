@@ -477,37 +477,64 @@ Important:
 
             # Execute any browser commands in her response
             if self.browser and self.browser.is_running:
-                # Track what Sarah is about to do (for learning)
-                self.current_action = sarah_response[:100]  # First 100 chars as description
+                try:
+                    # Track what Sarah is about to do (for learning)
+                    self.current_action = sarah_response[:100]  # First 100 chars as description
 
-                result = await self._execute_browser_commands(sarah_response)
-                action_success = result if result is not None else False
+                    result = await self._execute_browser_commands(sarah_response)
+                    action_success = result if result is not None else False
 
-                # After executing browser command, capture new screenshot for next turn
-                await asyncio.sleep(2)  # Wait for page to load
-                new_screenshot = await self._capture_screen_context()
+                    # After executing browser command, capture new screenshot for next turn
+                    await asyncio.sleep(2)  # Wait for page to load
 
-                if new_screenshot:
-                    # Add visual feedback to conversation
-                    vision_msg = self._format_message_for_api(
-                        'user',
-                        '[System: Here is what you see on screen now after your action]',
-                        new_screenshot
-                    )
-                    self.conversation_history.append(vision_msg)
+                    # Wrap screenshot capture in try-except (might fail if page is still loading)
+                    try:
+                        new_screenshot = await self._capture_screen_context()
 
-                    # Track visual observations for learning
-                    self.visual_observations.append("Screenshot captured after action")
+                        if new_screenshot:
+                            # Add visual feedback to conversation
+                            vision_msg = self._format_message_for_api(
+                                'user',
+                                '[System: Here is what you see on screen now after your action]',
+                                new_screenshot
+                            )
+                            self.conversation_history.append(vision_msg)
 
-                # Analyze and learn from this interaction
-                await self._analyze_and_learn(sarah_response, action_success)
+                            # Track visual observations for learning
+                            self.visual_observations.append("Screenshot captured after action")
+                    except Exception as screenshot_error:
+                        logger.warning(f"⚠️ Screenshot capture failed (non-fatal): {screenshot_error}")
+                        # Continue even if screenshot fails - don't crash the whole response!
+
+                    # Analyze and learn from this interaction
+                    try:
+                        await self._analyze_and_learn(sarah_response, action_success)
+                    except Exception as learn_error:
+                        logger.warning(f"⚠️ Learning analysis failed (non-fatal): {learn_error}")
+                        # Continue even if learning fails
+
+                except Exception as browser_error:
+                    logger.error(f"❌ Browser command execution failed: {browser_error}")
+                    logger.exception(browser_error)
+                    # Don't crash - just mark action as failed and continue
+                    action_success = False
 
             return sarah_response
 
         except Exception as e:
-            logger.error(f"❌ Error getting Claude response: {e}")
-            logger.exception(e)
-            return "Sorry, I'm having trouble processing that right now. Can you try again? 😅"
+            logger.error(f"❌ Error getting Claude response: {type(e).__name__}: {e}")
+            logger.exception(e)  # Full stack trace to Railway logs
+
+            # Give user more context about the error
+            error_type = type(e).__name__
+            if "timeout" in str(e).lower():
+                return "Oops! That took too long. The page might be slow to load. Can you try again? 😅"
+            elif "connection" in str(e).lower() or "network" in str(e).lower():
+                return "Hmm, having some network issues right now. Let me try that again! 🔄"
+            elif "screenshot" in str(e).lower() or "page" in str(e).lower():
+                return "I'm having trouble capturing what I see right now. The page might still be loading! Let me know if you want to try again. 😊"
+            else:
+                return f"Sorry, I ran into a technical issue ({error_type}). Can you try again? 😅"
 
     async def _transcribe_audio(self, audio_base64: str) -> Optional[str]:
         """
@@ -648,10 +675,11 @@ Important:
         """
         text_lower = response_text.lower()
 
-        # Detect bypass/click intent (NEW!)
-        if any(word in text_lower for word in ['clicking', 'click on', 'click the', 'clicking on', 'clicking the']):
-            if any(word in text_lower for word in ['accept', 'ok', 'button', 'alles', 'cookie', 'consent']):
-                logger.info("☢️  Sarah wants to click - executing nuclear bypass!")
+        # Detect click intent (EXPANDED for CAPTCHA, buttons, etc!)
+        if any(word in text_lower for word in ['clicking', 'click on', 'click the', 'clicking on', 'clicking the', 'i\'ll click']):
+            # PRIORITY 1: Cookie/consent dialogs - use nuclear bypass
+            if any(word in text_lower for word in ['accept', 'ok', 'alles', 'cookie', 'consent']):
+                logger.info("☢️  Cookie/consent click detected - executing nuclear bypass!")
 
                 # Track steps for learning
                 self.action_steps.append("Attempt to click accept/ok button")
@@ -665,6 +693,62 @@ Important:
                     self.action_steps.append(f"Successfully bypassed using {method}")
                 else:
                     self.action_steps.append("Click/bypass failed - all methods exhausted")
+
+                return success
+
+            # PRIORITY 2: CAPTCHA checkboxes - use advanced click with description
+            elif any(word in text_lower for word in ['robot', 'captcha', 'checkbox', 'verify', 'human']):
+                logger.info("🤖 CAPTCHA/checkbox click detected - using advanced click!")
+
+                # Extract what to click (try to get description from text)
+                # Look for patterns like "clicking the 'X'" or "click 'X' checkbox"
+                click_description = "checkbox"  # default
+
+                # Try to extract quoted text
+                import re
+                quote_match = re.search(r"['\"]([^'\"]+)['\"]", response_text)
+                if quote_match:
+                    click_description = quote_match.group(1)
+                elif "robot" in text_lower:
+                    click_description = "I'm not a robot"
+                elif "verify" in text_lower:
+                    click_description = "verify"
+
+                logger.info(f"🎯 Attempting to click: {click_description}")
+                self.action_steps.append(f"Click '{click_description}'")
+
+                # Use advanced browser control for precise clicking
+                result = await self.browser.advanced.click_by_description(click_description)
+                success = result.get('success', False) if isinstance(result, dict) else False
+
+                if success:
+                    self.action_steps.append(f"Successfully clicked '{click_description}'")
+                else:
+                    self.action_steps.append(f"Click failed for '{click_description}'")
+
+                return success
+
+            # PRIORITY 3: Generic button clicks - use advanced click
+            elif 'button' in text_lower:
+                logger.info("🔘 Generic button click detected - using advanced click!")
+
+                # Try to extract button description
+                click_description = "button"
+                import re
+                quote_match = re.search(r"['\"]([^'\"]+)['\"]", response_text)
+                if quote_match:
+                    click_description = quote_match.group(1)
+
+                logger.info(f"🎯 Attempting to click button: {click_description}")
+                self.action_steps.append(f"Click button: '{click_description}'")
+
+                result = await self.browser.advanced.click_by_description(click_description)
+                success = result.get('success', False) if isinstance(result, dict) else False
+
+                if success:
+                    self.action_steps.append(f"Successfully clicked button '{click_description}'")
+                else:
+                    self.action_steps.append(f"Click failed for button '{click_description}'")
 
                 return success
 
@@ -707,17 +791,27 @@ Important:
 
                 return success
 
-        # Detect search intent
+        # Detect search intent (with AND without quotes!)
         search_patterns = [
+            # WITH quotes (higher priority)
             r"(?:let me |i'll |i will )?search(?:ing)?(?: for | on google for)?\s+['\"](.+?)['\"]",
             r"(?:let me |i'll |i will )?(?:google|look up|search for)\s+['\"](.+?)['\"]",
-            r"searching\s+for\s+['\"](.+?)['\"]"
+            r"searching\s+for\s+['\"](.+?)['\"]",
+            # WITHOUT quotes (more flexible)
+            r"(?:let me |i'll |i will )?search(?:ing)?(?: for | on google for | in google for)?\s+(.+?)(?:\.|!|\?|$)",
+            r"(?:let me |i'll |i will )?(?:google|look up|search for)\s+(.+?)(?:\.|!|\?|$)",
+            r"searching\s+for\s+(.+?)(?:\.|!|\?|$)"
         ]
 
         for pattern in search_patterns:
             match = re.search(pattern, text_lower)
             if match:
                 query = match.group(1).strip()
+
+                # Clean up the query - remove trailing punctuation and common words
+                query = re.sub(r'\s+(now|right now|please|for me|for us)$', '', query)
+                query = query.strip(' .,!?')
+
                 logger.info(f"🔍 Detected search intent: {query}")
 
                 # Track steps for learning
