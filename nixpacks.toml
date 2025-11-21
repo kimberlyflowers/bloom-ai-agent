@@ -9,7 +9,7 @@ aptPkgs = [
     "x11vnc",            # VNC server for debugging (optional)
     "libgtk-3-0",        # GTK3 for Chrome UI
     "libgbm1",           # Generic Buffer Management
-    "libasound2",        # ALSA sound library
+    "libasound2t64",     # ALSA sound library (Ubuntu 24.04+)
     "libxss1",           # X11 Screen Saver extension
     "fonts-liberation",  # Liberation fonts (common web fonts)
     "fonts-noto-color-emoji",  # Emoji fonts
