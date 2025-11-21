@@ -347,18 +347,18 @@ Important:
                 # Detect bypass/dismiss/close commands
                 if any(word in content_lower for word in ['bypass', 'dismiss', 'close', 'remove', 'get rid of']):
                     if any(word in content_lower for word in ['popup', 'dialog', 'cookie', 'consent', 'accept']):
-                        logger.info("☢️  User requested popup bypass - executing nuclear bypass!")
-                        action_description = "Attempting to bypass the popup"
+                        logger.info("🥷 User requested popup bypass - using STEALTH MODE!")
+                        action_description = "Attempting to bypass the popup (stealth mode)"
                         if self.browser and self.browser.is_running:
-                            action_result = await self.browser.advanced.nuclear_bypass_dialog()
+                            action_result = await self.browser.advanced.stealth_click_button()
 
                 # Detect click commands
                 elif any(word in content_lower for word in ['click', 'press', 'tap']):
                     if any(word in content_lower for word in ['accept', 'ok', 'button']):
-                        logger.info("🖱️  User requested click - trying nuclear bypass!")
-                        action_description = "Attempting to click the button"
+                        logger.info("🥷 User requested click - using STEALTH MODE!")
+                        action_description = "Attempting to click the button (stealth mode)"
                         if self.browser and self.browser.is_running:
-                            action_result = await self.browser.advanced.nuclear_bypass_dialog()
+                            action_result = await self.browser.advanced.stealth_click_button()
 
                 # Capture current screen if browser is active (for context)
                 screenshot = await self._capture_screen_context()
@@ -677,22 +677,24 @@ Important:
 
         # Detect click intent (EXPANDED for CAPTCHA, buttons, etc!)
         if any(word in text_lower for word in ['clicking', 'click on', 'click the', 'clicking on', 'clicking the', 'i\'ll click']):
-            # PRIORITY 1: Cookie/consent dialogs - use nuclear bypass
+            # PRIORITY 1: Cookie/consent dialogs - use STEALTH MODE (not nuclear!)
             if any(word in text_lower for word in ['accept', 'ok', 'alles', 'cookie', 'consent']):
-                logger.info("☢️  Cookie/consent click detected - executing nuclear bypass!")
+                logger.info("🥷 Cookie/consent click detected - using STEALTH MODE!")
 
                 # Track steps for learning
-                self.action_steps.append("Attempt to click accept/ok button")
+                self.action_steps.append("Attempt to click accept/ok button (stealth mode)")
 
-                # Execute nuclear bypass
-                result = await self.browser.advanced.nuclear_bypass_dialog()
+                # Execute STEALTH bypass (one-shot, human-like)
+                # This avoids Google's multi-attempt bot detection!
+                result = await self.browser.advanced.stealth_click_button()
                 success = result.get('success', False) if isinstance(result, dict) else False
 
                 if success:
-                    method = result.get('method', 'unknown')
-                    self.action_steps.append(f"Successfully bypassed using {method}")
+                    method = result.get('method', 'stealth-click')
+                    button_text = result.get('button_text', 'unknown')
+                    self.action_steps.append(f"✅ Stealth click success: '{button_text}'")
                 else:
-                    self.action_steps.append("Click/bypass failed - all methods exhausted")
+                    self.action_steps.append("❌ Stealth click failed (no retry - staying stealthy)")
 
                 return success
 

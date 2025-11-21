@@ -765,13 +765,192 @@ class AdvancedBrowserController:
             logger.error(f"Coordinate click failed: {e}")
             return {'success': False, 'message': str(e)}
 
+    async def stealth_click_button(self, keywords: List[str] = None) -> Dict[str, Any]:
+        """
+        STEALTH MODE: Click button like a HUMAN (not a bot!)
+
+        This is designed to bypass Google's bot detection by:
+        - Using ONE method only (no multi-attempt fingerprint)
+        - Random human-like delays (not fixed timing)
+        - Natural mouse movement simulation
+        - Hovering before clicking (humans pause)
+        - Stopping after ONE attempt (success or fail)
+
+        Google detects bots by watching for:
+        - Multiple failed click attempts
+        - Different interaction methods (keyboard, JS, coordinates)
+        - Fixed timing patterns (sleep(0.1) consistently)
+        - No mouse movement / hovering
+
+        Args:
+            keywords: Keywords to find buttons (default: accept/ok words)
+
+        Returns:
+            Result dict with success status
+        """
+        if not self.page:
+            return {'success': False, 'message': 'No page available'}
+
+        if keywords is None:
+            keywords = ['accept', 'ok', 'akkoord', 'accepter', 'akzeptieren', 'aceptar', 'agree', 'consent']
+
+        logger.info("🥷 STEALTH MODE ACTIVATED - Acting like a human...")
+
+        try:
+            import random
+
+            # 🚫 EXCLUSION KEYWORDS - Skip management buttons
+            exclude_keywords = [
+                'beheren', 'manage', 'afwijzen', 'reject', 'weigeren', 'refuse',
+                'opties', 'options', 'meer', 'more', 'instellingen', 'settings',
+                'keuzes', 'choices', 'preferences', 'voorkeuren', 'aanpassen', 'customize',
+                'personaliseer', 'personalize', 'weiger', 'deny', 'decline'
+            ]
+
+            # ✅ EXACT MATCH PHRASES - Prioritize "Accept All"
+            exact_accept_all = [
+                'alles accepteren',  # Dutch
+                'accept all', 'accept all cookies', 'alles akkoord',
+                'tout accepter', "j'accepte tout",  # French
+                'alle akzeptieren', 'alles akzeptieren',  # German
+                'aceptar todo', 'aceptar todas',  # Spanish
+                'aceitar tudo'  # Portuguese
+            ]
+
+            # STEP 1: Human-like delay (humans read/think before clicking: 1.2-3.5 seconds)
+            think_time = random.uniform(1.2, 3.5)
+            logger.info(f"🧠 Human thinking time: {think_time:.2f}s")
+            await asyncio.sleep(think_time)
+
+            # STEP 2: Find the button using smart detection (one-shot!)
+            button_info = await self.page.evaluate('''(keywords, exactMatches, excludeWords) => {
+                const buttons = Array.from(document.querySelectorAll('button, a, [role="button"]'));
+
+                // PRIORITY 1: Exact "Accept All" matches
+                for (const btn of buttons) {
+                    if (btn.offsetWidth > 0 && btn.offsetHeight > 0) {
+                        const text = btn.innerText.toLowerCase();
+                        if (exactMatches.some(exact => text.includes(exact))) {
+                            const rect = btn.getBoundingClientRect();
+                            return {
+                                found: true,
+                                text: btn.innerText,
+                                x: rect.left + rect.width / 2,
+                                y: rect.top + rect.height / 2,
+                                width: rect.width,
+                                height: rect.height,
+                                priority: 'exact'
+                            };
+                        }
+                    }
+                }
+
+                // PRIORITY 2: Keyword matches (but skip exclusions)
+                for (const btn of buttons) {
+                    if (btn.offsetWidth > 0 && btn.offsetHeight > 0) {
+                        const text = btn.innerText.toLowerCase();
+                        if (keywords.some(kw => text.includes(kw))) {
+                            // Skip if contains exclusion words
+                            if (excludeWords.some(excl => text.includes(excl))) {
+                                continue;
+                            }
+                            const rect = btn.getBoundingClientRect();
+                            return {
+                                found: true,
+                                text: btn.innerText,
+                                x: rect.left + rect.width / 2,
+                                y: rect.top + rect.height / 2,
+                                width: rect.width,
+                                height: rect.height,
+                                priority: 'keyword'
+                            };
+                        }
+                    }
+                }
+
+                return {found: false};
+            }''', keywords, exact_accept_all, exclude_keywords)
+
+            if not button_info.get('found'):
+                logger.warning("🥷 Stealth: No valid button found")
+                return {'success': False, 'message': 'No accept button found'}
+
+            logger.info(f"🎯 Stealth: Found button '{button_info.get('text')}' ({button_info.get('priority')})")
+
+            # STEP 3: Scroll button into view (humans scroll to see things)
+            await self.page.evaluate('''(x, y) => {
+                window.scrollTo({
+                    top: y - window.innerHeight / 2,
+                    behavior: 'smooth'
+                });
+            }''', button_info['x'], button_info['y'])
+
+            # Wait for scroll animation (0.3-0.6 seconds)
+            await asyncio.sleep(random.uniform(0.3, 0.6))
+
+            # STEP 4: Move mouse to button with natural variance (humans don't click exact center)
+            # Add +/- 20% random offset to simulate natural clicking
+            offset_x = random.uniform(-button_info['width'] * 0.2, button_info['width'] * 0.2)
+            offset_y = random.uniform(-button_info['height'] * 0.2, button_info['height'] * 0.2)
+
+            click_x = button_info['x'] + offset_x
+            click_y = button_info['y'] + offset_y
+
+            logger.info(f"🖱️  Stealth: Moving mouse to ({click_x:.1f}, {click_y:.1f})")
+            await self.page.mouse.move(click_x, click_y)
+
+            # STEP 5: Hover before clicking (humans pause 0.4-1.2 seconds)
+            hover_time = random.uniform(0.4, 1.2)
+            logger.info(f"⏸️  Stealth: Hovering for {hover_time:.2f}s")
+            await asyncio.sleep(hover_time)
+
+            # STEP 6: Click with JS event dispatch (most reliable, single attempt)
+            # Use the EXACT button we found (no searching again)
+            click_result = await self.page.evaluate('''(btnText, exactMatches, excludeWords) => {
+                const buttons = Array.from(document.querySelectorAll('button, a, [role="button"]'));
+
+                // Find the exact button we identified earlier
+                for (const btn of buttons) {
+                    if (btn.innerText === btnText) {
+                        // Dispatch natural click events
+                        btn.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+                        btn.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+                        btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                        btn.click();
+                        return {success: true, clicked: btnText};
+                    }
+                }
+                return {success: false};
+            }''', button_info['text'], exact_accept_all, exclude_keywords)
+
+            if click_result.get('success'):
+                # Random post-click delay (humans wait to see result: 0.8-1.5s)
+                await asyncio.sleep(random.uniform(0.8, 1.5))
+                logger.info(f"✅ STEALTH SUCCESS: Clicked '{button_info.get('text')}' naturally!")
+                return {
+                    'success': True,
+                    'method': 'stealth-click',
+                    'button_text': button_info.get('text'),
+                    'attempts': 1  # Only ONE attempt!
+                }
+            else:
+                logger.warning("🥷 Stealth: Click execution failed")
+                return {'success': False, 'message': 'Click failed'}
+
+        except Exception as e:
+            logger.error(f"🥷 Stealth mode error: {e}")
+            return {'success': False, 'message': str(e)}
+
     async def nuclear_bypass_dialog(self, keywords: List[str] = None) -> Dict[str, Any]:
         """
         NUCLEAR OPTION: Try EVERY method to bypass a dialog/popup
         Uses keyboard, JS events, cookie setting, element removal, etc.
 
+        ⚠️ WARNING: This multi-method approach can trigger Google's bot detection!
+        Multiple failed attempts = red flag. Consider using stealth_click_button() instead.
+
         This is the "no more Mr. Nice Guy" approach that tries everything
-        until something works. Perfect for stubborn cookie dialogs!
+        until something works. Use sparingly for stubborn non-Google dialogs.
 
         Args:
             keywords: Keywords to find buttons (default: accept/ok words)
