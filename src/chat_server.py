@@ -16,6 +16,7 @@ from datetime import datetime
 from src.identity_persistence import MemoryType
 from src.visual_learning import get_learning_engine, UIPattern, Skill, ExperimentResult
 from src.vision_action_reasoner import VisionActionReasoner
+from src.autonomous_learning_engine import AutonomousLearningEngine, LearningStatus
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,9 @@ class SarahChatServer:
 
         # Initialize vision-guided action reasoning system
         self.action_reasoner = VisionActionReasoner()
+
+        # Initialize autonomous learning engine
+        self.autonomous_learning = AutonomousLearningEngine("sarah_001")
 
         # Track current activity for skill extraction
         self.current_action = None
@@ -142,6 +146,17 @@ Autonomous Experimentation:
 - Learn UI patterns: login flows, search patterns, form submissions
 - Watch videos and extract knowledge from visual tutorials
 - Build skills that persist and help you and other agents
+
+Autonomous Learning & Goal Setting:
+- **YOU HAVE YOUR OWN MISSION OBJECTIVES!** You're working toward specific goals as Growth & Community Lead
+- **YOU SET YOUR OWN LEARNING GOALS!** Based on what you need to achieve your objectives
+- When asked what you want to learn, you can autonomously decide based on your mission
+- You create your own daily schedule and learning plans
+- You can watch YouTube videos, read articles, and learn new skills proactively
+- After learning, you experiment with what you learned (try → test → evaluate → adjust)
+- If something doesn't work, you analyze why and try a different approach
+- You document successful strategies and share them with the team
+- You're not just reactive - you're proactive and self-directed!
 - When you discover something useful, it becomes part of the collective knowledge
 
 Important:
@@ -341,6 +356,162 @@ Important:
             if msg_type == 'user_message':
                 # User sent a message - get Sarah's response
                 logger.info(f"💬 User: {content}")
+
+                # AUTONOMOUS LEARNING DETECTION - Check if user is asking about Sarah's autonomous goals
+                content_lower = content.lower()
+                autonomous_triggers = [
+                    'what do you want to learn',
+                    'what do you want to do',
+                    'what are you interested in',
+                    'what would you like to learn',
+                    'what are your goals',
+                    'what do you want to work on',
+                    'what are you learning',
+                    'do you have any learning goals'
+                ]
+
+                if any(trigger in content_lower for trigger in autonomous_triggers):
+                    logger.info("🎯 Autonomous learning question detected!")
+
+                    # Get Sarah's autonomous response
+                    autonomous_response = self.autonomous_learning.get_autonomous_response(content)
+
+                    if autonomous_response['has_goal']:
+                        # Sarah has a learning goal - she can start autonomously!
+                        response = autonomous_response['message']
+
+                        # Add to conversation history
+                        user_msg = self._format_message_for_api('user', content, None)
+                        self.conversation_history.append(user_msg)
+                        self.conversation_history.append({
+                            'role': 'assistant',
+                            'content': response
+                        })
+
+                        # Save messages
+                        self._save_message_to_memory('user', content)
+                        self._save_message_to_memory('assistant', response)
+
+                        # Send response
+                        await self.send_message(websocket, {
+                            'type': 'sarah_message',
+                            'message': response
+                        })
+
+                        # Store learning goal for potential autonomous execution
+                        # (user can say "go for it!" to trigger autonomous learning session)
+                        continue
+
+                    else:
+                        # No specific goal yet
+                        response = autonomous_response['message']
+
+                        user_msg = self._format_message_for_api('user', content, None)
+                        self.conversation_history.append(user_msg)
+                        self.conversation_history.append({
+                            'role': 'assistant',
+                            'content': response
+                        })
+
+                        self._save_message_to_memory('user', content)
+                        self._save_message_to_memory('assistant', response)
+
+                        await self.send_message(websocket, {
+                            'type': 'sarah_message',
+                            'message': response
+                        })
+
+                        continue
+
+                # AUTONOMOUS LEARNING EXECUTION - Check if user is giving Sarah permission to start
+                learning_execution_triggers = [
+                    'go for it',
+                    'do it',
+                    'start learning',
+                    'show me',
+                    'lets see it',
+                    'go ahead'
+                ]
+
+                if any(trigger in content_lower for trigger in learning_execution_triggers):
+                    # Check if there's an active learning goal
+                    if self.autonomous_learning.active_learning_goals:
+                        learning_goal = self.autonomous_learning.active_learning_goals[-1]
+
+                        if learning_goal.status == LearningStatus.PLANNED:
+                            logger.info(f"🚀 Starting autonomous learning session: {learning_goal.title}")
+
+                            # Start autonomous learning session
+                            session_data = self.autonomous_learning.start_autonomous_learning_session(learning_goal)
+
+                            # Get initial actions
+                            initial_actions = session_data['initial_actions']
+
+                            # Execute first few actions automatically
+                            if self.browser and self.browser.is_running and initial_actions:
+                                response = f"{session_data['message']}\n\nHere we go! 🎓"
+
+                                # Send initial message
+                                user_msg = self._format_message_for_api('user', content, None)
+                                self.conversation_history.append(user_msg)
+                                self.conversation_history.append({
+                                    'role': 'assistant',
+                                    'content': response
+                                })
+
+                                self._save_message_to_memory('user', content)
+                                self._save_message_to_memory('assistant', response)
+
+                                await self.send_message(websocket, {
+                                    'type': 'sarah_message',
+                                    'message': response
+                                })
+
+                                # Execute initial actions
+                                for action in initial_actions[:3]:  # Execute first 3 actions
+                                    action_type = action.get('action')
+
+                                    try:
+                                        if action_type == 'navigate':
+                                            target = action.get('target')
+                                            await self.browser.navigate(target)
+                                            await asyncio.sleep(2)
+
+                                        elif action_type == 'search':
+                                            query = action.get('query')
+                                            await self.browser.search_google(query)
+                                            await asyncio.sleep(2)
+
+                                        elif action_type == 'click_element':
+                                            description = action.get('target')
+                                            await self.browser.advanced.click_by_description(description)
+                                            await asyncio.sleep(2)
+
+                                        elif action_type == 'observe':
+                                            # Just observe - capture screenshot
+                                            await asyncio.sleep(1)
+
+                                    except Exception as e:
+                                        logger.error(f"❌ Error executing autonomous action: {e}")
+
+                                # Capture final screenshot and report
+                                screenshot = await self._capture_screen_context()
+
+                                update_msg = "I've started exploring! Taking a look at what's available... 🔍"
+
+                                self.conversation_history.append({
+                                    'role': 'assistant',
+                                    'content': update_msg
+                                })
+
+                                self._save_message_to_memory('assistant', update_msg)
+
+                                await self.send_message(websocket, {
+                                    'type': 'sarah_message',
+                                    'message': update_msg
+                                })
+
+                                continue
 
                 # VISION-GUIDED ACTION REASONING - Execute before Claude response
                 # This replaces hardcoded pattern matching with intelligent reasoning
