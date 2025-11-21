@@ -714,7 +714,11 @@ Important:
         # Detect click intent (EXPANDED for CAPTCHA, buttons, etc!)
         if any(word in text_lower for word in ['clicking', 'click on', 'click the', 'clicking on', 'clicking the', 'i\'ll click']):
             # PRIORITY 1: Cookie/consent dialogs - try ACCESSIBILITY first (most human-like!)
-            if any(word in text_lower for word in ['accept', 'ok', 'alles', 'cookie', 'consent']):
+            # Only trigger if it's actually about clicking accept/ok buttons, not just saying "ok" casually
+            if any(phrase in text_lower for phrase in [
+                'click accept', 'click ok', 'click the ok', 'click the accept',
+                'accept all', 'accept cookies', 'alles accepteren', 'cookie', 'consent'
+            ]):
                 logger.info("♿ Cookie/consent click detected - using ACCESSIBILITY MODE first!")
 
                 # Track steps for learning
