@@ -92,6 +92,10 @@ class SarahBrowser:
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-blink-features=AutomationControlled',
+                    # ACCESSIBILITY FLAGS - Makes CAPTCHA bypass easier!
+                    '--enable-accessibility',  # Enable accessibility tree
+                    '--force-renderer-accessibility',  # Force accessibility support
+                    '--enable-features=AccessibilityExposeHTMLElement',  # Expose HTML elements to accessibility API
                     # Additional anti-detection args for real Chrome
                     '--disable-infobars',
                     '--disable-extensions',
@@ -110,6 +114,25 @@ class SarahBrowser:
                 viewport={'width': 1920, 'height': 1080},
                 user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             )
+
+            # STEALTH SCRIPT: Hide automation markers and indicate assistive technology
+            await self.context.add_init_script("""
+                // Remove webdriver flag (makes us look like a real user)
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+
+                // Indicate screen reader/assistive technology presence
+                // This makes accessibility-based interactions look natural!
+                window.addEventListener('load', () => {
+                    document.documentElement.setAttribute('aria-live', 'polite');
+                });
+
+                // Override plugins to look more real
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5]
+                });
+            """)
 
             # Create page
             self.page = await self.context.new_page()

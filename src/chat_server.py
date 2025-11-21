@@ -677,26 +677,41 @@ Important:
 
         # Detect click intent (EXPANDED for CAPTCHA, buttons, etc!)
         if any(word in text_lower for word in ['clicking', 'click on', 'click the', 'clicking on', 'clicking the', 'i\'ll click']):
-            # PRIORITY 1: Cookie/consent dialogs - try STEALTH, fallback to NUCLEAR
+            # PRIORITY 1: Cookie/consent dialogs - try ACCESSIBILITY first (most human-like!)
             if any(word in text_lower for word in ['accept', 'ok', 'alles', 'cookie', 'consent']):
-                logger.info("🥷 Cookie/consent click detected - trying STEALTH MODE first!")
+                logger.info("♿ Cookie/consent click detected - using ACCESSIBILITY MODE first!")
 
                 # Track steps for learning
-                self.action_steps.append("Attempt to click accept/ok button (stealth mode)")
+                self.action_steps.append("Attempt to click accept/ok button (accessibility mode)")
 
-                # TRY 1: STEALTH bypass (one-shot, human-like)
-                result = await self.browser.advanced.stealth_click_button()
+                # TRY 1: ACCESSIBILITY click (ARIA labels + keyboard navigation)
+                # This mimics screen readers and assistive tech - REQUIRED to work by law!
+                result = await self.browser.advanced.accessibility_click()
                 success = result.get('success', False) if isinstance(result, dict) else False
 
                 if success:
-                    method = result.get('method', 'stealth-click')
+                    method = result.get('method', 'accessibility')
                     button_text = result.get('button_text', 'unknown')
+                    self.action_steps.append(f"✅ Accessibility click success: '{button_text}' (method: {method})")
+                    logger.info(f"✅ ACCESSIBILITY SUCCESS - {button_text} via {method}")
+                    return True
+
+                # TRY 2: STEALTH mode if accessibility failed
+                logger.info("🥷 Accessibility failed - trying STEALTH MODE as fallback!")
+                self.action_steps.append("Accessibility failed - trying stealth mode")
+
+                stealth_result = await self.browser.advanced.stealth_click_button()
+                stealth_success = stealth_result.get('success', False) if isinstance(stealth_result, dict) else False
+
+                if stealth_success:
+                    method = stealth_result.get('method', 'stealth-click')
+                    button_text = stealth_result.get('button_text', 'unknown')
                     self.action_steps.append(f"✅ Stealth click success: '{button_text}'")
                     logger.info(f"✅ STEALTH SUCCESS - {button_text}")
                     return True
 
-                # TRY 2: FALLBACK to NUCLEAR if stealth failed
-                logger.info("🚨 Stealth failed - trying NUCLEAR BYPASS as fallback!")
+                # TRY 3: NUCLEAR as last resort
+                logger.info("🚨 Stealth failed - trying NUCLEAR BYPASS as last resort!")
                 self.action_steps.append("Stealth failed - trying nuclear bypass")
 
                 nuclear_result = await self.browser.advanced.nuclear_bypass_dialog()
@@ -709,8 +724,8 @@ Important:
                     logger.info(f"✅ NUCLEAR SUCCESS - {button_text} via {method}")
                     return True
                 else:
-                    self.action_steps.append("❌ Both stealth and nuclear failed")
-                    logger.warning("❌ BOTH METHODS FAILED - cookie dialog remains")
+                    self.action_steps.append("❌ All three methods failed (accessibility, stealth, nuclear)")
+                    logger.warning("❌ ALL METHODS FAILED - cookie dialog remains")
                     return False
 
             # PRIORITY 2: CAPTCHA checkboxes - use advanced click with description

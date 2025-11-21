@@ -941,6 +941,154 @@ class AdvancedBrowserController:
             logger.error(f"🥷 Stealth mode error: {e}")
             return {'success': False, 'message': str(e)}
 
+    async def accessibility_click(self, target_keywords: List[str] = None) -> Dict[str, Any]:
+        """
+        ACCESSIBILITY-FIRST CLICK: Use assistive technology methods
+
+        This mimics how screen readers and keyboard-only users interact with pages.
+        By law (ADA/WCAG), all interactive elements MUST work with these methods!
+
+        Benefits:
+        - REQUIRED to work by law (websites must support accessibility)
+        - Keyboard navigation is natural for assistive tech users
+        - ARIA labels give us exact element identification
+        - Less suspicious than automated mouse clicks
+        - No complex visual detection needed
+
+        Strategy:
+        1. Try ARIA label matching (most reliable)
+        2. Try role-based selection (semantic HTML)
+        3. Try keyboard navigation (Tab + Enter/Space)
+        4. Record which method works for future learning
+
+        Args:
+            target_keywords: Keywords to find in ARIA labels/text
+
+        Returns:
+            Result dict with success status and method used
+        """
+        if not self.page:
+            return {'success': False, 'message': 'No page available'}
+
+        if target_keywords is None:
+            target_keywords = ['accept', 'ok', 'agree', 'consent', 'allow', 'enable']
+
+        logger.info("♿ ACCESSIBILITY MODE: Using assistive technology methods...")
+
+        try:
+            import random
+            import asyncio
+
+            # STEP 1: Try ARIA label matching (most reliable!)
+            logger.info("🎯 Step 1: Looking for ARIA labels...")
+
+            aria_result = await self.page.evaluate('''(keywords) => {
+                // Find elements by ARIA label
+                const all_elements = document.querySelectorAll('[aria-label], [aria-labelledby], button, a, [role="button"]');
+
+                for (const elem of all_elements) {
+                    if (elem.offsetWidth === 0 || elem.offsetHeight === 0) continue;
+
+                    // Get ARIA label or text content
+                    const ariaLabel = elem.getAttribute('aria-label') || '';
+                    const ariaText = elem.innerText || '';
+                    const combined = (ariaLabel + ' ' + ariaText).toLowerCase();
+
+                    // Check if any keyword matches
+                    if (keywords.some(kw => combined.includes(kw))) {
+                        // Skip reject/decline buttons
+                        if (combined.includes('reject') || combined.includes('decline') ||
+                            combined.includes('deny') || combined.includes('refuse') ||
+                            combined.includes('afwijzen') || combined.includes('weigeren')) {
+                            continue;
+                        }
+
+                        const rect = elem.getBoundingClientRect();
+                        return {
+                            found: true,
+                            method: 'aria-label',
+                            text: ariaLabel || ariaText,
+                            selector: elem.id ? `#${elem.id}` : null,
+                            x: rect.left + rect.width / 2,
+                            y: rect.top + rect.height / 2
+                        };
+                    }
+                }
+
+                return {found: false};
+            }''', target_keywords)
+
+            if aria_result.get('found'):
+                logger.info(f"✅ Found via ARIA: '{aria_result.get('text')}'")
+
+                # Human-like delay before interaction
+                await asyncio.sleep(random.uniform(0.5, 1.2))
+
+                # Click the element
+                await self.page.mouse.click(aria_result['x'], aria_result['y'])
+                await asyncio.sleep(random.uniform(0.3, 0.7))
+
+                return {
+                    'success': True,
+                    'method': 'accessibility-aria',
+                    'button_text': aria_result.get('text'),
+                    'selector': aria_result.get('selector')
+                }
+
+            # STEP 2: Try keyboard navigation (Tab + Enter)
+            logger.info("⌨️  Step 2: Trying keyboard navigation...")
+
+            # Press Tab multiple times to cycle through focusable elements
+            for i in range(10):  # Try up to 10 tab presses
+                await self.page.keyboard.press('Tab')
+                await asyncio.sleep(random.uniform(0.2, 0.4))
+
+                # Check what's currently focused
+                focused_info = await self.page.evaluate('''(keywords) => {
+                    const focused = document.activeElement;
+                    if (!focused) return {found: false};
+
+                    const text = (focused.innerText || focused.getAttribute('aria-label') || '').toLowerCase();
+
+                    if (keywords.some(kw => text.includes(kw))) {
+                        // Skip reject buttons
+                        if (text.includes('reject') || text.includes('decline') ||
+                            text.includes('afwijzen') || text.includes('weigeren')) {
+                            return {found: false};
+                        }
+
+                        return {
+                            found: true,
+                            text: focused.innerText || focused.getAttribute('aria-label'),
+                            tagName: focused.tagName
+                        };
+                    }
+
+                    return {found: false};
+                }''', target_keywords)
+
+                if focused_info.get('found'):
+                    logger.info(f"✅ Focused on: '{focused_info.get('text')}'")
+
+                    # Press Enter or Space to activate
+                    await asyncio.sleep(random.uniform(0.3, 0.6))
+                    await self.page.keyboard.press('Enter')
+                    await asyncio.sleep(random.uniform(0.5, 1.0))
+
+                    return {
+                        'success': True,
+                        'method': 'accessibility-keyboard',
+                        'button_text': focused_info.get('text'),
+                        'attempts': i + 1
+                    }
+
+            logger.warning("♿ Accessibility methods exhausted - no match found")
+            return {'success': False, 'message': 'No accessible element found matching keywords'}
+
+        except Exception as e:
+            logger.error(f"♿ Accessibility click error: {e}")
+            return {'success': False, 'message': str(e)}
+
     async def nuclear_bypass_dialog(self, keywords: List[str] = None) -> Dict[str, Any]:
         """
         NUCLEAR OPTION: Try EVERY method to bypass a dialog/popup
