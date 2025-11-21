@@ -790,43 +790,112 @@ class AdvancedBrowserController:
 
         # METHOD 1: Keyboard Navigation (most human-like)
         try:
-            logger.info("🎹 Method 1: Keyboard Tab+Enter")
-            # Tab through elements and press Enter on buttons
-            for i in range(10):  # Try up to 10 tabs
+            logger.info("🎹 Method 1: Keyboard Tab+Enter - SMART MODE")
+
+            # 🚫 EXCLUSION KEYWORDS - Skip buttons with these words
+            # (They open MORE dialogs instead of dismissing!)
+            exclude_keywords = [
+                'beheren', 'manage', 'afwijzen', 'reject', 'weigeren', 'refuse',
+                'opties', 'options', 'meer', 'more', 'instellingen', 'settings',
+                'keuzes', 'choices', 'preferences', 'voorkeuren', 'aanpassen', 'customize',
+                'personaliseer', 'personalize', 'weiger', 'deny', 'decline'
+            ]
+
+            # ✅ EXACT MATCH PHRASES - Prioritize these "Accept All" variations
+            exact_accept_all = [
+                'alles accepteren',  # Dutch - THE ONE WE WANT!
+                'accept all',
+                'accept all cookies',
+                'alles akkoord',
+                'tout accepter',  # French
+                "j'accepte tout",
+                'alle akzeptieren',  # German
+                'alles akzeptieren',
+                'aceptar todo',  # Spanish
+                'aceptar todas',
+                'aceitar tudo'  # Portuguese
+            ]
+
+            # Tab through elements and press Enter on the RIGHT button
+            for i in range(15):  # Increased from 10 to cover more buttons
                 await self.page.keyboard.press('Tab')
                 await asyncio.sleep(0.1)
 
-                # Check if a button with accept text is focused
+                # Check what button is focused
                 focused_text = await self.page.evaluate('''() => {
                     const el = document.activeElement;
                     return el ? el.innerText.toLowerCase() : '';
                 }''')
 
+                if not focused_text:
+                    continue
+
+                # 🎯 PRIORITY 1: Exact "Accept All" matches (highest priority!)
+                if any(exact in focused_text for exact in exact_accept_all):
+                    await self.page.keyboard.press('Enter')
+                    await asyncio.sleep(1)
+                    logger.info(f"🎯 NUCLEAR SUCCESS: Exact match - '{focused_text}'")
+                    return {'success': True, 'method': 'keyboard-navigation-exact', 'button_text': focused_text, 'attempts': methods_tried}
+
+                # ⚠️ PRIORITY 2: General accept keywords BUT skip management buttons
                 if any(kw in focused_text for kw in keywords):
+                    # Skip if it contains exclusion words (manage, settings, reject, etc.)
+                    if any(excl in focused_text for excl in exclude_keywords):
+                        logger.info(f"⏭️  Skipping management button: '{focused_text}'")
+                        continue
+
+                    # This looks like a real Accept button - click it!
                     await self.page.keyboard.press('Enter')
                     await asyncio.sleep(1)
                     logger.info(f"✅ NUCLEAR SUCCESS: Keyboard Enter on '{focused_text}'")
-                    return {'success': True, 'method': 'keyboard-navigation', 'attempts': methods_tried}
+                    return {'success': True, 'method': 'keyboard-navigation', 'button_text': focused_text, 'attempts': methods_tried}
 
-            methods_tried.append('keyboard-navigation (failed)')
+            methods_tried.append('keyboard-navigation (no valid buttons found)')
         except Exception as e:
             logger.warning(f"Keyboard method failed: {e}")
             methods_tried.append(f'keyboard-navigation (error: {e})')
 
         # METHOD 2: JavaScript Event Dispatch (bypass Playwright detection)
         try:
-            logger.info("⚡ Method 2: JavaScript event dispatch")
+            logger.info("⚡ Method 2: JavaScript event dispatch - SMART MODE")
             result = await self.page.evaluate('''(keywords) => {
+                // Exclusion words - skip these!
+                const excludeWords = ['beheren', 'manage', 'afwijzen', 'reject', 'weigeren', 'refuse',
+                                      'opties', 'options', 'meer', 'more', 'instellingen', 'settings',
+                                      'keuzes', 'choices', 'preferences', 'voorkeuren', 'aanpassen', 'customize'];
+
+                // Exact "Accept All" matches (try these first!)
+                const exactMatches = ['alles accepteren', 'accept all', 'accept all cookies', 'alles akkoord',
+                                      'tout accepter', "j'accepte tout", 'alle akzeptieren', 'alles akzeptieren',
+                                      'aceptar todo', 'aceptar todas', 'aceitar tudo'];
+
                 const buttons = Array.from(document.querySelectorAll('button, a, [role="button"]'));
+
+                // PRIORITY 1: Try exact matches first
                 for (const btn of buttons) {
                     const text = btn.innerText.toLowerCase();
-                    if (keywords.some(kw => text.includes(kw))) {
-                        // Dispatch multiple events to simulate real click
+                    if (exactMatches.some(exact => text.includes(exact))) {
                         btn.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
                         btn.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
                         btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
-                        btn.click();  // Also try native click
-                        return {success: true, text: btn.innerText};
+                        btn.click();
+                        return {success: true, text: btn.innerText, priority: 'exact'};
+                    }
+                }
+
+                // PRIORITY 2: Try keyword matches (but skip exclusions)
+                for (const btn of buttons) {
+                    const text = btn.innerText.toLowerCase();
+                    if (keywords.some(kw => text.includes(kw))) {
+                        // Skip if contains exclusion words
+                        if (excludeWords.some(excl => text.includes(excl))) {
+                            continue;
+                        }
+                        btn.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+                        btn.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+                        btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                        btn.click();
+                        return {success: true, text: btn.innerText, priority: 'keyword'};
                     }
                 }
                 return {success: false};
@@ -834,26 +903,52 @@ class AdvancedBrowserController:
 
             if result.get('success'):
                 await asyncio.sleep(1)
-                logger.info(f"✅ NUCLEAR SUCCESS: JS event dispatch on '{result.get('text')}'")
-                return {'success': True, 'method': 'js-event-dispatch', 'attempts': methods_tried}
+                logger.info(f"✅ NUCLEAR SUCCESS: JS event dispatch on '{result.get('text')}' ({result.get('priority')})")
+                return {'success': True, 'method': 'js-event-dispatch', 'button_text': result.get('text'), 'attempts': methods_tried}
 
-            methods_tried.append('js-event-dispatch (no match)')
+            methods_tried.append('js-event-dispatch (no valid buttons)')
         except Exception as e:
             logger.warning(f"JS event dispatch failed: {e}")
             methods_tried.append(f'js-event-dispatch (error: {e})')
 
         # METHOD 3: Try iframes with JS dispatch
         try:
-            logger.info("🖼️  Method 3: iframe JS dispatch")
+            logger.info("🖼️  Method 3: iframe JS dispatch - SMART MODE")
             for frame in self.page.frames:
                 result = await frame.evaluate('''(keywords) => {
+                    // Exclusion words - skip these!
+                    const excludeWords = ['beheren', 'manage', 'afwijzen', 'reject', 'weigeren', 'refuse',
+                                          'opties', 'options', 'meer', 'more', 'instellingen', 'settings',
+                                          'keuzes', 'choices', 'preferences', 'voorkeuren', 'aanpassen', 'customize'];
+
+                    // Exact "Accept All" matches (try these first!)
+                    const exactMatches = ['alles accepteren', 'accept all', 'accept all cookies', 'alles akkoord',
+                                          'tout accepter', "j'accepte tout", 'alle akzeptieren', 'alles akzeptieren',
+                                          'aceptar todo', 'aceptar todas', 'aceitar tudo'];
+
                     const buttons = Array.from(document.querySelectorAll('button, a, [role="button"]'));
+
+                    // PRIORITY 1: Try exact matches first
+                    for (const btn of buttons) {
+                        const text = btn.innerText.toLowerCase();
+                        if (exactMatches.some(exact => text.includes(exact))) {
+                            btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                            btn.click();
+                            return {success: true, text: btn.innerText, priority: 'exact'};
+                        }
+                    }
+
+                    // PRIORITY 2: Try keyword matches (but skip exclusions)
                     for (const btn of buttons) {
                         const text = btn.innerText.toLowerCase();
                         if (keywords.some(kw => text.includes(kw))) {
+                            // Skip if contains exclusion words
+                            if (excludeWords.some(excl => text.includes(excl))) {
+                                continue;
+                            }
                             btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
                             btn.click();
-                            return {success: true, text: btn.innerText};
+                            return {success: true, text: btn.innerText, priority: 'keyword'};
                         }
                     }
                     return {success: false};
@@ -861,10 +956,10 @@ class AdvancedBrowserController:
 
                 if result.get('success'):
                     await asyncio.sleep(1)
-                    logger.info(f"✅ NUCLEAR SUCCESS: iframe JS dispatch on '{result.get('text')}'")
-                    return {'success': True, 'method': 'iframe-js-dispatch', 'attempts': methods_tried}
+                    logger.info(f"✅ NUCLEAR SUCCESS: iframe JS dispatch on '{result.get('text')}' ({result.get('priority')})")
+                    return {'success': True, 'method': 'iframe-js-dispatch', 'button_text': result.get('text'), 'attempts': methods_tried}
 
-            methods_tried.append('iframe-js-dispatch (no match)')
+            methods_tried.append('iframe-js-dispatch (no valid buttons)')
         except Exception as e:
             logger.warning(f"iframe JS dispatch failed: {e}")
             methods_tried.append(f'iframe-js-dispatch (error: {e})')
@@ -993,17 +1088,26 @@ class AdvancedBrowserController:
             logger.warning(f"Element removal failed: {e}")
             methods_tried.append(f'element-removal (error: {e})')
 
-        # METHOD 7: Brute force - click every visible button
+        # METHOD 7: Brute force - click SMART (skip management buttons!)
         try:
-            logger.info("🔨 Method 7: Brute force - click ALL buttons")
+            logger.info("🔨 Method 7: Brute force - SMART MODE")
             clicked = await self.page.evaluate('''(keywords) => {
+                // Exclusion words - skip these even in brute force!
+                const excludeWords = ['beheren', 'manage', 'afwijzen', 'reject', 'weigeren', 'refuse',
+                                      'opties', 'options', 'meer', 'more', 'instellingen', 'settings',
+                                      'keuzes', 'choices', 'preferences', 'voorkeuren', 'aanpassen', 'customize'];
+
+                // Exact "Accept All" matches (try these first!)
+                const exactMatches = ['alles accepteren', 'accept all', 'accept all cookies', 'alles akkoord'];
+
                 const buttons = Array.from(document.querySelectorAll('button, a, [role="button"]'));
                 let clicked = 0;
 
+                // PRIORITY 1: Click exact matches first
                 buttons.forEach(btn => {
                     if (btn.offsetWidth > 0 && btn.offsetHeight > 0) {
                         const text = btn.innerText.toLowerCase();
-                        if (keywords.some(kw => text.includes(kw))) {
+                        if (exactMatches.some(exact => text.includes(exact))) {
                             try {
                                 btn.click();
                                 clicked++;
@@ -1012,15 +1116,34 @@ class AdvancedBrowserController:
                     }
                 });
 
+                // PRIORITY 2: Click keyword matches (but skip exclusions)
+                if (clicked === 0) {
+                    buttons.forEach(btn => {
+                        if (btn.offsetWidth > 0 && btn.offsetHeight > 0) {
+                            const text = btn.innerText.toLowerCase();
+                            if (keywords.some(kw => text.includes(kw))) {
+                                // Skip if contains exclusion words
+                                if (excludeWords.some(excl => text.includes(excl))) {
+                                    return;
+                                }
+                                try {
+                                    btn.click();
+                                    clicked++;
+                                } catch (e) {}
+                            }
+                        }
+                    });
+                }
+
                 return clicked;
             }''', keywords)
 
             if clicked > 0:
                 await asyncio.sleep(1)
-                logger.info(f"✅ NUCLEAR SUCCESS: Brute forced {clicked} buttons")
-                return {'success': True, 'method': 'brute-force', 'clicked_count': clicked, 'attempts': methods_tried}
+                logger.info(f"✅ NUCLEAR SUCCESS: Smart brute forced {clicked} buttons")
+                return {'success': True, 'method': 'brute-force-smart', 'clicked_count': clicked, 'attempts': methods_tried}
 
-            methods_tried.append('brute-force (no buttons)')
+            methods_tried.append('brute-force (no valid buttons)')
         except Exception as e:
             logger.warning(f"Brute force failed: {e}")
             methods_tried.append(f'brute-force (error: {e})')
