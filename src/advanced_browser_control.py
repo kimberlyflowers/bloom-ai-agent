@@ -878,12 +878,12 @@ class AdvancedBrowserController:
             logger.info(f"🎯 Stealth: Found button '{button_info.get('text')}' ({button_info.get('priority')})")
 
             # STEP 3: Scroll button into view (humans scroll to see things)
-            await self.page.evaluate('''(x, y) => {
+            await self.page.evaluate('''([x, y]) => {
                 window.scrollTo({
                     top: y - window.innerHeight / 2,
                     behavior: 'smooth'
                 });
-            }''', button_info['x'], button_info['y'])
+            }''', [button_info['x'], button_info['y']])
 
             # Wait for scroll animation (0.3-0.6 seconds)
             await asyncio.sleep(random.uniform(0.3, 0.6))
