@@ -14,6 +14,7 @@ She can interact with ANY website like a human using vision!
 
 import asyncio
 import logging
+import os
 from typing import Optional, Dict, List, Any
 from playwright.async_api import async_playwright, Browser, Page, BrowserContext
 from src.live_screen_stream import PlaywrightScreenStreamer
@@ -68,14 +69,39 @@ class SarahBrowser:
             # Start Playwright
             self.playwright = await async_playwright().start()
 
+            # XVFB DETECTION: Check if virtual display is available
+            # If DISPLAY is set (e.g., :99), we can run REAL Chrome (not headless)!
+            display_env = os.environ.get('DISPLAY')
+            use_real_chrome = display_env is not None
+
+            if use_real_chrome:
+                logger.info(f"🖥️  Xvfb detected (DISPLAY={display_env}) - Using REAL Chrome!")
+                logger.info("🎯 Browser fingerprint will look 100% authentic!")
+                headless_mode = False  # Run real Chrome on virtual display
+            else:
+                logger.info("📱 No virtual display - Using headless mode")
+                headless_mode = self.headless
+
             # Launch browser (Chromium)
+            # With Xvfb: Real Chrome with perfect fingerprint
+            # Without Xvfb: Headless mode (fallback)
             self.browser = await self.playwright.chromium.launch(
-                headless=self.headless,
+                headless=headless_mode,
                 args=[
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
-                    '--disable-blink-features=AutomationControlled'
+                    '--disable-blink-features=AutomationControlled',
+                    # Additional anti-detection args for real Chrome
+                    '--disable-infobars',
+                    '--disable-extensions',
+                    '--disable-web-security',  # Reduces detection surface
+                    '--disable-features=IsolateOrigins,site-per-process',
+                    '--allow-running-insecure-content',
+                    # Make window look like a normal user's Chrome
+                    '--window-size=1920,1080',
+                    '--disable-popup-blocking',
+                    '--disable-prompt-on-repost'
                 ]
             )
 
