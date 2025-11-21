@@ -43,6 +43,7 @@ class AdvancedBrowserController:
     async def click_by_description(self, description: str) -> Dict[str, Any]:
         """
         Click an element based on visual/text description
+        Supports: main page, iframes, and coordinate-based clicking
 
         Args:
             description: What to click (e.g., "blue Login button", "search icon")
@@ -132,7 +133,7 @@ class AdvancedBrowserController:
                 # Generic clickable elements
                 selectors = ['button', 'a', '[role="button"]', '[onclick]']
 
-            # Try each selector
+            # PHASE 1: Try main page selectors
             for selector in selectors:
                 try:
                     element = await self.page.wait_for_selector(selector, timeout=3000)
@@ -147,15 +148,38 @@ class AdvancedBrowserController:
                 except:
                     continue
 
-            # If nothing worked, try clicking the first visible button (last resort for cookie dialogs)
+            # PHASE 2: Try iframes (Google uses iframes for consent!)
+            logger.info("🔍 Main page failed, checking iframes...")
+            try:
+                frames = self.page.frames
+                for frame in frames:
+                    for selector in selectors:
+                        try:
+                            element = await frame.wait_for_selector(selector, timeout=2000)
+                            if element:
+                                await element.click()
+                                logger.info(f"✅ Clicked in iframe - selector: {selector}")
+                                return {
+                                    'success': True,
+                                    'message': f'Clicked {description} in iframe',
+                                    'selector': selector,
+                                    'location': 'iframe'
+                                }
+                        except:
+                            continue
+            except Exception as e:
+                logger.warning(f"Iframe search failed: {e}")
+
+            # PHASE 3: Fallback - scan visible buttons by text
             if 'cookie' in desc_lower or 'accept' in desc_lower:
+                logger.info("🔍 Trying text-based button scan...")
                 try:
+                    # Try main page
                     all_buttons = await self.page.query_selector_all('button')
                     for button in all_buttons:
                         is_visible = await button.is_visible()
                         if is_visible:
                             text = await button.inner_text()
-                            # Check if button text contains acceptance words
                             if any(word in text.lower() for word in ['accept', 'ok', 'akkoord', 'accepter', 'akzeptieren', 'aceptar']):
                                 await button.click()
                                 logger.info(f"✅ Clicked button with text: {text}")
@@ -164,8 +188,59 @@ class AdvancedBrowserController:
                                     'message': f'Clicked button: {text}',
                                     'selector': 'button (text match)'
                                 }
+
+                    # Try iframes
+                    for frame in self.page.frames:
+                        frame_buttons = await frame.query_selector_all('button')
+                        for button in frame_buttons:
+                            is_visible = await button.is_visible()
+                            if is_visible:
+                                text = await button.inner_text()
+                                if any(word in text.lower() for word in ['accept', 'ok', 'akkoord', 'accepter', 'akzeptieren', 'aceptar']):
+                                    await button.click()
+                                    logger.info(f"✅ Clicked iframe button with text: {text}")
+                                    return {
+                                        'success': True,
+                                        'message': f'Clicked button: {text}',
+                                        'selector': 'iframe button (text match)'
+                                    }
                 except Exception as e:
-                    logger.warning(f"Fallback click failed: {e}")
+                    logger.warning(f"Text-based scan failed: {e}")
+
+            # PHASE 4: Coordinate-based clicking (last resort)
+            if 'cookie' in desc_lower or 'accept' in desc_lower:
+                logger.info("🔍 Trying coordinate-based clicking...")
+                try:
+                    # Find any visible button and click its center
+                    result = await self.page.evaluate('''() => {
+                        const buttons = Array.from(document.querySelectorAll('button'));
+                        for (const btn of buttons) {
+                            const text = btn.innerText.toLowerCase();
+                            if (text.includes('accept') || text.includes('ok') ||
+                                text.includes('akkoord') || text.includes('accepter')) {
+                                const rect = btn.getBoundingClientRect();
+                                if (rect.width > 0 && rect.height > 0) {
+                                    return {
+                                        x: rect.left + rect.width / 2,
+                                        y: rect.top + rect.height / 2,
+                                        text: btn.innerText
+                                    };
+                                }
+                            }
+                        }
+                        return null;
+                    }''')
+
+                    if result:
+                        await self.page.mouse.click(result['x'], result['y'])
+                        logger.info(f"✅ Coordinate click at ({result['x']}, {result['y']}) - {result['text']}")
+                        return {
+                            'success': True,
+                            'message': f'Coordinate-clicked button: {result["text"]}',
+                            'method': 'coordinate-based'
+                        }
+                except Exception as e:
+                    logger.warning(f"Coordinate click failed: {e}")
 
             return {
                 'success': False,
@@ -496,3 +571,196 @@ class AdvancedBrowserController:
             'failed_steps': len(steps) - success_count,
             'results': results
         }
+
+    async def detect_captcha(self) -> Dict[str, Any]:
+        """
+        Detect if there's a CAPTCHA on the page
+
+        Returns:
+            Detection result with captcha type if found
+        """
+        if not self.page:
+            return {'success': False, 'message': 'No page available'}
+
+        try:
+            captcha_detected = False
+            captcha_type = None
+            captcha_info = {}
+
+            # Check for reCAPTCHA
+            recaptcha_frame = None
+            for frame in self.page.frames:
+                if 'recaptcha' in frame.url.lower():
+                    recaptcha_frame = frame
+                    captcha_detected = True
+                    captcha_type = 'recaptcha'
+                    break
+
+            # Check for reCAPTCHA elements
+            if not captcha_detected:
+                recaptcha_elements = await self.page.query_selector_all('[class*="recaptcha"], [id*="recaptcha"], iframe[src*="recaptcha"]')
+                if recaptcha_elements:
+                    captcha_detected = True
+                    captcha_type = 'recaptcha'
+
+            # Check for hCaptcha
+            hcaptcha_elements = await self.page.query_selector_all('[class*="hcaptcha"], [id*="hcaptcha"], iframe[src*="hcaptcha"]')
+            if hcaptcha_elements:
+                captcha_detected = True
+                captcha_type = 'hcaptcha'
+
+            # Check for image-based CAPTCHAs
+            captcha_images = await self.page.query_selector_all('img[alt*="captcha"], img[src*="captcha"], canvas')
+            if captcha_images and not captcha_detected:
+                captcha_detected = True
+                captcha_type = 'image-captcha'
+
+            # Get page text to check for CAPTCHA instructions
+            page_text = await self.page.evaluate('() => document.body.innerText.toLowerCase()')
+            if any(phrase in page_text for phrase in ['verify you are human', 'prove you are not a robot', 'security check', 'select all images']):
+                if not captcha_detected:
+                    captcha_detected = True
+                    captcha_type = 'unknown-captcha'
+
+            return {
+                'success': True,
+                'captcha_detected': captcha_detected,
+                'captcha_type': captcha_type,
+                'captcha_info': captcha_info
+            }
+
+        except Exception as e:
+            logger.error(f"CAPTCHA detection failed: {e}")
+            return {'success': False, 'message': str(e)}
+
+    async def solve_simple_captcha(self, vision_callback=None) -> Dict[str, Any]:
+        """
+        Attempt to solve simple image-based CAPTCHAs
+        NOTE: This will NOT work for reCAPTCHA v3 (behavioral analysis)
+
+        Args:
+            vision_callback: Optional callback function that takes screenshot
+                           and returns analysis (used with Claude vision)
+
+        Returns:
+            Result dict with success status
+        """
+        if not self.page:
+            return {'success': False, 'message': 'No page available'}
+
+        try:
+            # First detect what kind of CAPTCHA we're dealing with
+            detection = await self.detect_captcha()
+
+            if not detection.get('captcha_detected'):
+                return {
+                    'success': False,
+                    'message': 'No CAPTCHA detected on page'
+                }
+
+            captcha_type = detection.get('captcha_type')
+
+            # Handle reCAPTCHA v2 checkbox
+            if captcha_type == 'recaptcha':
+                logger.info("🤖 Detected reCAPTCHA - attempting checkbox click")
+
+                # Try to click the "I'm not a robot" checkbox
+                for frame in self.page.frames:
+                    if 'recaptcha' in frame.url.lower():
+                        try:
+                            checkbox = await frame.wait_for_selector('.recaptcha-checkbox-border', timeout=5000)
+                            if checkbox:
+                                await checkbox.click()
+                                await asyncio.sleep(2)
+
+                                # Check if we need to solve image challenge
+                                image_challenge = await frame.query_selector('.rc-imageselect')
+                                if image_challenge:
+                                    return {
+                                        'success': False,
+                                        'message': 'reCAPTCHA image challenge detected - requires advanced solving',
+                                        'captcha_type': 'recaptcha-image-challenge',
+                                        'note': 'Sarah can see the challenge with vision, but solving requires pixel-perfect tile clicking'
+                                    }
+                                else:
+                                    # Checkbox worked!
+                                    return {
+                                        'success': True,
+                                        'message': 'reCAPTCHA checkbox solved!',
+                                        'method': 'checkbox-click'
+                                    }
+                        except Exception as e:
+                            logger.warning(f"reCAPTCHA checkbox click failed: {e}")
+
+                return {
+                    'success': False,
+                    'message': 'reCAPTCHA detected but could not interact',
+                    'captcha_type': captcha_type
+                }
+
+            # hCaptcha
+            elif captcha_type == 'hcaptcha':
+                return {
+                    'success': False,
+                    'message': 'hCaptcha detected - requires advanced solving',
+                    'captcha_type': captcha_type,
+                    'note': 'hCaptcha is designed to resist automation'
+                }
+
+            # Simple image CAPTCHA (less common now)
+            elif captcha_type == 'image-captcha':
+                if vision_callback:
+                    # Use vision to analyze the CAPTCHA
+                    screenshot = await self.page.screenshot()
+                    analysis = await vision_callback(screenshot)
+
+                    return {
+                        'success': False,
+                        'message': 'Image CAPTCHA detected - vision analysis available',
+                        'captcha_type': captcha_type,
+                        'vision_analysis': analysis,
+                        'note': 'Sarah can SEE the CAPTCHA but needs human help to solve complex puzzles'
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'message': 'Image CAPTCHA detected but no vision callback provided',
+                        'captcha_type': captcha_type
+                    }
+
+            else:
+                return {
+                    'success': False,
+                    'message': f'Unknown CAPTCHA type: {captcha_type}',
+                    'captcha_type': captcha_type
+                }
+
+        except Exception as e:
+            logger.error(f"CAPTCHA solving failed: {e}")
+            return {'success': False, 'message': str(e)}
+
+    async def click_coordinates(self, x: int, y: int) -> Dict[str, Any]:
+        """
+        Click at specific pixel coordinates
+        Useful for CAPTCHA tile clicking
+
+        Args:
+            x: X coordinate
+            y: Y coordinate
+
+        Returns:
+            Result dict
+        """
+        if not self.page:
+            return {'success': False, 'message': 'No page available'}
+
+        try:
+            await self.page.mouse.click(x, y)
+            logger.info(f"✅ Clicked at coordinates ({x}, {y})")
+            return {
+                'success': True,
+                'message': f'Clicked at ({x}, {y})'
+            }
+        except Exception as e:
+            logger.error(f"Coordinate click failed: {e}")
+            return {'success': False, 'message': str(e)}
