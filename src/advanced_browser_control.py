@@ -764,3 +764,271 @@ class AdvancedBrowserController:
         except Exception as e:
             logger.error(f"Coordinate click failed: {e}")
             return {'success': False, 'message': str(e)}
+
+    async def nuclear_bypass_dialog(self, keywords: List[str] = None) -> Dict[str, Any]:
+        """
+        NUCLEAR OPTION: Try EVERY method to bypass a dialog/popup
+        Uses keyboard, JS events, cookie setting, element removal, etc.
+
+        This is the "no more Mr. Nice Guy" approach that tries everything
+        until something works. Perfect for stubborn cookie dialogs!
+
+        Args:
+            keywords: Keywords to find buttons (default: accept/ok words)
+
+        Returns:
+            Result dict with method that worked
+        """
+        if not self.page:
+            return {'success': False, 'message': 'No page available'}
+
+        if keywords is None:
+            keywords = ['accept', 'ok', 'akkoord', 'accepter', 'akzeptieren', 'aceptar', 'agree', 'consent']
+
+        logger.info("☢️  NUCLEAR BYPASS ACTIVATED - Trying all methods...")
+        methods_tried = []
+
+        # METHOD 1: Keyboard Navigation (most human-like)
+        try:
+            logger.info("🎹 Method 1: Keyboard Tab+Enter")
+            # Tab through elements and press Enter on buttons
+            for i in range(10):  # Try up to 10 tabs
+                await self.page.keyboard.press('Tab')
+                await asyncio.sleep(0.1)
+
+                # Check if a button with accept text is focused
+                focused_text = await self.page.evaluate('''() => {
+                    const el = document.activeElement;
+                    return el ? el.innerText.toLowerCase() : '';
+                }''')
+
+                if any(kw in focused_text for kw in keywords):
+                    await self.page.keyboard.press('Enter')
+                    await asyncio.sleep(1)
+                    logger.info(f"✅ NUCLEAR SUCCESS: Keyboard Enter on '{focused_text}'")
+                    return {'success': True, 'method': 'keyboard-navigation', 'attempts': methods_tried}
+
+            methods_tried.append('keyboard-navigation (failed)')
+        except Exception as e:
+            logger.warning(f"Keyboard method failed: {e}")
+            methods_tried.append(f'keyboard-navigation (error: {e})')
+
+        # METHOD 2: JavaScript Event Dispatch (bypass Playwright detection)
+        try:
+            logger.info("⚡ Method 2: JavaScript event dispatch")
+            result = await self.page.evaluate('''(keywords) => {
+                const buttons = Array.from(document.querySelectorAll('button, a, [role="button"]'));
+                for (const btn of buttons) {
+                    const text = btn.innerText.toLowerCase();
+                    if (keywords.some(kw => text.includes(kw))) {
+                        // Dispatch multiple events to simulate real click
+                        btn.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+                        btn.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+                        btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                        btn.click();  // Also try native click
+                        return {success: true, text: btn.innerText};
+                    }
+                }
+                return {success: false};
+            }''', keywords)
+
+            if result.get('success'):
+                await asyncio.sleep(1)
+                logger.info(f"✅ NUCLEAR SUCCESS: JS event dispatch on '{result.get('text')}'")
+                return {'success': True, 'method': 'js-event-dispatch', 'attempts': methods_tried}
+
+            methods_tried.append('js-event-dispatch (no match)')
+        except Exception as e:
+            logger.warning(f"JS event dispatch failed: {e}")
+            methods_tried.append(f'js-event-dispatch (error: {e})')
+
+        # METHOD 3: Try iframes with JS dispatch
+        try:
+            logger.info("🖼️  Method 3: iframe JS dispatch")
+            for frame in self.page.frames:
+                result = await frame.evaluate('''(keywords) => {
+                    const buttons = Array.from(document.querySelectorAll('button, a, [role="button"]'));
+                    for (const btn of buttons) {
+                        const text = btn.innerText.toLowerCase();
+                        if (keywords.some(kw => text.includes(kw))) {
+                            btn.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                            btn.click();
+                            return {success: true, text: btn.innerText};
+                        }
+                    }
+                    return {success: false};
+                }''', keywords)
+
+                if result.get('success'):
+                    await asyncio.sleep(1)
+                    logger.info(f"✅ NUCLEAR SUCCESS: iframe JS dispatch on '{result.get('text')}'")
+                    return {'success': True, 'method': 'iframe-js-dispatch', 'attempts': methods_tried}
+
+            methods_tried.append('iframe-js-dispatch (no match)')
+        except Exception as e:
+            logger.warning(f"iframe JS dispatch failed: {e}")
+            methods_tried.append(f'iframe-js-dispatch (error: {e})')
+
+        # METHOD 4: Remove CSS pointer-events blocking
+        try:
+            logger.info("🎨 Method 4: Override CSS pointer-events")
+            await self.page.evaluate('''(keywords) => {
+                // Remove pointer-events: none on everything
+                const allElements = document.querySelectorAll('*');
+                allElements.forEach(el => {
+                    el.style.pointerEvents = 'auto';
+                });
+
+                // Now try clicking
+                const buttons = Array.from(document.querySelectorAll('button, a, [role="button"]'));
+                for (const btn of buttons) {
+                    const text = btn.innerText.toLowerCase();
+                    if (keywords.some(kw => text.includes(kw))) {
+                        btn.click();
+                        return true;
+                    }
+                }
+                return false;
+            }''', keywords)
+
+            await asyncio.sleep(1)
+            # Try our normal click now
+            result = await self.click_by_description('accept all')
+            if result.get('success'):
+                logger.info("✅ NUCLEAR SUCCESS: CSS override + click")
+                return {'success': True, 'method': 'css-override', 'attempts': methods_tried}
+
+            methods_tried.append('css-override (failed)')
+        except Exception as e:
+            logger.warning(f"CSS override failed: {e}")
+            methods_tried.append(f'css-override (error: {e})')
+
+        # METHOD 5: Direct cookie manipulation (skip dialog entirely)
+        try:
+            logger.info("🍪 Method 5: Set consent cookies directly")
+            url = self.page.url
+            domain = None
+
+            if 'google' in url:
+                domain = '.google.com'
+                # Google's consent cookie
+                await self.page.context.add_cookies([{
+                    'name': 'CONSENT',
+                    'value': 'YES+',
+                    'domain': domain,
+                    'path': '/'
+                }])
+            elif 'youtube' in url:
+                domain = '.youtube.com'
+                await self.page.context.add_cookies([{
+                    'name': 'CONSENT',
+                    'value': 'YES+',
+                    'domain': domain,
+                    'path': '/'
+                }])
+
+            if domain:
+                await self.page.reload()
+                await asyncio.sleep(2)
+                logger.info(f"✅ NUCLEAR SUCCESS: Set consent cookie for {domain}")
+                return {'success': True, 'method': 'cookie-injection', 'attempts': methods_tried}
+
+            methods_tried.append('cookie-injection (domain not supported)')
+        except Exception as e:
+            logger.warning(f"Cookie injection failed: {e}")
+            methods_tried.append(f'cookie-injection (error: {e})')
+
+        # METHOD 6: Remove the dialog element entirely (NUCLEAR!)
+        try:
+            logger.info("💣 Method 6: NUCLEAR - Remove dialog element")
+            removed = await self.page.evaluate('''() => {
+                // Find and remove common dialog/overlay elements
+                const selectors = [
+                    'dialog',
+                    '[role="dialog"]',
+                    '[class*="dialog"]',
+                    '[class*="modal"]',
+                    '[class*="popup"]',
+                    '[class*="overlay"]',
+                    '[class*="consent"]',
+                    '[class*="cookie"]',
+                    'iframe[src*="consent"]'
+                ];
+
+                let removed = 0;
+                selectors.forEach(sel => {
+                    const elements = document.querySelectorAll(sel);
+                    elements.forEach(el => {
+                        // Check if element has "accept" related text
+                        if (el.innerText && el.innerText.toLowerCase().includes('accept')) {
+                            el.remove();
+                            removed++;
+                        }
+                    });
+                });
+
+                // Also remove any fixed overlays
+                const allElements = document.querySelectorAll('*');
+                allElements.forEach(el => {
+                    const style = window.getComputedStyle(el);
+                    if (style.position === 'fixed' && style.zIndex > 1000) {
+                        const text = el.innerText?.toLowerCase() || '';
+                        if (text.includes('cookie') || text.includes('consent') || text.includes('accept')) {
+                            el.remove();
+                            removed++;
+                        }
+                    }
+                });
+
+                return removed;
+            }''')
+
+            if removed > 0:
+                await asyncio.sleep(0.5)
+                logger.info(f"✅ NUCLEAR SUCCESS: Removed {removed} dialog elements")
+                return {'success': True, 'method': 'element-removal', 'removed_count': removed, 'attempts': methods_tried}
+
+            methods_tried.append('element-removal (nothing found)')
+        except Exception as e:
+            logger.warning(f"Element removal failed: {e}")
+            methods_tried.append(f'element-removal (error: {e})')
+
+        # METHOD 7: Brute force - click every visible button
+        try:
+            logger.info("🔨 Method 7: Brute force - click ALL buttons")
+            clicked = await self.page.evaluate('''(keywords) => {
+                const buttons = Array.from(document.querySelectorAll('button, a, [role="button"]'));
+                let clicked = 0;
+
+                buttons.forEach(btn => {
+                    if (btn.offsetWidth > 0 && btn.offsetHeight > 0) {
+                        const text = btn.innerText.toLowerCase();
+                        if (keywords.some(kw => text.includes(kw))) {
+                            try {
+                                btn.click();
+                                clicked++;
+                            } catch (e) {}
+                        }
+                    }
+                });
+
+                return clicked;
+            }''', keywords)
+
+            if clicked > 0:
+                await asyncio.sleep(1)
+                logger.info(f"✅ NUCLEAR SUCCESS: Brute forced {clicked} buttons")
+                return {'success': True, 'method': 'brute-force', 'clicked_count': clicked, 'attempts': methods_tried}
+
+            methods_tried.append('brute-force (no buttons)')
+        except Exception as e:
+            logger.warning(f"Brute force failed: {e}")
+            methods_tried.append(f'brute-force (error: {e})')
+
+        # All methods failed
+        logger.error("☢️  NUCLEAR BYPASS FAILED - All methods exhausted")
+        return {
+            'success': False,
+            'message': 'All bypass methods failed',
+            'methods_tried': methods_tried
+        }
