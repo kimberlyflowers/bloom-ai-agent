@@ -338,8 +338,46 @@ Important:
                 # User sent a message - get Sarah's response
                 logger.info(f"💬 User: {content}")
 
+                # PROACTIVE COMMAND DETECTION - Execute before Claude response
+                action_result = None
+                action_description = None
+
+                content_lower = content.lower()
+
+                # Detect bypass/dismiss/close commands
+                if any(word in content_lower for word in ['bypass', 'dismiss', 'close', 'remove', 'get rid of']):
+                    if any(word in content_lower for word in ['popup', 'dialog', 'cookie', 'consent', 'accept']):
+                        logger.info("☢️  User requested popup bypass - executing nuclear bypass!")
+                        action_description = "Attempting to bypass the popup"
+                        if self.browser and self.browser.is_running:
+                            action_result = await self.browser.advanced.nuclear_bypass_dialog()
+
+                # Detect click commands
+                elif any(word in content_lower for word in ['click', 'press', 'tap']):
+                    if any(word in content_lower for word in ['accept', 'ok', 'button']):
+                        logger.info("🖱️  User requested click - trying nuclear bypass!")
+                        action_description = "Attempting to click the button"
+                        if self.browser and self.browser.is_running:
+                            action_result = await self.browser.advanced.nuclear_bypass_dialog()
+
                 # Capture current screen if browser is active (for context)
                 screenshot = await self._capture_screen_context()
+
+                # If we executed an action, add the result to the user's message
+                if action_result:
+                    if action_result.get('success'):
+                        method = action_result.get('method', 'unknown')
+                        action_context = f"\n\n[System: Action executed! {action_description} succeeded using method: {method}]"
+                        content = content + action_context
+                    else:
+                        methods_tried = action_result.get('methods_tried', [])
+                        action_context = f"\n\n[System: Action attempted but failed. {action_description} - tried {len(methods_tried)} methods but none worked]"
+                        content = content + action_context
+
+                    # Wait a moment for page to settle
+                    await asyncio.sleep(1)
+                    # Capture new screenshot after action
+                    screenshot = await self._capture_screen_context()
 
                 # Add to conversation history (with vision if available)
                 user_msg = self._format_message_for_api('user', content, screenshot)
@@ -609,6 +647,26 @@ Important:
             True if action succeeded, False if failed, None if no action
         """
         text_lower = response_text.lower()
+
+        # Detect bypass/click intent (NEW!)
+        if any(word in text_lower for word in ['clicking', 'click on', 'click the', 'clicking on', 'clicking the']):
+            if any(word in text_lower for word in ['accept', 'ok', 'button', 'alles', 'cookie', 'consent']):
+                logger.info("☢️  Sarah wants to click - executing nuclear bypass!")
+
+                # Track steps for learning
+                self.action_steps.append("Attempt to click accept/ok button")
+
+                # Execute nuclear bypass
+                result = await self.browser.advanced.nuclear_bypass_dialog()
+                success = result.get('success', False) if isinstance(result, dict) else False
+
+                if success:
+                    method = result.get('method', 'unknown')
+                    self.action_steps.append(f"Successfully bypassed using {method}")
+                else:
+                    self.action_steps.append("Click/bypass failed - all methods exhausted")
+
+                return success
 
         # Detect navigation intent with improved URL extraction
         navigate_patterns = [
