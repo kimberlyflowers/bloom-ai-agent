@@ -15,6 +15,7 @@ from anthropic import Anthropic
 from datetime import datetime
 from src.identity_persistence import MemoryType
 from src.visual_learning import get_learning_engine, UIPattern, Skill, ExperimentResult
+from src.vision_action_reasoner import VisionActionReasoner
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,9 @@ class SarahChatServer:
 
         # Initialize visual learning engine
         self.learning_engine = get_learning_engine("sarah_001")
+
+        # Initialize vision-guided action reasoning system
+        self.action_reasoner = VisionActionReasoner()
 
         # Track current activity for skill extraction
         self.current_action = None
@@ -338,45 +342,40 @@ Important:
                 # User sent a message - get Sarah's response
                 logger.info(f"💬 User: {content}")
 
-                # PROACTIVE COMMAND DETECTION - Execute before Claude response
+                # VISION-GUIDED ACTION REASONING - Execute before Claude response
+                # This replaces hardcoded pattern matching with intelligent reasoning
                 action_result = None
-                action_description = None
+                action_plan_data = None
 
-                content_lower = content.lower()
+                if self.browser and self.browser.is_running:
+                    try:
+                        # Parse user intent and create action plan
+                        action_plan_data = await self._parse_user_intent_and_plan(content)
 
-                # Detect bypass/dismiss/close commands
-                if any(word in content_lower for word in ['bypass', 'dismiss', 'close', 'remove', 'get rid of']):
-                    if any(word in content_lower for word in ['popup', 'dialog', 'cookie', 'consent', 'accept']):
-                        logger.info("🥷 User requested popup bypass - using STEALTH MODE!")
-                        action_description = "Attempting to bypass the popup (stealth mode)"
-                        if self.browser and self.browser.is_running:
-                            action_result = await self.browser.advanced.stealth_click_button()
+                        # Execute planned actions if any
+                        if action_plan_data:
+                            logger.info(f"🧠 Executing planned actions for: {action_plan_data['plan'].goal}")
+                            action_result = await self._execute_action_plan(action_plan_data)
 
-                # Detect click commands
-                elif any(word in content_lower for word in ['click', 'press', 'tap']):
-                    if any(word in content_lower for word in ['accept', 'ok', 'button']):
-                        logger.info("🥷 User requested click - using STEALTH MODE!")
-                        action_description = "Attempting to click the button (stealth mode)"
-                        if self.browser and self.browser.is_running:
-                            action_result = await self.browser.advanced.stealth_click_button()
+                            # Add context about executed actions
+                            if action_result is not None:
+                                if action_result:
+                                    action_context = f"\n\n[System: Actions executed successfully - {action_plan_data['plan'].reasoning}]"
+                                    content = content + action_context
+                                else:
+                                    action_context = f"\n\n[System: Actions attempted but some failed - {action_plan_data['plan'].reasoning}]"
+                                    content = content + action_context
+
+                    except Exception as e:
+                        logger.error(f"❌ Action planning/execution failed: {e}")
+                        logger.exception(e)
 
                 # Capture current screen if browser is active (for context)
                 screenshot = await self._capture_screen_context()
 
-                # If we executed an action, add the result to the user's message
-                if action_result:
-                    if action_result.get('success'):
-                        method = action_result.get('method', 'unknown')
-                        action_context = f"\n\n[System: Action executed! {action_description} succeeded using method: {method}]"
-                        content = content + action_context
-                    else:
-                        methods_tried = action_result.get('methods_tried', [])
-                        action_context = f"\n\n[System: Action attempted but failed. {action_description} - tried {len(methods_tried)} methods but none worked]"
-                        content = content + action_context
-
-                    # Wait a moment for page to settle
-                    await asyncio.sleep(1)
-                    # Capture new screenshot after action
+                # If we executed actions, wait for page to settle and capture new screenshot
+                if action_result is not None:
+                    await asyncio.sleep(1.5)
                     screenshot = await self._capture_screen_context()
 
                 # Add to conversation history (with vision if available)
@@ -699,9 +698,221 @@ Important:
             logger.error(f"Error getting relevant knowledge: {e}")
             return ""
 
+    async def _parse_user_intent_and_plan(self, user_message: str) -> Optional[dict]:
+        """
+        Parse user intent and create action plan using vision-guided reasoning
+
+        This replaces hardcoded pattern matching with intelligent reasoning about:
+        - What the user wants
+        - What's currently on screen
+        - What actions would achieve the goal
+
+        Returns:
+            Action plan dict or None if no action needed
+        """
+        # Parse user intent
+        user_intent = self.action_reasoner.parse_user_intent(user_message)
+
+        logger.info(f"🧠 User intent: {user_intent.get('type')} (confidence: {user_intent.get('confidence', 0):.2f})")
+
+        # Check if this requires action
+        if not self.action_reasoner.should_take_action(user_intent):
+            logger.info("💭 No action required - user acknowledgment or question")
+            return None
+
+        # Get current page context for vision analysis
+        current_url = await self.browser.page.url if self.browser and self.browser.page else "unknown"
+
+        # Build rich page context using page title, visible elements, etc.
+        page_context = f"URL: {current_url}"
+
+        try:
+            # Get page title
+            title = await self.browser.page.title()
+            if title:
+                page_context += f"\nTitle: {title}"
+
+            # Get visible text hints (check for common UI elements)
+            visible_hints = []
+
+            # Check for popups/dialogs
+            popup_visible = await self.browser.page.evaluate("""
+                () => {
+                    const dialogs = document.querySelectorAll('[role="dialog"], .modal, .popup, [class*="cookie"], [class*="consent"]');
+                    return dialogs.length > 0;
+                }
+            """)
+            if popup_visible:
+                visible_hints.append("popup/dialog visible")
+
+            # Check for video elements
+            video_visible = await self.browser.page.evaluate("""
+                () => {
+                    const videos = document.querySelectorAll('video, [class*="video"]');
+                    return videos.length > 0;
+                }
+            """)
+            if video_visible:
+                visible_hints.append("video elements present")
+
+            # Check for search boxes
+            search_visible = await self.browser.page.evaluate("""
+                () => {
+                    const searchBoxes = document.querySelectorAll('input[type="search"], input[name*="search"], input[placeholder*="search" i]');
+                    return searchBoxes.length > 0;
+                }
+            """)
+            if search_visible:
+                visible_hints.append("search box present")
+
+            # Check for forms
+            form_visible = await self.browser.page.evaluate("""
+                () => {
+                    const forms = document.querySelectorAll('form');
+                    return forms.length > 0;
+                }
+            """)
+            if form_visible:
+                visible_hints.append("form present")
+
+            if visible_hints:
+                page_context += f"\nVisible elements: {', '.join(visible_hints)}"
+
+        except Exception as e:
+            logger.warning(f"⚠️ Could not get detailed page context: {e}")
+
+        # Analyze page state
+        page_analysis = self.action_reasoner.analyze_vision_context(page_context, current_url)
+
+        logger.info(f"👁️ Page analysis: {page_analysis.page_type} - {page_analysis.state}")
+        logger.info(f"   Observations: {', '.join(page_analysis.observations)}")
+
+        # Create action plan
+        action_plan = self.action_reasoner.plan_actions(user_intent, page_analysis)
+
+        logger.info(f"📋 Action plan: {action_plan.reasoning}")
+        logger.info(f"   Steps: {len(action_plan.steps)}")
+
+        return {
+            'intent': user_intent,
+            'analysis': page_analysis,
+            'plan': action_plan
+        }
+
+    async def _execute_action_plan(self, action_plan: dict) -> Optional[bool]:
+        """
+        Execute a planned action from the vision-guided reasoning system
+
+        Args:
+            action_plan: Plan created by _parse_user_intent_and_plan
+
+        Returns:
+            True if action succeeded, False if failed, None if no action
+        """
+        plan = action_plan['plan']
+
+        if not plan.steps:
+            logger.info("✅ No actions to execute")
+            return None
+
+        logger.info(f"🚀 Executing {len(plan.steps)} planned action(s)")
+
+        overall_success = True
+
+        for i, step in enumerate(plan.steps):
+            action_type = step.get('action')
+            logger.info(f"   Step {i+1}/{len(plan.steps)}: {action_type}")
+
+            try:
+                if action_type == 'navigate':
+                    target = step.get('target')
+                    self.action_steps.append(f"Navigate to {target}")
+                    result = await self.browser.navigate(target)
+                    success = result.get('success', False) if isinstance(result, dict) else False
+
+                    if success:
+                        self.action_steps.append(f"✅ Successfully navigated to {target}")
+                    else:
+                        overall_success = False
+                        self.action_steps.append(f"❌ Navigation failed")
+
+                elif action_type == 'search':
+                    query = step.get('query')
+                    self.action_steps.append(f"Search for '{query}'")
+                    result = await self.browser.search_google(query)
+                    success = result.get('success', False) if isinstance(result, dict) else False
+
+                    if success:
+                        self.action_steps.append(f"✅ Successfully searched for '{query}'")
+                    else:
+                        overall_success = False
+                        self.action_steps.append(f"❌ Search failed")
+
+                elif action_type == 'dismiss_popup':
+                    method = step.get('method', 'accessibility_first')
+                    self.action_steps.append("Dismiss popup/cookie dialog")
+
+                    # Try accessibility first (most human-like)
+                    result = await self.browser.advanced.accessibility_click()
+                    success = result.get('success', False) if isinstance(result, dict) else False
+
+                    if success:
+                        self.action_steps.append(f"✅ Popup dismissed via accessibility")
+                    else:
+                        # Try stealth mode
+                        logger.info("🥷 Accessibility failed - trying stealth mode")
+                        stealth_result = await self.browser.advanced.stealth_click_button()
+                        success = stealth_result.get('success', False) if isinstance(stealth_result, dict) else False
+
+                        if success:
+                            self.action_steps.append(f"✅ Popup dismissed via stealth")
+                        else:
+                            overall_success = False
+                            self.action_steps.append(f"❌ Could not dismiss popup")
+
+                elif action_type == 'click_element' or action_type == 'click_by_description':
+                    description = step.get('description', 'element')
+                    self.action_steps.append(f"Click: {description}")
+
+                    result = await self.browser.advanced.click_by_description(description)
+                    success = result.get('success', False) if isinstance(result, dict) else False
+
+                    if success:
+                        self.action_steps.append(f"✅ Clicked '{description}'")
+                    else:
+                        overall_success = False
+                        self.action_steps.append(f"❌ Click failed for '{description}'")
+
+                elif action_type == 'wait':
+                    duration = step.get('duration', 2)
+                    await asyncio.sleep(duration)
+
+                elif action_type == 'observe':
+                    # Just observe - no action
+                    pass
+
+                elif action_type == 'clarify':
+                    # Need clarification - no action
+                    logger.info(f"❓ Clarification needed: {step.get('message')}")
+                    return None
+
+                else:
+                    logger.warning(f"⚠️ Unknown action type: {action_type}")
+                    overall_success = False
+
+            except Exception as e:
+                logger.error(f"❌ Error executing step {i+1}: {e}")
+                overall_success = False
+                self.action_steps.append(f"❌ Error: {str(e)}")
+
+        return overall_success
+
     async def _execute_browser_commands(self, response_text: str) -> Optional[bool]:
         """
-        Detect and execute browser commands from Sarah's response
+        LEGACY: Detect and execute browser commands from Sarah's response
+
+        This is kept for backward compatibility but should eventually be
+        fully replaced by vision-guided reasoning system.
 
         Args:
             response_text: Sarah's response text
