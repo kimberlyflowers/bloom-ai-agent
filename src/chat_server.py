@@ -707,7 +707,6 @@ Important:
                 click_description = "checkbox"  # default
 
                 # Try to extract quoted text
-                import re
                 quote_match = re.search(r"['\"]([^'\"]+)['\"]", response_text)
                 if quote_match:
                     click_description = quote_match.group(1)
@@ -736,7 +735,6 @@ Important:
 
                 # Try to extract button description
                 click_description = "button"
-                import re
                 quote_match = re.search(r"['\"]([^'\"]+)['\"]", response_text)
                 if quote_match:
                     click_description = quote_match.group(1)
