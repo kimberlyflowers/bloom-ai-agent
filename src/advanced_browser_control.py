@@ -823,7 +823,7 @@ class AdvancedBrowserController:
             await asyncio.sleep(think_time)
 
             # STEP 2: Find the button using smart detection (one-shot!)
-            button_info = await self.page.evaluate('''(keywords, exactMatches, excludeWords) => {
+            button_info = await self.page.evaluate('''([keywords, exactMatches, excludeWords]) => {
                 const buttons = Array.from(document.querySelectorAll('button, a, [role="button"]'));
 
                 // PRIORITY 1: Exact "Accept All" matches
@@ -869,7 +869,7 @@ class AdvancedBrowserController:
                 }
 
                 return {found: false};
-            }''', keywords, exact_accept_all, exclude_keywords)
+            }''', [keywords, exact_accept_all, exclude_keywords])
 
             if not button_info.get('found'):
                 logger.warning("🥷 Stealth: No valid button found")
@@ -906,7 +906,7 @@ class AdvancedBrowserController:
 
             # STEP 6: Click with JS event dispatch (most reliable, single attempt)
             # Use the EXACT button we found (no searching again)
-            click_result = await self.page.evaluate('''(btnText, exactMatches, excludeWords) => {
+            click_result = await self.page.evaluate('''(btnText) => {
                 const buttons = Array.from(document.querySelectorAll('button, a, [role="button"]'));
 
                 // Find the exact button we identified earlier
@@ -921,7 +921,7 @@ class AdvancedBrowserController:
                     }
                 }
                 return {success: false};
-            }''', button_info['text'], exact_accept_all, exclude_keywords)
+            }''', button_info['text'])
 
             if click_result.get('success'):
                 # Random post-click delay (humans wait to see result: 0.8-1.5s)
@@ -979,17 +979,58 @@ class AdvancedBrowserController:
             import random
             import asyncio
 
+            # ✅ EXACT MATCH PHRASES - Prioritize "Accept All"
+            exact_accept_all = [
+                'alles accepteren',  # Dutch - PRIORITY!
+                'accept all', 'accept all cookies', 'alles akkoord',
+                'tout accepter', "j'accepte tout",  # French
+                'alle akzeptieren', 'alles akzeptieren',  # German
+                'aceptar todo', 'aceptar todas',  # Spanish
+                'aceitar tudo'  # Portuguese
+            ]
+
+            # 🚫 EXCLUSION KEYWORDS - Skip these
+            exclude_keywords = [
+                'beheren', 'manage', 'afwijzen', 'reject', 'weigeren', 'refuse',
+                'opties', 'options', 'meer', 'more', 'instellingen', 'settings',
+                'keuzes', 'choices', 'preferences', 'voorkeuren', 'aanpassen', 'customize',
+                'personaliseer', 'personalize', 'weiger', 'deny', 'decline'
+            ]
+
             # STEP 1: Try ARIA label matching (most reliable!)
             logger.info("🎯 Step 1: Looking for ARIA labels...")
 
-            aria_result = await self.page.evaluate('''(keywords) => {
+            aria_result = await self.page.evaluate('''([keywords, exactMatches, excludeWords]) => {
                 // Find elements by ARIA label
                 const all_elements = document.querySelectorAll('[aria-label], [aria-labelledby], button, a, [role="button"]');
 
+                // PRIORITY 1: Exact "Accept All" matches
                 for (const elem of all_elements) {
                     if (elem.offsetWidth === 0 || elem.offsetHeight === 0) continue;
 
-                    // Get ARIA label or text content
+                    const ariaLabel = elem.getAttribute('aria-label') || '';
+                    const ariaText = elem.innerText || '';
+                    const combined = (ariaLabel + ' ' + ariaText).toLowerCase();
+
+                    // Check for exact matches first
+                    if (exactMatches.some(exact => combined.includes(exact))) {
+                        const rect = elem.getBoundingClientRect();
+                        return {
+                            found: true,
+                            method: 'aria-label-exact',
+                            text: ariaLabel || ariaText,
+                            selector: elem.id ? `#${elem.id}` : null,
+                            x: rect.left + rect.width / 2,
+                            y: rect.top + rect.height / 2,
+                            priority: 'exact'
+                        };
+                    }
+                }
+
+                // PRIORITY 2: Keyword matches (but skip exclusions)
+                for (const elem of all_elements) {
+                    if (elem.offsetWidth === 0 || elem.offsetHeight === 0) continue;
+
                     const ariaLabel = elem.getAttribute('aria-label') || '';
                     const ariaText = elem.innerText || '';
                     const combined = (ariaLabel + ' ' + ariaText).toLowerCase();
@@ -997,9 +1038,7 @@ class AdvancedBrowserController:
                     // Check if any keyword matches
                     if (keywords.some(kw => combined.includes(kw))) {
                         // Skip reject/decline buttons
-                        if (combined.includes('reject') || combined.includes('decline') ||
-                            combined.includes('deny') || combined.includes('refuse') ||
-                            combined.includes('afwijzen') || combined.includes('weigeren')) {
+                        if (excludeWords.some(excl => combined.includes(excl))) {
                             continue;
                         }
 
@@ -1010,13 +1049,14 @@ class AdvancedBrowserController:
                             text: ariaLabel || ariaText,
                             selector: elem.id ? `#${elem.id}` : null,
                             x: rect.left + rect.width / 2,
-                            y: rect.top + rect.height / 2
+                            y: rect.top + rect.height / 2,
+                            priority: 'keyword'
                         };
                     }
                 }
 
                 return {found: false};
-            }''', target_keywords)
+            }''', [target_keywords, exact_accept_all, exclude_keywords])
 
             if aria_result.get('found'):
                 logger.info(f"✅ Found via ARIA: '{aria_result.get('text')}'")
@@ -1044,28 +1084,39 @@ class AdvancedBrowserController:
                 await asyncio.sleep(random.uniform(0.2, 0.4))
 
                 # Check what's currently focused
-                focused_info = await self.page.evaluate('''(keywords) => {
+                focused_info = await self.page.evaluate('''([keywords, exactMatches, excludeWords]) => {
                     const focused = document.activeElement;
                     if (!focused) return {found: false};
 
                     const text = (focused.innerText || focused.getAttribute('aria-label') || '').toLowerCase();
 
+                    // PRIORITY 1: Exact matches
+                    if (exactMatches.some(exact => text.includes(exact))) {
+                        return {
+                            found: true,
+                            text: focused.innerText || focused.getAttribute('aria-label'),
+                            tagName: focused.tagName,
+                            priority: 'exact'
+                        };
+                    }
+
+                    // PRIORITY 2: Keyword matches (but skip exclusions)
                     if (keywords.some(kw => text.includes(kw))) {
-                        // Skip reject buttons
-                        if (text.includes('reject') || text.includes('decline') ||
-                            text.includes('afwijzen') || text.includes('weigeren')) {
+                        // Skip reject/decline/manage buttons
+                        if (excludeWords.some(excl => text.includes(excl))) {
                             return {found: false};
                         }
 
                         return {
                             found: true,
                             text: focused.innerText || focused.getAttribute('aria-label'),
-                            tagName: focused.tagName
+                            tagName: focused.tagName,
+                            priority: 'keyword'
                         };
                     }
 
                     return {found: false};
-                }''', target_keywords)
+                }''', [target_keywords, exact_accept_all, exclude_keywords])
 
                 if focused_info.get('found'):
                     logger.info(f"✅ Focused on: '{focused_info.get('text')}'")
