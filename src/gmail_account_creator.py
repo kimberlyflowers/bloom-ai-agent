@@ -9,6 +9,14 @@ from playwright.async_api import async_playwright, Page
 from typing import Optional
 import random
 
+# Import Sarah's improved clicking system
+try:
+    from sarah_improved_clicking import ImprovedClicking
+    IMPROVED_CLICKING_AVAILABLE = True
+except ImportError:
+    IMPROVED_CLICKING_AVAILABLE = False
+    print("⚠️  ImprovedClicking not available - using basic clicking only")
+
 logger = logging.getLogger(__name__)
 
 
@@ -23,6 +31,14 @@ class GmailAccountCreator:
         self.playwright = None
         self.browser = None
         self.context = None
+
+        # Initialize Sarah's improved clicking system
+        if IMPROVED_CLICKING_AVAILABLE:
+            self.clicker = ImprovedClicking()
+            logger.info("✅ Sarah's improved clicking system loaded!")
+        else:
+            self.clicker = None
+            logger.warning("⚠️  Using basic clicking only")
 
     async def start(self):
         """Start browser"""
@@ -73,6 +89,80 @@ class GmailAccountCreator:
             await asyncio.sleep(random.uniform(0.05, 0.15))  # 50-150ms per character
 
         await self.human_delay(300, 700)
+
+    async def smart_click(self, page: Page, description: str, timeout: int = 10000) -> dict:
+        """
+        Sarah's smart clicking - finds and clicks elements by description!
+
+        Instead of needing exact CSS selectors, just tell Sarah what to click:
+        - "Accept all" → finds and clicks the Accept all button
+        - "Search" → finds and clicks the search box
+        - "Change to English" → finds and clicks the language switcher
+
+        Args:
+            page: Playwright page object
+            description: What to click (button text, link text, placeholder, etc.)
+            timeout: How long to wait (milliseconds)
+
+        Returns:
+            dict with success status and message
+        """
+        if not self.clicker:
+            logger.warning("⚠️  Smart clicking not available, falling back to basic click")
+            try:
+                await page.click(description, timeout=timeout)
+                return {'success': True, 'message': f"Clicked '{description}' (basic mode)"}
+            except Exception as e:
+                return {'success': False, 'message': f"Failed to click: {str(e)}"}
+
+        result = await self.clicker.click_element(page, description, timeout)
+        if result['success']:
+            logger.info(f"✅ {result['message']}")
+        else:
+            logger.warning(f"❌ {result['message']}")
+
+        return result
+
+    async def smart_type(self, page: Page, text: str, input_description: str = None) -> dict:
+        """
+        Type text using smart clicking to find the input field
+
+        Args:
+            page: Playwright page
+            text: Text to type
+            input_description: Description of input (e.g., "Search", "Email", "First name")
+
+        Returns:
+            dict with success status
+        """
+        if not self.clicker:
+            logger.warning("⚠️  Smart typing not available")
+            return {'success': False, 'message': "ImprovedClicking not available"}
+
+        result = await self.clicker.type_text(page, text, input_description)
+        if result['success']:
+            logger.info(f"✅ {result['message']}")
+        else:
+            logger.warning(f"❌ {result['message']}")
+
+        return result
+
+    async def press_key(self, page: Page, key: str) -> dict:
+        """
+        Press a keyboard key
+
+        Args:
+            page: Playwright page
+            key: Key to press (e.g., "Enter", "Escape", "Tab")
+        """
+        if not self.clicker:
+            try:
+                await page.keyboard.press(key)
+                return {'success': True, 'message': f"Pressed {key}"}
+            except Exception as e:
+                return {'success': False, 'message': f"Failed to press key: {str(e)}"}
+
+        return await self.clicker.press_key(page, key)
 
     async def create_gmail_account(
         self,

@@ -21,6 +21,14 @@ import base64
 import json
 import os
 
+# Sarah's improved clicking system
+try:
+    from sarah_improved_clicking import ImprovedClicking
+    IMPROVED_CLICKING_AVAILABLE = True
+except ImportError:
+    IMPROVED_CLICKING_AVAILABLE = False
+    print("⚠️  ImprovedClicking not available - using legacy clicking only")
+
 
 # ============================================================================
 # CONFIGURATION
