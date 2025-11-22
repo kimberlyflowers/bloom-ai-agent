@@ -892,7 +892,7 @@ Important:
             return None
 
         # Get current page context for vision analysis
-        current_url = await self.browser.page.url if self.browser and self.browser.page else "unknown"
+        current_url = self.browser.page.url if self.browser and self.browser.page else "unknown"
 
         # Build rich page context using page title, visible elements, etc.
         page_context = f"URL: {current_url}"
@@ -1045,7 +1045,8 @@ Important:
                     description = step.get('description', 'element')
                     self.action_steps.append(f"Click: {description}")
 
-                    result = await self.browser.advanced.click_by_description(description)
+                    # Use Sarah's improved clicking system!
+                    result = await self.browser.smart_click(description)
                     success = result.get('success', False) if isinstance(result, dict) else False
 
                     if success:
@@ -1171,7 +1172,8 @@ Important:
                 self.action_steps.append(f"Click '{click_description}'")
 
                 # Use advanced browser control for precise clicking
-                result = await self.browser.advanced.click_by_description(click_description)
+                # Use Sarah's improved clicking system!
+                result = await self.browser.smart_click(click_description)
                 success = result.get('success', False) if isinstance(result, dict) else False
 
                 if success:
@@ -1194,7 +1196,8 @@ Important:
                 logger.info(f"🎯 Attempting to click button: {click_description}")
                 self.action_steps.append(f"Click button: '{click_description}'")
 
-                result = await self.browser.advanced.click_by_description(click_description)
+                # Use Sarah's improved clicking system!
+                result = await self.browser.smart_click(click_description)
                 success = result.get('success', False) if isinstance(result, dict) else False
 
                 if success:
