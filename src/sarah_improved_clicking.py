@@ -49,9 +49,13 @@ class ImprovedClicking:
             self._click_visible_text
         ]
 
+        # Divide timeout among strategies for faster failure
+        # Each strategy gets at most 2 seconds to avoid long waits
+        per_strategy_timeout = min(2000, timeout // len(strategies))
+
         for strategy in strategies:
             try:
-                result = await strategy(page, description, timeout)
+                result = await strategy(page, description, per_strategy_timeout)
                 if result['success']:
                     return result
             except Exception as e:

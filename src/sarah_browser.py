@@ -257,7 +257,7 @@ class SarahBrowser:
         except Exception as e:
             return {'success': False, 'message': str(e)}
 
-    async def smart_click(self, description: str, timeout: int = 10000) -> dict:
+    async def smart_click(self, description: str, timeout: int = 3000) -> dict:
         """
         Sarah's improved clicking - finds and clicks elements by description!
 
@@ -281,17 +281,22 @@ class SarahBrowser:
         if not self.page:
             return {'success': False, 'message': 'Browser not running'}
 
-        # Use improved clicker if available
+        # Try improved clicker first (faster, 8 strategies)
         if self.improved_clicker:
             result = await self.improved_clicker.click_element(self.page, description, timeout)
             if result['success']:
                 logger.info(f"✅ Sarah clicked: {description} using {result.get('method', 'unknown')}")
+                return result
             else:
-                logger.warning(f"❌ Sarah couldn't click: {description}")
-            return result
+                logger.warning(f"⚠️ Improved clicker failed, trying advanced controller...")
+
+        # Fallback to advanced browser controller (has more strategies including vision)
+        result = await self.advanced.click_by_description(description)
+        if result.get('success'):
+            logger.info(f"✅ Sarah clicked via advanced controller: {description}")
         else:
-            # Fallback to advanced browser controller
-            return await self.advanced.click_by_description(description)
+            logger.warning(f"❌ Sarah couldn't click: {description}")
+        return result
 
     async def smart_type(self, text: str, input_description: str = None) -> dict:
         """
