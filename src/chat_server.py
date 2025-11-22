@@ -112,7 +112,7 @@ Important:
             await self.server.wait_closed()
             logger.info("🔴 Chat server stopped")
 
-    async def handle_client(self, websocket: WebSocketServerProtocol, path: str):
+    async def handle_client(self, websocket: WebSocketServerProtocol):
         """Handle new client connection"""
         client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
         logger.info(f"💬 New chat client connected: {client_id}")
