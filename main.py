@@ -13,6 +13,8 @@ from src.identity_persistence import IdentityManager, Backstory, PersonalityTrai
 from src.relationship_management import RelationshipManager
 from src.ethical_framework import EthicalFramework
 from src.chat_server import SarahChatServer
+from src.sarah_browser import SarahBrowser
+from src.unified_websocket_server import UnifiedWebSocketServer
 
 # Setup logging
 logging.basicConfig(
@@ -34,18 +36,45 @@ class Sarah:
         self.relationships = RelationshipManager()
         self.ethics = EthicalFramework()
 
-        # Initialize chat server
+        # Get port configuration (Railway provides PORT env var)
+        # Railway only exposes ONE port publicly, so we use a unified server with path-based routing
+        railway_port = os.getenv("PORT")
+        websocket_port = int(railway_port) if railway_port else 8080
+
+        logger.info(f"📡 WebSocket server will run on port: {websocket_port}")
+        logger.info(f"   💬 Chat route: /chat")
+        logger.info(f"   🎥 Screen route: /screen")
+
+        # Initialize browser (headless mode for Railway)
+        # Pass a dummy port since we'll use the unified server
+        self.browser = SarahBrowser(headless=True, stream_port=websocket_port)
+        logger.info("✅ Browser initialized")
+
+        # Initialize chat server with browser
+        # Pass dummy port since we'll use unified server
         anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
         if anthropic_api_key:
             self.chat_server = SarahChatServer(
                 anthropic_api_key=anthropic_api_key,
-                port=8766,
-                identity_manager=self.identity
+                port=websocket_port,
+                identity_manager=self.identity,
+                browser=self.browser
             )
             logger.info("✅ Chat server initialized")
         else:
             logger.warning("⚠️ No ANTHROPIC_API_KEY - chat will not be available")
             self.chat_server = None
+
+        # Initialize unified WebSocket server (combines chat + screen streaming)
+        if self.chat_server:
+            self.unified_server = UnifiedWebSocketServer(
+                port=websocket_port,
+                chat_server=self.chat_server,
+                screen_streamer=self.browser.streamer
+            )
+            logger.info("✅ Unified WebSocket server initialized")
+        else:
+            self.unified_server = None
 
         logger.info("✅ Sarah is fully initialized!")
 
@@ -193,10 +222,25 @@ class Sarah:
         # Create identity on first run
         self.create_identity()
 
-        # Start chat server in background
-        if self.chat_server:
-            asyncio.create_task(self.chat_server.start_server())
-            logger.info("💬 Chat server started - ready for conversations!")
+        # Start browser first (enables screen streaming)
+        logger.info("🌐 Starting browser...")
+        browser_started = await self.browser.start()
+
+        if not browser_started:
+            logger.error("❌ Failed to start browser - screen streaming won't work")
+        else:
+            logger.info("✅ Browser ready!")
+
+        # Start unified WebSocket server (handles both chat and screen streaming)
+        if self.unified_server:
+            asyncio.create_task(self.unified_server.start())
+            logger.info("🚀 Unified WebSocket server started!")
+            logger.info("   💬 Chat available at: /chat")
+            logger.info("   🎥 Screen stream available at: /screen")
+
+            # Start screen streaming loop
+            asyncio.create_task(self.browser.streamer.stream_browser())
+            logger.info("📺 Screen streaming loop started!")
 
         # Run daily routine
         while True:

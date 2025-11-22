@@ -1,0 +1,20 @@
+# Nixpacks configuration for Railway deployment
+# This installs Xvfb (virtual display) for running real Chrome (not headless)
+
+[phases.setup]
+# Install Xvfb and dependencies for real Chrome on virtual display
+aptPkgs = [
+    "xvfb",              # X Virtual Framebuffer (creates virtual display)
+    "x11-utils",         # X11 utilities (xdpyinfo, etc.)
+    "x11vnc",            # VNC server for debugging (optional)
+    "libgtk-3-0",        # GTK3 for Chrome UI
+    "libgbm1",           # Generic Buffer Management
+    "libasound2t64",     # ALSA sound library (Ubuntu 24.04+)
+    "libxss1",           # X11 Screen Saver extension
+    "fonts-liberation",  # Liberation fonts (common web fonts)
+    "fonts-noto-color-emoji",  # Emoji fonts
+    "libappindicator3-1",      # App indicator support
+    "libnss3",           # Network Security Services
+    "libxrandr2",        # X RandR extension
+    "libatk-bridge2.0-0" # Accessibility toolkit
+]
