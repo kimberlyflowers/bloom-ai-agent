@@ -1043,17 +1043,39 @@ Important:
 
                 elif action_type == 'click_element' or action_type == 'click_by_description':
                     description = step.get('description', 'element')
-                    self.action_steps.append(f"Click: {description}")
+
+                    # Clean up the description - extract just the clickable text
+                    # Remove phrases like "on X", "in the search results", etc.
+                    clean_desc = description
+
+                    # Pattern 1: "on X in the search results" → "X"
+                    match = re.search(r'on\s+(.+?)\s+in\s+the\s+search\s+results', clean_desc, re.IGNORECASE)
+                    if match:
+                        clean_desc = match.group(1)
+
+                    # Pattern 2: "click on X" → "X"
+                    match = re.search(r'(?:click\s+on\s+|click\s+)(.+)', clean_desc, re.IGNORECASE)
+                    if match:
+                        clean_desc = match.group(1)
+
+                    # Pattern 3: Remove "in the X", "on the X" suffixes
+                    clean_desc = re.sub(r'\s+(?:in|on)\s+the\s+.+$', '', clean_desc, flags=re.IGNORECASE)
+
+                    # Pattern 4: Remove quotes if present
+                    clean_desc = clean_desc.strip('\'"')
+
+                    logger.info(f"🎯 Original: '{description}' → Cleaned: '{clean_desc}'")
+                    self.action_steps.append(f"Click: {clean_desc}")
 
                     # Use Sarah's improved clicking system!
-                    result = await self.browser.smart_click(description)
+                    result = await self.browser.smart_click(clean_desc)
                     success = result.get('success', False) if isinstance(result, dict) else False
 
                     if success:
-                        self.action_steps.append(f"✅ Clicked '{description}'")
+                        self.action_steps.append(f"✅ Clicked '{clean_desc}'")
                     else:
                         overall_success = False
-                        self.action_steps.append(f"❌ Click failed for '{description}'")
+                        self.action_steps.append(f"❌ Click failed for '{clean_desc}'")
 
                 elif action_type == 'wait':
                     duration = step.get('duration', 2)
