@@ -281,16 +281,17 @@ class SarahBrowser:
         if not self.page:
             return {'success': False, 'message': 'Browser not running'}
 
-        # Try improved clicker first (faster, 8 strategies)
+        # Use improved clicker ONLY (8 fast strategies, no slow fallback)
         if self.improved_clicker:
             result = await self.improved_clicker.click_element(self.page, description, timeout)
             if result['success']:
                 logger.info(f"✅ Sarah clicked: {description} using {result.get('method', 'unknown')}")
-                return result
             else:
-                logger.warning(f"⚠️ Improved clicker failed, trying advanced controller...")
+                logger.warning(f"❌ Sarah couldn't click: {description} - tried 8 strategies")
+            return result
 
-        # Fallback to advanced browser controller (has more strategies including vision)
+        # Only if improved clicker not available: use advanced controller
+        logger.warning(f"⚠️ Improved clicker not loaded, falling back to advanced controller")
         result = await self.advanced.click_by_description(description)
         if result.get('success'):
             logger.info(f"✅ Sarah clicked via advanced controller: {description}")
