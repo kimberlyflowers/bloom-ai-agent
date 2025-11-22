@@ -140,7 +140,7 @@ class LiveScreenStreamer:
             return None
 
     async def broadcast_frame(self, frame_data: str):
-        """Broadcast frame to all connected dashboards"""
+        """Broadcast frame to all connected dashboards (supports both websockets and Starlette WebSocket)"""
         if not self.connected_clients:
             return
 
@@ -149,8 +149,14 @@ class LiveScreenStreamer:
 
         for client in self.connected_clients:
             try:
-                await client.send(f"FRAME:{frame_data}")
-            except:
+                # Starlette WebSocket (from combined_server.py)
+                if hasattr(client, 'send_text'):
+                    await client.send_text(f"FRAME:{frame_data}")
+                # Legacy websockets library
+                else:
+                    await client.send(f"FRAME:{frame_data}")
+            except Exception as e:
+                logger.debug(f"Client disconnected during broadcast: {e}")
                 disconnected.add(client)
 
         # Remove disconnected clients
@@ -280,7 +286,7 @@ class PlaywrightScreenStreamer:
                 await asyncio.sleep(1)
 
     async def broadcast_frame(self, frame_data: str):
-        """Broadcast frame to all connected dashboards"""
+        """Broadcast frame to all connected dashboards (supports both websockets and Starlette WebSocket)"""
         if not self.connected_clients:
             return
 
@@ -288,8 +294,14 @@ class PlaywrightScreenStreamer:
 
         for client in self.connected_clients:
             try:
-                await client.send(f"FRAME:{frame_data}")
-            except:
+                # Starlette WebSocket (from combined_server.py)
+                if hasattr(client, 'send_text'):
+                    await client.send_text(f"FRAME:{frame_data}")
+                # Legacy websockets library
+                else:
+                    await client.send(f"FRAME:{frame_data}")
+            except Exception as e:
+                logger.debug(f"Client disconnected during broadcast: {e}")
                 disconnected.add(client)
 
         self.connected_clients -= disconnected

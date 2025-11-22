@@ -75,7 +75,7 @@ class ImprovedClicking:
             element = page.get_by_text(text, exact=True)
             await element.click(timeout=timeout)
             return {'success': True, 'method': 'exact_text', 'message': f"Clicked '{text}' (exact match)"}
-        except:
+        except Exception:
             raise
 
     async def _click_by_partial_text(self, page: Page, text: str, timeout: int) -> dict:
@@ -84,7 +84,7 @@ class ImprovedClicking:
             element = page.get_by_text(text).first
             await element.click(timeout=timeout)
             return {'success': True, 'method': 'partial_text', 'message': f"Clicked element containing '{text}'"}
-        except:
+        except Exception:
             raise
 
     async def _click_button_with_text(self, page: Page, text: str, timeout: int) -> dict:
@@ -93,7 +93,7 @@ class ImprovedClicking:
             element = page.locator(f"button:has-text('{text}')").first
             await element.click(timeout=timeout)
             return {'success': True, 'method': 'button_text', 'message': f"Clicked button '{text}'"}
-        except:
+        except Exception:
             raise
 
     async def _click_link_with_text(self, page: Page, text: str, timeout: int) -> dict:
@@ -102,7 +102,7 @@ class ImprovedClicking:
             element = page.locator(f"a:has-text('{text}')").first
             await element.click(timeout=timeout)
             return {'success': True, 'method': 'link_text', 'message': f"Clicked link '{text}'"}
-        except:
+        except Exception:
             raise
 
     async def _click_by_placeholder(self, page: Page, text: str, timeout: int) -> dict:
@@ -111,7 +111,7 @@ class ImprovedClicking:
             element = page.get_by_placeholder(text)
             await element.click(timeout=timeout)
             return {'success': True, 'method': 'placeholder', 'message': f"Clicked input with placeholder '{text}'"}
-        except:
+        except Exception:
             raise
 
     async def _click_by_aria_label(self, page: Page, text: str, timeout: int) -> dict:
@@ -120,7 +120,7 @@ class ImprovedClicking:
             element = page.get_by_label(text)
             await element.click(timeout=timeout)
             return {'success': True, 'method': 'aria_label', 'message': f"Clicked element with label '{text}'"}
-        except:
+        except Exception:
             raise
 
     async def _click_by_role(self, page: Page, text: str, timeout: int) -> dict:
@@ -130,7 +130,7 @@ class ImprovedClicking:
             element = page.get_by_role("button", name=text)
             await element.click(timeout=timeout)
             return {'success': True, 'method': 'role_button', 'message': f"Clicked button role '{text}'"}
-        except:
+        except Exception:
             pass
 
         try:
@@ -138,7 +138,7 @@ class ImprovedClicking:
             element = page.get_by_role("link", name=text)
             await element.click(timeout=timeout)
             return {'success': True, 'method': 'role_link', 'message': f"Clicked link role '{text}'"}
-        except:
+        except Exception:
             raise
 
     async def _click_visible_text(self, page: Page, text: str, timeout: int) -> dict:
@@ -148,7 +148,7 @@ class ImprovedClicking:
             element = page.locator(f"//*[contains(text(), '{text}') and not(ancestor::*[contains(@style, 'display: none')])]").first
             await element.click(timeout=timeout)
             return {'success': True, 'method': 'visible_text', 'message': f"Clicked visible element with '{text}'"}
-        except:
+        except Exception:
             raise
 
     async def type_text(self, page: Page, text: str, input_description: str = None) -> dict:
@@ -222,7 +222,7 @@ class ImprovedClicking:
                         'success': True,
                         'message': f"Found '{description}'"
                     }
-                except:
+                except Exception:
                     continue
 
             return {

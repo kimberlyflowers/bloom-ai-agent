@@ -682,7 +682,15 @@ Important:
                 messages=self.conversation_history
             )
 
-            # Extract response text
+            # Extract response text with bounds checking
+            if not response.content or len(response.content) == 0:
+                logger.error("Claude returned empty response content")
+                await self.send_message(websocket, {
+                    'type': 'error',
+                    'message': "Sorry, I didn't get a response. Can you try again?"
+                })
+                return
+
             sarah_response = response.content[0].text
 
             action_success = False
@@ -768,7 +776,11 @@ Important:
                     )
 
                     logger.info("✅ Retry without screenshot succeeded!")
-                    return response.content[0].text
+                    if response.content and len(response.content) > 0:
+                        return response.content[0].text
+                    else:
+                        logger.error("Retry succeeded but returned empty content")
+                        return "Sorry, I'm having trouble responding. Can you try again? 😅"
 
                 except Exception as retry_error:
                     logger.error(f"❌ Retry failed: {retry_error}")
@@ -940,6 +952,17 @@ Important:
 
         # Build rich page context using page title, visible elements, etc.
         page_context = f"URL: {current_url}"
+
+        # Check if page is available before accessing it
+        if not self.browser or not self.browser.page:
+            logger.warning("⚠️ Browser page not available for context gathering")
+            # Plan actions with minimal context
+            action_plan = self.action_reasoner.plan_actions(
+                user_intent=user_intent,
+                page_state={'state': 'unknown', 'url': current_url},
+                current_url=current_url
+            )
+            return action_plan
 
         try:
             # Get page title

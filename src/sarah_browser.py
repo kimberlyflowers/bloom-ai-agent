@@ -239,7 +239,8 @@ class SarahBrowser:
                 'title': await self.page.title(),
                 'message': 'Page info retrieved'
             }
-        except:
+        except Exception as e:
+            logger.warning(f"Could not retrieve page info: {e}")
             return {
                 'url': self.current_url,
                 'title': None,

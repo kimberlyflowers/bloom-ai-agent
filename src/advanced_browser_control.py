@@ -145,7 +145,7 @@ class AdvancedBrowserController:
                             'message': f'Clicked {description}',
                             'selector': selector
                         }
-                except:
+                except Exception:
                     continue
 
             # PHASE 2: Try iframes (Google uses iframes for consent!)
@@ -165,7 +165,7 @@ class AdvancedBrowserController:
                                     'selector': selector,
                                     'location': 'iframe'
                                 }
-                        except:
+                        except Exception:
                             continue
             except Exception as e:
                 logger.warning(f"Iframe search failed: {e}")
@@ -316,7 +316,7 @@ class AdvancedBrowserController:
                             'message': f'Filled {field_description}',
                             'selector': selector
                         }
-                except:
+                except Exception:
                     continue
 
             return {

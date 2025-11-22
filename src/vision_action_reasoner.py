@@ -162,9 +162,20 @@ Return ONLY valid JSON, no explanation.""",
                     result = json.loads(json_only)
                 except json.JSONDecodeError:
                     # If extraction failed, try the whole text
-                    result = json.loads(result_text)
+                    try:
+                        result = json.loads(result_text)
+                    except json.JSONDecodeError as e:
+                        logger.error(f"LLM returned invalid JSON (extracted): {json_only}")
+                        logger.error(f"LLM returned invalid JSON (full): {result_text}")
+                        logger.error(f"Falling back to regex parser")
+                        return self.parse_user_intent(user_message)
             else:
-                result = json.loads(result_text)
+                try:
+                    result = json.loads(result_text)
+                except json.JSONDecodeError as e:
+                    logger.error(f"LLM returned invalid JSON: {result_text}")
+                    logger.error(f"Falling back to regex parser")
+                    return self.parse_user_intent(user_message)
 
             # Post-process navigation targets: add .com if missing
             if result.get('type') == 'navigate' and result.get('target'):
