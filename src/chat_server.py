@@ -674,8 +674,10 @@ Important:
 
             action_success = False
 
-            # Execute any browser commands in her response
-            if self.browser and self.browser.is_running:
+            # DISABLED: Legacy browser command parsing - replaced by vision-guided action planning
+            # The new planning system handles actions BEFORE Sarah responds, not after
+            # Parsing her responses caused bugs like navigating to "https://successful"
+            if False and self.browser and self.browser.is_running:
                 try:
                     # Track what Sarah is about to do (for learning)
                     self.current_action = sarah_response[:100]  # First 100 chars as description
