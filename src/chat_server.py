@@ -474,17 +474,29 @@ Important:
 
                                     try:
                                         if action_type == 'navigate':
-                                            target = action.get('target')
+                                            # Support both 'target' (standard) and 'url'
+                                            target = action.get('target') or action.get('url')
+                                            if not target:
+                                                logger.warning("⚠️ Navigate action missing target")
+                                                continue
                                             await self.browser.navigate(target)
                                             await asyncio.sleep(2)
 
                                         elif action_type == 'search':
-                                            query = action.get('query')
+                                            # Support both 'query' (regex) and 'target' (LLM)
+                                            query = action.get('query') or action.get('target')
+                                            if not query:
+                                                logger.warning("⚠️ Search action missing query/target")
+                                                continue
                                             await self.browser.search_google(query)
                                             await asyncio.sleep(2)
 
                                         elif action_type == 'click_element':
-                                            description = action.get('target')
+                                            # Support both 'description', 'target', and 'element'
+                                            description = action.get('description') or action.get('target') or action.get('element')
+                                            if not description:
+                                                logger.warning("⚠️ Click action missing description/target")
+                                                continue
                                             await self.browser.advanced.click_by_description(description)
                                             await asyncio.sleep(2)
 
