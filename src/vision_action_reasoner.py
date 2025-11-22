@@ -147,12 +147,31 @@ Return ONLY valid JSON, no explanation.""",
             result_text = response.content[0].text.strip()
 
             # Extract JSON (in case Claude added explanation)
-            if '{' in result_text:
+            # Handle both single-line and multi-line responses
+            if '{' in result_text and '}' in result_text:
                 json_start = result_text.index('{')
                 json_end = result_text.rindex('}') + 1
-                result_text = result_text[json_start:json_end]
+                json_only = result_text[json_start:json_end]
 
-            result = json.loads(result_text)
+                # Try parsing the extracted JSON
+                try:
+                    result = json.loads(json_only)
+                except json.JSONDecodeError:
+                    # If extraction failed, try the whole text
+                    result = json.loads(result_text)
+            else:
+                result = json.loads(result_text)
+
+            # Post-process navigation targets: add .com if missing
+            if result.get('type') == 'navigate' and result.get('target'):
+                target = result['target']
+                # If target doesn't have a TLD and is a common domain, add .com
+                if '.' not in target and not target.startswith('http'):
+                    common_domains = ['google', 'youtube', 'facebook', 'twitter', 'instagram',
+                                     'reddit', 'amazon', 'wikipedia', 'github', 'linkedin']
+                    if target.lower() in common_domains:
+                        result['target'] = f"{target}.com"
+                        logger.info(f"   → Auto-corrected to: {result['target']}")
 
             logger.info(f"🧠 LLM Intent: {result['type']} ({result.get('confidence', 0):.2f}) - {result.get('target', '')}")
             return result
@@ -203,6 +222,12 @@ Return ONLY valid JSON, no explanation.""",
                         # Clean up common punctuation
                         target = target.rstrip('.,!?')
                         if target:
+                            # Add .com to common domains if missing
+                            if '.' not in target and not target.startswith('http'):
+                                common_domains = ['google', 'youtube', 'facebook', 'twitter', 'instagram',
+                                                 'reddit', 'amazon', 'wikipedia', 'github', 'linkedin']
+                                if target.lower() in common_domains:
+                                    target = f"{target}.com"
                             return {
                                 'type': 'navigate',
                                 'target': target,
