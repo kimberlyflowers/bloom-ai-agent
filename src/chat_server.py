@@ -525,7 +525,16 @@ Important:
 
                         # Execute planned actions if any
                         if action_plan_data:
-                            logger.info(f"🧠 Executing planned actions for: {action_plan_data['plan'].goal}")
+                            # Send immediate acknowledgment so user knows Sarah is working
+                            plan = action_plan_data['plan']
+                            ack_message = f"✨ {plan.goal}..."
+                            await self.send_message(websocket, {
+                                'type': 'sarah_thinking',
+                                'message': ack_message
+                            })
+                            logger.info(f"💭 Sarah acknowledged: {ack_message}")
+
+                            logger.info(f"🧠 Executing planned actions for: {plan.goal}")
                             action_result = await self._execute_action_plan(action_plan_data)
 
                             # Add context about executed actions

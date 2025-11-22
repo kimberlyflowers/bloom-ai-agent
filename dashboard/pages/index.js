@@ -125,6 +125,14 @@ export default function Dashboard() {
               text: data.message,
               timestamp: new Date()
             }])
+          } else if (data.type === 'sarah_thinking') {
+            // Sarah is working on something - show immediately
+            setMessages(prev => [...prev, {
+              id: Date.now(),
+              type: 'sarah-thinking',
+              text: data.message,
+              timestamp: new Date()
+            }])
           } else if (data.type === 'sarah_message') {
             // Message from Sarah
             setMessages(prev => [...prev, {
@@ -279,9 +287,10 @@ export default function Dashboard() {
           ) : (
             messages.map(msg => (
               <div key={msg.id} className={`message message-${msg.type}`}>
-                {msg.type === 'sarah' && <div className="message-avatar">SR</div>}
+                {(msg.type === 'sarah' || msg.type === 'sarah-thinking') && <div className="message-avatar">SR</div>}
                 <div className="message-content">
                   {msg.type === 'sarah' && <div className="message-sender">Sarah Rodriguez</div>}
+                  {msg.type === 'sarah-thinking' && <div className="message-sender">Sarah Rodriguez</div>}
                   {msg.type === 'user' && <div className="message-sender">You</div>}
                   <div className="message-text">{msg.text}</div>
                   <div className="message-time">
@@ -716,6 +725,14 @@ export default function Dashboard() {
         }
         .message-sarah {
           align-self: flex-start;
+        }
+        .message-sarah-thinking {
+          align-self: flex-start;
+        }
+        .message-sarah-thinking .message-content {
+          background: #fef3c7 !important;
+          font-style: italic;
+          opacity: 0.9;
         }
         .message-user {
           align-self: flex-end;
