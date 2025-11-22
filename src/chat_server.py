@@ -1389,9 +1389,14 @@ Important:
         return None
 
     async def send_message(self, websocket: WebSocketServerProtocol, data: dict):
-        """Send message to client"""
+        """Send message to client (supports both websockets and Starlette WebSocket)"""
         try:
-            await websocket.send(json.dumps(data))
+            # Starlette WebSocket (from combined_server.py)
+            if hasattr(websocket, 'send_json'):
+                await websocket.send_json(data)
+            # Legacy websockets library
+            else:
+                await websocket.send(json.dumps(data))
         except Exception as e:
             logger.error(f"Error sending message: {e}")
 

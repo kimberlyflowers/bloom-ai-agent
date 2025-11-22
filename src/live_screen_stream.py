@@ -58,7 +58,7 @@ class LiveScreenStreamer:
             logger.error(f"❌ Error starting screen stream server: {e}")
 
     async def handle_client(self, websocket: WebSocketServerProtocol, path: str):
-        """Handle new dashboard connection"""
+        """Handle new dashboard connection (supports both websockets and Starlette WebSocket)"""
         client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
 
         logger.info(f"📺 Dashboard connected: {client_id}")
@@ -66,13 +66,19 @@ class LiveScreenStreamer:
 
         try:
             # Send welcome message
-            await websocket.send(f"CONNECTED:Live stream from Sarah's screen!")
+            if hasattr(websocket, 'send_text'):
+                await websocket.send_text(f"CONNECTED:Live stream from Sarah's screen!")
+            else:
+                await websocket.send(f"CONNECTED:Live stream from Sarah's screen!")
 
             # Keep connection alive
             async for message in websocket:
                 # Handle any commands from dashboard
                 if message == "PING":
-                    await websocket.send("PONG")
+                    if hasattr(websocket, 'send_text'):
+                        await websocket.send_text("PONG")
+                    else:
+                        await websocket.send("PONG")
 
         except websockets.exceptions.ConnectionClosed:
             logger.info(f"📺 Dashboard disconnected: {client_id}")
@@ -197,24 +203,34 @@ class PlaywrightScreenStreamer:
         logger.info(f"   Dashboard can connect to: ws://[railway-url]:{self.port}")
 
     async def handle_client(self, websocket: WebSocketServerProtocol, path: str):
-        """Handle dashboard connection"""
+        """Handle dashboard connection (supports both websockets and Starlette WebSocket)"""
         client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
         logger.info(f"📺 Dashboard connected: {client_id}")
 
         self.connected_clients.add(websocket)
 
         try:
-            await websocket.send("CONNECTED:Sarah's Live Screen 🌸")
+            # Send welcome message
+            if hasattr(websocket, 'send_text'):
+                await websocket.send_text("CONNECTED:Sarah's Live Screen 🌸")
+            else:
+                await websocket.send("CONNECTED:Sarah's Live Screen 🌸")
 
             async for message in websocket:
                 if message == "PING":
-                    await websocket.send("PONG")
+                    if hasattr(websocket, 'send_text'):
+                        await websocket.send_text("PONG")
+                    else:
+                        await websocket.send("PONG")
                 elif message == "REQUEST_FRAME":
                     # Send current screenshot on demand
                     if self.browser_page:
                         frame = await self.capture_browser_screenshot()
                         if frame:
-                            await websocket.send(f"FRAME:{frame}")
+                            if hasattr(websocket, 'send_text'):
+                                await websocket.send_text(f"FRAME:{frame}")
+                            else:
+                                await websocket.send(f"FRAME:{frame}")
 
         except websockets.exceptions.ConnectionClosed:
             logger.info(f"📺 Dashboard disconnected: {client_id}")
