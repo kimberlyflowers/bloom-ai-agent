@@ -332,11 +332,19 @@ Return ONLY valid JSON, no explanation.""",
         # Handle different intent types
         if intent_type == 'navigate':
             # Simple navigation
+            # LLM and regex both use 'target' for navigate
+            nav_target = user_intent.get('target', '')
+
+            if not nav_target:
+                # No target specified
+                reasoning = "Cannot navigate - no target specified"
+                return ActionPlan(goal='navigate', steps=[], reasoning=reasoning)
+
             steps.append({
                 'action': 'navigate',
-                'target': user_intent['target']
+                'target': nav_target
             })
-            reasoning = f"Navigate to {user_intent['target']}"
+            reasoning = f"Navigate to {nav_target}"
 
         elif intent_type == 'search':
             # Check if popup is blocking
@@ -418,6 +426,22 @@ Return ONLY valid JSON, no explanation.""",
                     'element_type': 'button'
                 })
                 reasoning = "Click play button on video"
+
+        elif intent_type == 'input':
+            # User wants to type text
+            # LLM returns 'target', regex returns 'text' - support both
+            text_to_type = user_intent.get('text') or user_intent.get('target', '')
+
+            if not text_to_type:
+                # No text specified
+                reasoning = "Cannot type - no text specified"
+                return ActionPlan(goal='input', steps=[], reasoning=reasoning)
+
+            steps.append({
+                'action': 'input',
+                'text': text_to_type
+            })
+            reasoning = f"Type: {text_to_type}"
 
         elif intent_type == 'observe':
             # Just describe what's visible

@@ -1113,6 +1113,17 @@ Important:
                         overall_success = False
                         self.action_steps.append(f"❌ Click failed for '{clean_desc}'")
 
+                elif action_type == 'input':
+                    # Type text into current focused element
+                    text = step.get('text', '')
+                    if text:
+                        self.action_steps.append(f"Type: {text}")
+                        await self.browser.page.keyboard.type(text)
+                        self.action_steps.append(f"✅ Typed '{text}'")
+                    else:
+                        logger.warning("⚠️ Input action with no text specified")
+                        overall_success = False
+
                 elif action_type == 'wait':
                     duration = step.get('duration', 2)
                     await asyncio.sleep(duration)
