@@ -49,9 +49,9 @@ class ImprovedClicking:
             self._click_visible_text
         ]
 
-        # Give each strategy a reasonable timeout
-        # 2 seconds per strategy is fast enough but allows elements to load
-        per_strategy_timeout = 2000
+        # Give each strategy a quick timeout for fast failure
+        # 1 second per strategy = max 8 seconds total if all fail
+        per_strategy_timeout = 1000
 
         for strategy in strategies:
             try:
