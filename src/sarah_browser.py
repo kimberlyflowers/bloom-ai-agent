@@ -20,6 +20,15 @@ from playwright.async_api import async_playwright, Browser, Page, BrowserContext
 from src.live_screen_stream import PlaywrightScreenStreamer
 from src.advanced_browser_control import AdvancedBrowserController
 
+# Sarah's improved clicking system - helps her hands work better!
+try:
+    from src.sarah_improved_clicking import ImprovedClicking
+    IMPROVED_CLICKING_AVAILABLE = True
+except ImportError:
+    IMPROVED_CLICKING_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("⚠️  ImprovedClicking not available - using basic clicking only")
+
 logger = logging.getLogger(__name__)
 
 
@@ -56,6 +65,13 @@ class SarahBrowser:
 
         # Advanced browser controller (vision-guided interactions)
         self.advanced = AdvancedBrowserController()
+
+        # Improved clicking system - helps Sarah's hands work better!
+        if IMPROVED_CLICKING_AVAILABLE:
+            self.improved_clicker = ImprovedClicking()
+            logger.info("✅ Sarah's improved clicking loaded - hands upgraded!")
+        else:
+            self.improved_clicker = None
 
         # State
         self.is_running = False
@@ -240,6 +256,84 @@ class SarahBrowser:
             return {'success': True, 'message': f'Clicked {selector}'}
         except Exception as e:
             return {'success': False, 'message': str(e)}
+
+    async def smart_click(self, description: str, timeout: int = 10000) -> dict:
+        """
+        Sarah's improved clicking - finds and clicks elements by description!
+
+        This helps Sarah's hands work better by trying 8 different strategies
+        to find and click elements. She can just describe what she sees instead
+        of needing exact CSS selectors.
+
+        Examples:
+            - "Accept all" → finds and clicks cookie consent
+            - "Search" → finds and clicks search box
+            - "Change to English" → finds and clicks language switcher
+            - "blue Login button" → finds login button
+
+        Args:
+            description: What to click (button text, link text, placeholder, etc.)
+            timeout: How long to wait (milliseconds)
+
+        Returns:
+            dict with success status, message, and method used
+        """
+        if not self.page:
+            return {'success': False, 'message': 'Browser not running'}
+
+        # Use improved clicker if available
+        if self.improved_clicker:
+            result = await self.improved_clicker.click_element(self.page, description, timeout)
+            if result['success']:
+                logger.info(f"✅ Sarah clicked: {description} using {result.get('method', 'unknown')}")
+            else:
+                logger.warning(f"❌ Sarah couldn't click: {description}")
+            return result
+        else:
+            # Fallback to advanced browser controller
+            return await self.advanced.click_by_description(description)
+
+    async def smart_type(self, text: str, input_description: str = None) -> dict:
+        """
+        Type text using smart clicking to find the input field
+
+        Args:
+            text: Text to type
+            input_description: Description of input (e.g., "Search", "Email", "First name")
+
+        Returns:
+            dict with success status
+        """
+        if not self.page:
+            return {'success': False, 'message': 'Browser not running'}
+
+        if self.improved_clicker:
+            result = await self.improved_clicker.type_text(self.page, text, input_description)
+            if result['success']:
+                logger.info(f"✅ Sarah typed: {text[:20]}...")
+            return result
+        else:
+            return {'success': False, 'message': 'Improved clicking not available'}
+
+    async def press_key(self, key: str) -> dict:
+        """
+        Press a keyboard key
+
+        Args:
+            key: Key to press (e.g., "Enter", "Escape", "Tab")
+        """
+        if not self.page:
+            return {'success': False, 'message': 'Browser not running'}
+
+        if self.improved_clicker:
+            return await self.improved_clicker.press_key(self.page, key)
+        else:
+            # Fallback to direct keyboard press
+            try:
+                await self.page.keyboard.press(key)
+                return {'success': True, 'message': f'Pressed {key}'}
+            except Exception as e:
+                return {'success': False, 'message': str(e)}
 
     async def type_text(self, selector: str, text: str, human_like: bool = True) -> dict:
         """
