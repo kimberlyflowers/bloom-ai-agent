@@ -400,7 +400,7 @@ Important:
 
                         # Store learning goal for potential autonomous execution
                         # (user can say "go for it!" to trigger autonomous learning session)
-                        continue
+                        return
 
                     else:
                         # No specific goal yet
@@ -421,7 +421,7 @@ Important:
                             'message': response
                         })
 
-                        continue
+                        return
 
                 # AUTONOMOUS LEARNING EXECUTION - Check if user is giving Sarah permission to start
                 learning_execution_triggers = [
@@ -511,7 +511,7 @@ Important:
                                     'message': update_msg
                                 })
 
-                                continue
+                                return
 
                 # VISION-GUIDED ACTION REASONING - Execute before Claude response
                 # This replaces hardcoded pattern matching with intelligent reasoning
