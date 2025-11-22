@@ -157,6 +157,14 @@ class VisionActionReasoner:
 
         # Click/interaction intent
         if any(word in text_lower for word in ['click', 'select', 'choose', 'press', 'tap']):
+            # Check if user is asking Sarah to choose (not commanding specific click)
+            if any(phrase in text_lower for phrase in ['whatever you', 'anything', 'something', 'you choose', 'you decide', 'you pick', 'your choice']):
+                # User wants Sarah to decide what to click - not a specific click command
+                return {
+                    'type': 'observe',
+                    'confidence': 0.90
+                }
+
             # Extract what to click
             target = self._extract_click_target(user_message)
             return {
