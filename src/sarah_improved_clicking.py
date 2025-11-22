@@ -49,9 +49,10 @@ class ImprovedClicking:
             self._click_visible_text
         ]
 
-        # Give each strategy a quick timeout for fast failure
-        # 1 second per strategy = max 8 seconds total if all fail
-        per_strategy_timeout = 1000
+        # Give each strategy a balanced timeout
+        # 1.5 seconds per strategy = max 12 seconds if all fail
+        # But usually succeeds on first strategy in ~500ms
+        per_strategy_timeout = 1500
 
         for strategy in strategies:
             try:

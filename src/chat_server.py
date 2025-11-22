@@ -1003,8 +1003,8 @@ Important:
 
                     if success:
                         self.action_steps.append(f"✅ Successfully navigated to {target}")
-                        # Wait for dynamic content to load (cookie dialogs, etc.)
-                        await asyncio.sleep(2)
+                        # Wait briefly for dynamic content to load (cookie dialogs, etc.)
+                        await asyncio.sleep(1)
                     else:
                         overall_success = False
                         self.action_steps.append(f"❌ Navigation failed")
@@ -1017,8 +1017,8 @@ Important:
 
                     if success:
                         self.action_steps.append(f"✅ Successfully searched for '{query}'")
-                        # Wait for search results to fully load
-                        await asyncio.sleep(2)
+                        # Wait briefly for search results to fully load
+                        await asyncio.sleep(1)
                     else:
                         overall_success = False
                         self.action_steps.append(f"❌ Search failed")
