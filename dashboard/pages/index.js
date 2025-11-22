@@ -11,6 +11,7 @@ export default function Dashboard() {
   const [chatInput, setChatInput] = useState('')
   const [chatConnected, setChatConnected] = useState(false)
   const [isSending, setIsSending] = useState(false)
+  const [statusMessage, setStatusMessage] = useState(null) // Small status bar (not a chat message)
   const chatWsRef = useRef(null)
   const messagesEndRef = useRef(null)
 
@@ -118,23 +119,16 @@ export default function Dashboard() {
           const data = JSON.parse(event.data)
 
           if (data.type === 'system') {
-            // System message (welcome, etc.)
-            setMessages(prev => [...prev, {
-              id: Date.now(),
-              type: 'system',
-              text: data.message,
-              timestamp: new Date()
-            }])
+            // System message - show as small status, not chat message
+            setStatusMessage(data.message)
+            // Clear after 3 seconds
+            setTimeout(() => setStatusMessage(null), 3000)
           } else if (data.type === 'sarah_thinking') {
-            // Sarah is working on something - show immediately
-            setMessages(prev => [...prev, {
-              id: Date.now(),
-              type: 'sarah-thinking',
-              text: data.message,
-              timestamp: new Date()
-            }])
+            // Sarah is working - show as small status bar
+            setStatusMessage(data.message)
           } else if (data.type === 'sarah_message') {
-            // Message from Sarah
+            // Message from Sarah - clear status and show in chat
+            setStatusMessage(null)
             setMessages(prev => [...prev, {
               id: Date.now(),
               type: 'sarah',
@@ -277,6 +271,14 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Subtle status bar - pinned at top of chat */}
+        {statusMessage && (
+          <div className="status-bar">
+            <span className="status-dot"></span>
+            {statusMessage}
+          </div>
+        )}
+
         <div className="chat-messages">
           {messages.length === 0 ? (
             <div className="no-messages">
@@ -287,10 +289,9 @@ export default function Dashboard() {
           ) : (
             messages.map(msg => (
               <div key={msg.id} className={`message message-${msg.type}`}>
-                {(msg.type === 'sarah' || msg.type === 'sarah-thinking') && <div className="message-avatar">SR</div>}
+                {msg.type === 'sarah' && <div className="message-avatar">SR</div>}
                 <div className="message-content">
                   {msg.type === 'sarah' && <div className="message-sender">Sarah Rodriguez</div>}
-                  {msg.type === 'sarah-thinking' && <div className="message-sender">Sarah Rodriguez</div>}
                   {msg.type === 'user' && <div className="message-sender">You</div>}
                   <div className="message-text">{msg.text}</div>
                   <div className="message-time">
@@ -686,6 +687,33 @@ export default function Dashboard() {
           color: #111827;
           margin: 0;
         }
+        .status-bar {
+          position: sticky;
+          top: 0;
+          z-index: 10;
+          background: rgba(254, 243, 199, 0.95);
+          backdrop-filter: blur(8px);
+          padding: 0.4rem 0.75rem;
+          font-size: 0.75rem;
+          color: #92400e;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          border-radius: 6px;
+          margin-bottom: 0.5rem;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .status-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: #f59e0b;
+          animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
         .chat-messages {
           flex: 1;
           overflow-y: auto;
@@ -726,25 +754,9 @@ export default function Dashboard() {
         .message-sarah {
           align-self: flex-start;
         }
-        .message-sarah-thinking {
-          align-self: flex-start;
-        }
-        .message-sarah-thinking .message-content {
-          background: #fef3c7 !important;
-          font-style: italic;
-          opacity: 0.9;
-        }
         .message-user {
           align-self: flex-end;
           flex-direction: row-reverse;
-        }
-        .message-system {
-          align-self: center;
-          background: #fef3c7;
-          padding: 0.5rem 1rem;
-          border-radius: 8px;
-          font-size: 0.875rem;
-          color: #92400e;
         }
         .message-avatar {
           width: 40px;

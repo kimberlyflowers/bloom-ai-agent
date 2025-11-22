@@ -527,7 +527,27 @@ Important:
                         if action_plan_data:
                             # Send immediate acknowledgment so user knows Sarah is working
                             plan = action_plan_data['plan']
-                            ack_message = f"✨ {plan.goal}..."
+
+                            # Create descriptive status message based on first step
+                            if plan.steps:
+                                first_step = plan.steps[0]
+                                action_type = first_step.get('action', '')
+
+                                # Build "Sarah is ___" message
+                                if action_type == 'navigate':
+                                    target = first_step.get('target', '')
+                                    ack_message = f"Sarah is navigating to {target}..."
+                                elif action_type == 'search':
+                                    query = first_step.get('query', '')
+                                    ack_message = f"Sarah is searching for '{query}'..."
+                                elif action_type == 'click_element' or action_type == 'click_by_description':
+                                    description = first_step.get('description', first_step.get('target', 'element'))
+                                    ack_message = f"Sarah is clicking '{description}'..."
+                                else:
+                                    ack_message = f"Sarah is {plan.goal}..."
+                            else:
+                                ack_message = f"Sarah is working on it..."
+
                             await self.send_message(websocket, {
                                 'type': 'sarah_thinking',
                                 'message': ack_message
