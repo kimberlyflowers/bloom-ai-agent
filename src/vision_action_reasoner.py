@@ -13,6 +13,7 @@ for understanding and interacting with ANY web interface.
 
 import logging
 import re
+import json
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
 
@@ -56,9 +57,10 @@ class VisionActionReasoner:
     4. Execution: Do it with validation
     """
 
-    def __init__(self):
+    def __init__(self, anthropic_client=None):
         self.last_analysis: Optional[PageAnalysis] = None
         self.last_plan: Optional[ActionPlan] = None
+        self.anthropic = anthropic_client  # Optional: for LLM-based intent parsing
 
     def analyze_vision_context(self, screenshot_description: str, url: str) -> PageAnalysis:
         """
@@ -90,6 +92,75 @@ class VisionActionReasoner:
 
         self.last_analysis = analysis
         return analysis
+
+    async def parse_user_intent_with_llm(self, user_message: str) -> Dict[str, Any]:
+        """
+        Use Claude (LLM) to understand user intent - MUCH more accurate than regex!
+
+        This is like how Claude Code understands what you mean, not just pattern matching.
+        """
+        if not self.anthropic:
+            # Fall back to regex-based parsing
+            return self.parse_user_intent(user_message)
+
+        try:
+            # Ask Claude to classify the intent
+            response = await self.anthropic.messages.create(
+                model="claude-3-haiku-20240307",  # Fast and cheap
+                max_tokens=200,
+                temperature=0,  # Deterministic
+                system="""You are an intent classifier for a browser automation agent.
+Analyze the user's message and return ONLY a JSON object with this structure:
+{
+  "type": "<intent_type>",
+  "target": "<what to act on>",
+  "confidence": <0.0-1.0>
+}
+
+Intent types:
+- "navigate": User wants to go to a URL/website
+- "search": User wants to search for something
+- "click": User wants to click a specific element
+- "input": User wants to type text
+- "observe": User is asking a question or wants you to describe what you see
+- "acknowledgment": User is just saying ok/thanks/etc (no action needed)
+- "unknown": Cannot determine intent
+
+Examples:
+User: "go to youtube.com" → {"type": "navigate", "target": "youtube.com", "confidence": 0.95}
+User: "click Accept all" → {"type": "click", "target": "Accept all", "confidence": 0.90}
+User: "search for cats" → {"type": "search", "target": "cats", "confidence": 0.95}
+User: "what do you see?" → {"type": "observe", "target": "", "confidence": 0.95}
+User: "ok cool" → {"type": "acknowledgment", "target": "", "confidence": 0.95}
+User: "click on whatever you like" → {"type": "observe", "target": "", "confidence": 0.85}
+
+IMPORTANT: If user says "whatever", "anything", "you choose", "you decide" - return "observe" type, NOT "click"!
+
+Return ONLY valid JSON, no explanation.""",
+                messages=[{
+                    "role": "user",
+                    "content": user_message
+                }]
+            )
+
+            # Parse Claude's response
+            result_text = response.content[0].text.strip()
+
+            # Extract JSON (in case Claude added explanation)
+            if '{' in result_text:
+                json_start = result_text.index('{')
+                json_end = result_text.rindex('}') + 1
+                result_text = result_text[json_start:json_end]
+
+            result = json.loads(result_text)
+
+            logger.info(f"🧠 LLM Intent: {result['type']} ({result.get('confidence', 0):.2f}) - {result.get('target', '')}")
+            return result
+
+        except Exception as e:
+            logger.error(f"❌ LLM intent parsing failed: {e}")
+            # Fall back to regex
+            return self.parse_user_intent(user_message)
 
     def parse_user_intent(self, user_message: str) -> Dict[str, Any]:
         """

@@ -11,7 +11,7 @@ import re
 import base64
 import websockets
 from websockets.server import WebSocketServerProtocol
-from anthropic import Anthropic
+from anthropic import Anthropic, AsyncAnthropic
 from datetime import datetime
 from src.identity_persistence import MemoryType
 from src.visual_learning import get_learning_engine, UIPattern, Skill, ExperimentResult
@@ -48,14 +48,15 @@ class SarahChatServer:
         self.identity_manager = identity_manager
         self.browser = browser
 
-        # Initialize Anthropic client
+        # Initialize Anthropic clients (sync for main chat, async for intent parsing)
         self.anthropic = Anthropic(api_key=anthropic_api_key)
+        self.anthropic_async = AsyncAnthropic(api_key=anthropic_api_key)
 
         # Initialize visual learning engine
         self.learning_engine = get_learning_engine("sarah_001")
 
-        # Initialize vision-guided action reasoning system
-        self.action_reasoner = VisionActionReasoner()
+        # Initialize vision-guided action reasoning system with LLM support
+        self.action_reasoner = VisionActionReasoner(anthropic_client=self.anthropic_async)
 
         # Initialize autonomous learning engine
         self.autonomous_learning = AutonomousLearningEngine("sarah_001")
@@ -912,8 +913,8 @@ Important:
         Returns:
             Action plan dict or None if no action needed
         """
-        # Parse user intent
-        user_intent = self.action_reasoner.parse_user_intent(user_message)
+        # Parse user intent using LLM (Claude understands intent better than regex!)
+        user_intent = await self.action_reasoner.parse_user_intent_with_llm(user_message)
 
         logger.info(f"🧠 User intent: {user_intent.get('type')} (confidence: {user_intent.get('confidence', 0):.2f})")
 
