@@ -118,10 +118,10 @@ Analyze the user's message and return ONLY a JSON object with this structure:
 }
 
 Intent types:
-- "navigate": User wants to go to a URL/website
-- "search": User wants to search for something
-- "click": User wants to click a specific element
-- "input": User wants to type text
+- "navigate": User wants to go to a URL/website (target = URL/domain)
+- "search": User wants to search for something (target = search query)
+- "click": User wants to click a specific element (target = element description)
+- "input": User wants to type text (target = text to type)
 - "observe": User is asking a question or wants you to describe what you see
 - "acknowledgment": User is just saying ok/thanks/etc (no action needed)
 - "unknown": Cannot determine intent
@@ -130,11 +130,15 @@ Examples:
 User: "go to youtube.com" → {"type": "navigate", "target": "youtube.com", "confidence": 0.95}
 User: "click Accept all" → {"type": "click", "target": "Accept all", "confidence": 0.90}
 User: "search for cats" → {"type": "search", "target": "cats", "confidence": 0.95}
+User: "search for a topic" → {"type": "observe", "target": "", "confidence": 0.80} (vague, no specific query)
 User: "what do you see?" → {"type": "observe", "target": "", "confidence": 0.95}
 User: "ok cool" → {"type": "acknowledgment", "target": "", "confidence": 0.95}
 User: "click on whatever you like" → {"type": "observe", "target": "", "confidence": 0.85}
 
-IMPORTANT: If user says "whatever", "anything", "you choose", "you decide" - return "observe" type, NOT "click"!
+IMPORTANT:
+- If user says "whatever", "anything", "a topic", "something" without specifics - return "observe" type!
+- For search: Extract the SPECIFIC query. If vague ("a topic"), return "observe" instead of "search"
+- target field must contain the actual thing to search for, click on, or navigate to
 
 Return ONLY valid JSON, no explanation.""",
                 messages=[{
@@ -344,11 +348,19 @@ Return ONLY valid JSON, no explanation.""",
                 reasoning = "Dismiss popup before searching. "
 
             # Perform search
+            # LLM returns 'target', regex returns 'query' - support both
+            search_query = user_intent.get('query') or user_intent.get('target', '')
+
+            if not search_query:
+                # User didn't specify what to search for
+                reasoning += "Cannot search - no query specified"
+                return ActionPlan(goal='search', steps=[], reasoning=reasoning)
+
             steps.append({
                 'action': 'search',
-                'query': user_intent['query']
+                'query': search_query
             })
-            reasoning += f"Search for: {user_intent['query']}"
+            reasoning += f"Search for: {search_query}"
 
         elif intent_type == 'click':
             # Check if popup is blocking
