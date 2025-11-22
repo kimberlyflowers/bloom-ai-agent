@@ -122,6 +122,22 @@ class VisionActionReasoner:
                     'target': quote_match.group(1),
                     'confidence': 0.85
                 }
+            # Fallback: Extract word after "go to", "open", etc.
+            for keyword in ['go to', 'open', 'navigate to', 'visit']:
+                if keyword in text_lower:
+                    # Extract everything after the keyword
+                    parts = user_message.lower().split(keyword, 1)
+                    if len(parts) > 1:
+                        target = parts[1].strip().split()[0]  # First word after keyword
+                        # Clean up common punctuation
+                        target = target.rstrip('.,!?')
+                        if target:
+                            return {
+                                'type': 'navigate',
+                                'target': target,
+                                'confidence': 0.80
+                            }
+                    break
 
         # Search intent
         if any(word in text_lower for word in ['search for', 'find', 'look up', 'look for']):
