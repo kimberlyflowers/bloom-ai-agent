@@ -290,14 +290,12 @@ class SarahBrowser:
                 logger.warning(f"❌ Sarah couldn't click: {description} - tried 8 strategies")
             return result
 
-        # Only if improved clicker not available: use advanced controller
-        logger.warning(f"⚠️ Improved clicker not loaded, falling back to advanced controller")
-        result = await self.advanced.click_by_description(description)
-        if result.get('success'):
-            logger.info(f"✅ Sarah clicked via advanced controller: {description}")
-        else:
-            logger.warning(f"❌ Sarah couldn't click: {description}")
-        return result
+        # Fallback only if improved clicker module failed to load
+        logger.error("❌ Improved clicker not available - check sarah_improved_clicking.py import")
+        return {
+            'success': False,
+            'message': 'Improved clicking system not available'
+        }
 
     async def smart_type(self, text: str, input_description: str = None) -> dict:
         """
