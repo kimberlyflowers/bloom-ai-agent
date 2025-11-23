@@ -1,8 +1,5 @@
 [build]
 builder = "NIXPACKS"
 
-[build.nixpacksPlan]
-providers = ["python"]
-
-[build.nixpacksCommands]
-install = "pip install --upgrade pip && pip install -r requirements.txt && playwright install --with-deps chromium"
+[deploy]
+startCommand = "bash start.sh"
