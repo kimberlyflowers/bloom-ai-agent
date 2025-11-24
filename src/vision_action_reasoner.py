@@ -122,6 +122,26 @@ class VisionActionReasoner:
                     'target': quote_match.group(1),
                     'confidence': 0.85
                 }
+            # Extract destination after navigation keyword (without quotes or http://)
+            # Matches patterns like "go to youtube.com", "navigate to google", "open tiktok.com"
+            for keyword in ['go to', 'navigate to', 'open', 'visit']:
+                if keyword in text_lower:
+                    pattern = rf'{keyword}\s+([a-z0-9][\w\-\.]*(?:\.[a-z]{{2,}})?)'
+                    match = re.search(pattern, text_lower, re.IGNORECASE)
+                    if match:
+                        destination = match.group(1)
+                        # Add common TLD if missing (e.g., "youtube" -> "youtube.com")
+                        if '.' not in destination:
+                            common_sites = ['google', 'youtube', 'facebook', 'twitter', 'instagram',
+                                          'tiktok', 'linkedin', 'github', 'reddit', 'amazon']
+                            if destination in common_sites:
+                                destination = f"{destination}.com"
+                        return {
+                            'type': 'navigate',
+                            'target': destination,
+                            'confidence': 0.9
+                        }
+                    break
 
         # Search intent
         if any(word in text_lower for word in ['search for', 'find', 'look up', 'look for']):
