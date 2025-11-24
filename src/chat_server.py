@@ -1649,10 +1649,21 @@ Return ONLY valid JSON, no explanation."""
                         overall_success = False
                         continue
 
-                    # 🌍 UNIVERSAL ELEMENT LOCATOR - Works on ANY site, ANY language
-                    # Uses LLM vision to find search box semantically
-                    # NO hardcoded selectors, NO language assumptions
-                    success = await self._universal_search(query)
+                    # ⏰ NEW: Search timeout (30s max to prevent blocking)
+                    try:
+                        # 🌍 UNIVERSAL ELEMENT LOCATOR - Works on ANY site, ANY language
+                        # Uses LLM vision to find search box semantically
+                        # NO hardcoded selectors, NO language assumptions
+                        success = await asyncio.wait_for(
+                            self._universal_search(query),
+                            timeout=30.0
+                        )
+                    except asyncio.TimeoutError:
+                        logger.error(f"⏰ SEARCH TIMEOUT: '{query}' took too long (>30s)")
+                        await self._stream_immediate_response(f"⏰ Search timed out, moving on...")
+                        self.action_steps.append(f"⏰ Search timed out: '{query}'")
+                        overall_success = False
+                        continue
 
                     if success:
                         self.action_steps.append(f"✅ Successfully searched for '{query}'")
@@ -1710,9 +1721,15 @@ Return ONLY valid JSON, no explanation."""
                 elif action_type == 'click_element' or action_type == 'click_by_description' or action_type == 'click':
                     description = step.get('description', 'element')
 
-                    # 🛑 NEW: Validate click target BEFORE logging (prevent clicking observation text)
-                    if not await self._should_click_text(description):
-                        logger.error(f"❌ BLOCKED INVALID CLICK TARGET: '{description}'")
+                    # 🔍 DEBUG: Log what we're validating
+                    logger.info(f"🔍 VALIDATION DEBUG: action_type='{action_type}', description='{description}'")
+
+                    # 🛑 Validate click target BEFORE logging (prevent clicking observation text)
+                    should_click = await self._should_click_text(description)
+                    logger.info(f"🔍 CLICK VALIDATION RESULT: '{description}' -> {should_click}")
+
+                    if not should_click:
+                        logger.error(f"🛑 BLOCKED INVALID CLICK: '{description}'")
                         self.action_steps.append(f"❌ Cannot click descriptive text: '{description}'")
                         overall_success = False
                         continue
@@ -1724,17 +1741,28 @@ Return ONLY valid JSON, no explanation."""
                         logger.info("🔄 Waiting extra time after popup dismissal...")
                         await asyncio.sleep(2)  # Extra wait after popup
 
-                    # 🌍 UNIVERSAL ELEMENT LOCATOR - Works on ANY site, ANY language
-                    # Uses LLM vision to find element semantically
-                    # NO hardcoded selectors, NO language assumptions
-                    success = await self._universal_click(description)
+                    # ⏰ NEW: Action timeout (30s max to prevent blocking)
+                    try:
+                        # 🌍 UNIVERSAL ELEMENT LOCATOR - Works on ANY site, ANY language
+                        # Uses LLM vision to find element semantically
+                        # NO hardcoded selectors, NO language assumptions
+                        success = await asyncio.wait_for(
+                            self._universal_click(description),
+                            timeout=30.0
+                        )
 
-                    if success:
-                        self.action_steps.append(f"✅ Clicked '{description}'")
-                        logger.info(f"✅ UNIVERSAL CLICK SUCCESS: Clicked '{description}'")
-                    else:
+                        if success:
+                            self.action_steps.append(f"✅ Clicked '{description}'")
+                            logger.info(f"✅ UNIVERSAL CLICK SUCCESS: Clicked '{description}'")
+                        else:
+                            overall_success = False
+                            self.action_steps.append(f"❌ Click failed for '{description}'")
+
+                    except asyncio.TimeoutError:
+                        logger.error(f"⏰ CLICK TIMEOUT: '{description}' took too long (>30s)")
+                        await self._stream_immediate_response(f"⏰ Click timed out, moving on...")
+                        self.action_steps.append(f"⏰ Click timed out: '{description}'")
                         overall_success = False
-                        self.action_steps.append(f"❌ Click failed for '{description}'")
 
                 elif action_type == 'wait':
                     duration = step.get('duration', 2)
