@@ -290,6 +290,60 @@ Important:
 
         return None
 
+    async def _should_click_text(self, text: str) -> bool:
+        """
+        NEW METHOD - Validate if text is a valid click target
+        Prevents clicking on Sarah's observation/description text
+
+        Returns:
+            bool: True if valid click target, False if descriptive text
+        """
+        if not text:
+            return False
+
+        text_lower = text.strip().lower()
+
+        # Block Sarah's observation phrases
+        invalid_phrases = [
+            "i'm about to click",
+            "i am about to click",
+            "clicking on",
+            "i'll click",
+            "let me click",
+            "i see",
+            "i notice",
+            "observing",
+            "looking at"
+        ]
+
+        if any(phrase in text_lower for phrase in invalid_phrases):
+            logger.warning(f"🛑 Blocked invalid click target: '{text}' (observation text)")
+            return False
+
+        # Valid if it's short and specific
+        if len(text.split()) <= 5:
+            return True
+
+        logger.warning(f"⚠️  Potentially invalid click target: '{text}' (too descriptive)")
+        return True  # Allow but warn
+
+    async def _stream_immediate_response(self, message: str):
+        """
+        NEW METHOD - Send immediate real-time feedback to user
+        Eliminates silent waiting periods
+        """
+        try:
+            # Send to all connected clients
+            for client in self.connected_clients:
+                await self.send_message(client, {
+                    'type': 'sarah_progress',
+                    'message': message,
+                    'streaming': True
+                })
+            logger.info(f"📤 Streamed: {message}")
+        except Exception as e:
+            logger.error(f"❌ Stream error: {e}")
+
     def _format_message_for_api(self, role: str, content: str, screenshot: Optional[str] = None) -> Dict[str, Any]:
         """
         Format a message for Claude API with optional vision
@@ -406,6 +460,9 @@ Important:
 
                 # User sent a message - get Sarah's response
                 logger.info(f"💬 User: {content}")
+
+                # 🚀 NEW: Immediate acknowledgment (eliminates silent waiting)
+                await self._stream_immediate_response("Got it! Let me work on that...")
 
                 # AUTONOMOUS LEARNING DETECTION - Check if user is asking about Sarah's autonomous goals
                 content_lower = content.lower()
@@ -1513,6 +1570,9 @@ Return ONLY valid JSON, no explanation."""
 
         logger.info(f"🚀 Executing {len(plan.steps)} planned action(s) WITH GLOBAL CLICKING FIX")
 
+        # 🚀 NEW: Immediate feedback to user
+        await self._stream_immediate_response("I'm on it! Working on that for you now...")
+
         overall_success = True
 
         for i, step in enumerate(plan.steps):
@@ -1633,6 +1693,13 @@ Return ONLY valid JSON, no explanation."""
                 elif action_type == 'click_element' or action_type == 'click_by_description':
                     description = step.get('description', 'element')
                     self.action_steps.append(f"Click: {description}")
+
+                    # 🛑 NEW: Validate click target (prevent clicking observation text)
+                    if not await self._should_click_text(description):
+                        logger.error(f"❌ Invalid click target: '{description}'")
+                        self.action_steps.append(f"❌ Cannot click descriptive text")
+                        overall_success = False
+                        continue
 
                     # ENHANCED CLICKING: Wait for page to be ready after popup dismissal
                     if i > 0 and plan.steps[i-1].get('action') == 'dismiss_popup':
