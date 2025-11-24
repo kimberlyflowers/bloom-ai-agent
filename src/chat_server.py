@@ -65,6 +65,10 @@ class SarahChatServer:
         self.action_steps = []
         self.visual_observations = []
 
+        # Track running action task (for cancellation/interruption)
+        self.current_action_task = None
+        self.action_cancelled = False
+
         # Sarah's system prompt (her personality and context)
         self.system_prompt = self._build_system_prompt()
 
@@ -354,6 +358,18 @@ Important:
             content = data.get('message', '')
 
             if msg_type == 'user_message':
+                # Cancel any running action task (user wants to interrupt/redirect)
+                if self.current_action_task and not self.current_action_task.done():
+                    logger.info("⏸️  User interrupted - cancelling current action")
+                    self.action_cancelled = True
+                    self.current_action_task.cancel()
+                    try:
+                        await self.current_action_task
+                    except asyncio.CancelledError:
+                        pass
+                    self.current_action_task = None
+                    self.action_cancelled = False
+
                 # User sent a message - get Sarah's response
                 logger.info(f"💬 User: {content}")
 
@@ -991,6 +1007,11 @@ Important:
         overall_success = True
 
         for i, step in enumerate(plan.steps):
+            # Check if action was cancelled by user interrupt
+            if self.action_cancelled:
+                logger.info("⏸️  Action cancelled by user - stopping execution")
+                return False
+
             action_type = step.get('action')
             logger.info(f"   Step {i+1}/{len(plan.steps)}: {action_type}")
 
@@ -1219,79 +1240,11 @@ Important:
 
                 return success
 
-        # Detect navigation intent with improved URL extraction
-        navigate_patterns = [
-            # Matches "go to google.com", "navigate to github.com", etc.
-            r"(?:let me |i'll |i will |going to )?(?:go to|navigate to|visit|open|check out|head to|pull up)\s+([a-z0-9][\w\-\.]*(?:\.[a-z]{2,})?)",
-            # Matches "checking google.com", "opening github.com", etc.
-            r"(?:checking|opening|loading)\s+([a-z0-9][\w\-\.]*(?:\.[a-z]{2,})?)"
-        ]
-
-        for pattern in navigate_patterns:
-            match = re.search(pattern, text_lower)
-            if match:
-                # Extract URL and clean it
-                url = match.group(1).strip()
-
-                # Remove trailing punctuation (quotes, parentheses, etc.)
-                url = re.sub(r'["\'\)\],;]+$', '', url)
-
-                # Add .com to common domains if no TLD present
-                if '.' not in url:
-                    common_domains = ['google', 'facebook', 'twitter', 'instagram',
-                                     'tiktok', 'youtube', 'linkedin', 'github',
-                                     'reddit', 'amazon', 'netflix', 'spotify']
-                    if url.lower() in common_domains:
-                        url = f"{url}.com"
-
-                logger.info(f"🌐 Detected navigation intent: {url}")
-
-                # Track steps for learning
-                self.action_steps.append(f"Navigate to {url}")
-
-                # Execute navigation and track success
-                result = await self.browser.navigate(url)
-                success = result.get('success', False) if isinstance(result, dict) else False
-
-                if success:
-                    self.action_steps.append(f"Successfully loaded {url}")
-
-                return success
-
-        # Detect search intent (with AND without quotes!)
-        search_patterns = [
-            # WITH quotes (higher priority)
-            r"(?:let me |i'll |i will )?search(?:ing)?(?: for | on google for)?\s+['\"](.+?)['\"]",
-            r"(?:let me |i'll |i will )?(?:google|look up|search for)\s+['\"](.+?)['\"]",
-            r"searching\s+for\s+['\"](.+?)['\"]",
-            # WITHOUT quotes (more flexible)
-            r"(?:let me |i'll |i will )?search(?:ing)?(?: for | on google for | in google for)?\s+(.+?)(?:\.|!|\?|$)",
-            r"(?:let me |i'll |i will )?(?:google|look up|search for)\s+(.+?)(?:\.|!|\?|$)",
-            r"searching\s+for\s+(.+?)(?:\.|!|\?|$)"
-        ]
-
-        for pattern in search_patterns:
-            match = re.search(pattern, text_lower)
-            if match:
-                query = match.group(1).strip()
-
-                # Clean up the query - remove trailing punctuation and common words
-                query = re.sub(r'\s+(now|right now|please|for me|for us)$', '', query)
-                query = query.strip(' .,!?')
-
-                logger.info(f"🔍 Detected search intent: {query}")
-
-                # Track steps for learning
-                self.action_steps.append(f"Search Google for '{query}'")
-
-                # Execute search and track success
-                result = await self.browser.search_google(query)
-                success = result.get('success', False) if isinstance(result, dict) else False
-
-                if success:
-                    self.action_steps.append(f"Successfully searched for '{query}'")
-
-                return success
+        # Navigation and search detection REMOVED from legacy system
+        # Vision-guided reasoning (executed BEFORE Sarah responds) now handles all navigation and search
+        # This prevents Sarah's own responses from triggering unwanted navigation (e.g., "out" → https://out/)
+        #
+        # Legacy click detection below is kept as fallback for backward compatibility
 
         # No action detected
         return None
