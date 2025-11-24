@@ -18,6 +18,8 @@ from src.identity_persistence import MemoryType
 from src.visual_learning import get_learning_engine, UIPattern, Skill, ExperimentResult
 from src.vision_action_reasoner import VisionActionReasoner
 from src.autonomous_learning_engine import AutonomousLearningEngine, LearningStatus
+from src.foundation.universal_element_locator import UniversalElementLocator
+from src.foundation.universal_interactor import UniversalInteractor
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +63,9 @@ class SarahChatServer:
 
         # Initialize autonomous learning engine
         self.autonomous_learning = AutonomousLearningEngine("sarah_001")
+
+        # Initialize Universal Element Locator - LANGUAGE & LAYOUT AGNOSTIC
+        self.universal_locator = UniversalElementLocator(anthropic_api_key)
 
         # Track current activity for skill extraction
         self.current_action = None
@@ -1312,6 +1317,121 @@ Return ONLY valid JSON, no explanation."""
             'plan': action_plan
         }
 
+    async def _universal_search(self, query: str) -> bool:
+        """
+        Universal search using LLM Element Locator - works on ANY site, ANY language
+        NO hardcoded selectors - uses vision + semantic understanding
+        """
+        try:
+            logger.info(f"🔍 UNIVERSAL SEARCH: Looking for search box on ANY site/language...")
+
+            # Capture current page screenshot
+            screenshot_data = await self._capture_screen_context()
+            if not screenshot_data:
+                logger.error("❌ Could not capture screenshot")
+                return False
+
+            # Get page context
+            page_url = self.browser.page.url if self.browser and self.browser.page else ""
+            page_text = await self.browser.page.inner_text('body') if self.browser and self.browser.page else ""
+
+            # Use Universal Element Locator to find search box
+            locator_result = await self.universal_locator.locate_element(
+                user_intent=f"find search box to search for: {query}",
+                page_screenshot=screenshot_data,
+                page_url=page_url,
+                page_text=page_text[:1000]  # First 1000 chars for context
+            )
+
+            if not locator_result.get('success'):
+                logger.warning(f"❌ Universal locator couldn't find search box: {locator_result.get('reasoning')}")
+                # Fallback to Google search
+                result = await self.browser.search_google(query)
+                return result.get('success', False)
+
+            logger.info(f"✅ Universal locator found search box: {locator_result.get('reasoning')}")
+            logger.info(f"   Strategy: {locator_result.get('strategy')}, Confidence: {locator_result.get('confidence')}")
+
+            # Use Universal Interactor to interact with the element
+            interactor = UniversalInteractor(self.browser.page)
+
+            # Click the search box
+            clicked = await interactor.click_element(locator_result)
+            if not clicked:
+                logger.error("❌ Failed to click search box")
+                return False
+
+            await asyncio.sleep(0.3)
+
+            # Type the query
+            typed = await interactor.type_text(locator_result, query)
+            if not typed:
+                logger.error("❌ Failed to type in search box")
+                return False
+
+            # Press Enter
+            await interactor.press_key('Enter')
+            await asyncio.sleep(2)
+
+            logger.info(f"✅ UNIVERSAL SEARCH SUCCESS: Searched for '{query}' on {page_url}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Universal search error: {e}")
+            return False
+
+    async def _universal_click(self, description: str) -> bool:
+        """
+        Universal click using LLM Element Locator - works on ANY site, ANY language
+        NO hardcoded selectors - uses vision + semantic understanding
+        """
+        try:
+            logger.info(f"🎯 UNIVERSAL CLICK: Looking for '{description}' on ANY site/language...")
+
+            # Capture current page screenshot
+            screenshot_data = await self._capture_screen_context()
+            if not screenshot_data:
+                logger.error("❌ Could not capture screenshot")
+                return False
+
+            # Get page context
+            page_url = self.browser.page.url if self.browser and self.browser.page else ""
+            page_text = await self.browser.page.inner_text('body') if self.browser and self.browser.page else ""
+
+            # Use Universal Element Locator to find element
+            locator_result = await self.universal_locator.locate_element(
+                user_intent=f"click {description}",
+                page_screenshot=screenshot_data,
+                page_url=page_url,
+                page_text=page_text[:1000]  # First 1000 chars for context
+            )
+
+            if not locator_result.get('success'):
+                logger.warning(f"❌ Universal locator couldn't find element: {locator_result.get('reasoning')}")
+                # Fallback to existing universal_click
+                result = await self.browser.universal_click(description)
+                return result.get('success', False)
+
+            logger.info(f"✅ Universal locator found element: {locator_result.get('reasoning')}")
+            logger.info(f"   Strategy: {locator_result.get('strategy')}, Confidence: {locator_result.get('confidence')}")
+
+            # Use Universal Interactor to click the element
+            interactor = UniversalInteractor(self.browser.page)
+            clicked = await interactor.click_element(locator_result)
+
+            if clicked:
+                logger.info(f"✅ UNIVERSAL CLICK SUCCESS: Clicked '{description}'")
+                return True
+            else:
+                logger.error(f"❌ Universal click failed for '{description}'")
+                # Fallback to existing universal_click
+                result = await self.browser.universal_click(description)
+                return result.get('success', False)
+
+        except Exception as e:
+            logger.error(f"❌ Universal click error: {e}")
+            return False
+
     async def _execute_action_plan(self, action_plan: dict) -> Optional[bool]:
         """
         Execute a planned action from the vision-guided reasoning system
@@ -1390,114 +1510,10 @@ Return ONLY valid JSON, no explanation."""
                         overall_success = False
                         continue
 
-                    # UNIVERSAL CONTEXT-AWARE SEARCH
-                    # Always check current page for search box first, regardless of URL
-                    # Works on ANY site/application without hardcoded lists
-                    current_url = self.browser.page.url if self.browser and self.browser.page else ""
-                    logger.info(f"🔍 Checking current page for search box: {current_url}")
-
-                    try:
-                        # STEP 1: Look for search ICONS/BUTTONS first (magnifying glass, search buttons)
-                        # Many UIs hide the search box until you click the icon
-                        search_icon_selectors = [
-                            'button[aria-label*="search" i]',
-                            'button[title*="search" i]',
-                            'a[aria-label*="search" i]',
-                            '[role="button"][aria-label*="search" i]',
-                            'button svg[class*="search" i]',
-                            'button [class*="search" i]',
-                            'button [data-icon*="search" i]',
-                            # Common icon class names
-                            'button.search-icon',
-                            'button .icon-search',
-                            '.search-button',
-                            '#search-button'
-                        ]
-
-                        search_icon_clicked = False
-                        for selector in search_icon_selectors:
-                            try:
-                                icons = await self.browser.page.query_selector_all(selector)
-                                for icon in icons:
-                                    is_visible = await icon.is_visible()
-                                    if is_visible:
-                                        logger.info(f"🔍 Found search icon/button (selector: {selector})")
-                                        self.action_steps.append("Clicking search icon to open search box")
-                                        await icon.click()
-                                        await asyncio.sleep(0.5)  # Wait for search box to appear
-                                        search_icon_clicked = True
-                                        break
-                                if search_icon_clicked:
-                                    break
-                            except Exception as e:
-                                continue
-
-                        # STEP 2: Find visible search text inputs (may appear after clicking icon)
-                        search_box_selectors = [
-                            'input[type="search"]',
-                            'input[name*="search" i]',
-                            'input[placeholder*="search" i]',
-                            'input[aria-label*="search" i]',
-                            'input[id*="search" i]',
-                            'input[class*="search" i]',
-                            # Generic text inputs (will check visibility and context)
-                            'input[type="text"]'
-                        ]
-
-                        search_box_found = False
-                        for selector in search_box_selectors:
-                            try:
-                                # Get all matching elements
-                                search_boxes = await self.browser.page.query_selector_all(selector)
-
-                                for search_box in search_boxes:
-                                    # Check if visible (not hidden)
-                                    is_visible = await search_box.is_visible()
-                                    if not is_visible:
-                                        continue
-
-                                    # Found a visible search box!
-                                    logger.info(f"🎯 Found search box on current page (selector: {selector})")
-                                    self.action_steps.append(f"Using search box on current page")
-
-                                    # Click the search box
-                                    await search_box.click()
-                                    await asyncio.sleep(0.3)
-
-                                    # Clear any existing text
-                                    await search_box.fill('')
-                                    await asyncio.sleep(0.2)
-
-                                    # Type the query
-                                    await search_box.fill(query)
-                                    await asyncio.sleep(0.5)
-
-                                    # Press Enter
-                                    await search_box.press('Enter')
-                                    await asyncio.sleep(2)  # Wait for results
-
-                                    search_box_found = True
-                                    self.action_steps.append(f"✅ Searched on current page for '{query}'")
-                                    logger.info(f"✅ Successfully searched on current page for '{query}'")
-                                    success = True
-                                    break
-
-                                if search_box_found:
-                                    break
-                            except Exception as e:
-                                continue
-
-                        if not search_box_found:
-                            # No search box on current page - use Google
-                            logger.info("ℹ️  No search box found on current page - using Google")
-                            self.action_steps.append("No search box on current page - using Google")
-                            result = await self.browser.search_google(query)
-                            success = result.get('success', False) if isinstance(result, dict) else False
-                    except Exception as e:
-                        logger.error(f"❌ Search box detection failed: {e}")
-                        self.action_steps.append(f"❌ Search failed - using Google instead")
-                        result = await self.browser.search_google(query)
-                        success = result.get('success', False) if isinstance(result, dict) else False
+                    # 🌍 UNIVERSAL ELEMENT LOCATOR - Works on ANY site, ANY language
+                    # Uses LLM vision to find search box semantically
+                    # NO hardcoded selectors, NO language assumptions
+                    success = await self._universal_search(query)
 
                     if success:
                         self.action_steps.append(f"✅ Successfully searched for '{query}'")
@@ -1561,12 +1577,14 @@ Return ONLY valid JSON, no explanation."""
                         logger.info("🔄 Waiting extra time after popup dismissal...")
                         await asyncio.sleep(2)  # Extra wait after popup
 
-                    # GLOBAL CLICKING FIX: Use ULTRA-RELIABLE universal clicking
-                    success = await self._robust_click_execution(description, max_attempts=3)
+                    # 🌍 UNIVERSAL ELEMENT LOCATOR - Works on ANY site, ANY language
+                    # Uses LLM vision to find element semantically
+                    # NO hardcoded selectors, NO language assumptions
+                    success = await self._universal_click(description)
 
                     if success:
                         self.action_steps.append(f"✅ Clicked '{description}'")
-                        logger.info(f"✅ GLOBAL CLICKING FIX SUCCESS: Clicked '{description}'")
+                        logger.info(f"✅ UNIVERSAL CLICK SUCCESS: Clicked '{description}'")
                     else:
                         overall_success = False
                         self.action_steps.append(f"❌ Click failed for '{description}'")
