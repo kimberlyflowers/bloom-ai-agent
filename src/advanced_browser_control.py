@@ -792,7 +792,7 @@ class AdvancedBrowserController:
             return {'success': False, 'message': 'No page available'}
 
         if keywords is None:
-            keywords = ['accept', 'ok', 'akkoord', 'accepter', 'akzeptieren', 'aceptar', 'agree', 'consent']
+            keywords = ['accept', 'ok', 'akkoord', 'accepter', 'akzeptieren', 'aceptar', 'agree', 'consent', 'continue']
 
         logger.info("🥷 STEALTH MODE ACTIVATED - Acting like a human...")
 
@@ -814,7 +814,10 @@ class AdvancedBrowserController:
                 'tout accepter', "j'accepte tout",  # French
                 'alle akzeptieren', 'alles akzeptieren',  # German
                 'aceptar todo', 'aceptar todas',  # Spanish
-                'aceitar tudo'  # Portuguese
+                'aceitar tudo',  # Portuguese
+                # YouTube-specific (black button)
+                'i agree', 'i accept', 'accept the use of cookies',
+                'agree and continue', 'agree to youtube', 'continue to youtube'
             ]
 
             # STEP 1: Human-like delay (humans read/think before clicking: 1.2-3.5 seconds)
@@ -1161,7 +1164,7 @@ class AdvancedBrowserController:
             return {'success': False, 'message': 'No page available'}
 
         if keywords is None:
-            keywords = ['accept', 'ok', 'akkoord', 'accepter', 'akzeptieren', 'aceptar', 'agree', 'consent']
+            keywords = ['accept', 'ok', 'akkoord', 'accepter', 'akzeptieren', 'aceptar', 'agree', 'consent', 'continue']
 
         logger.info("☢️  NUCLEAR BYPASS ACTIVATED - Trying all methods...")
         methods_tried = []
@@ -1191,7 +1194,10 @@ class AdvancedBrowserController:
                 'alles akzeptieren',
                 'aceptar todo',  # Spanish
                 'aceptar todas',
-                'aceitar tudo'  # Portuguese
+                'aceitar tudo',  # Portuguese
+                # YouTube-specific (black button)
+                'i agree', 'i accept', 'accept the use of cookies',
+                'agree and continue', 'agree to youtube', 'continue to youtube'
             ]
 
             # Tab through elements and press Enter on the RIGHT button
