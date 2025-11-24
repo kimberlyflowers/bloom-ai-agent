@@ -1062,7 +1062,7 @@ Return ONLY valid JSON, no explanation."""
 
     async def _robust_click_execution(self, description: str, max_attempts: int = 3) -> bool:
         """
-        Ultra-reliable clicking with multiple fallback strategies and retries
+        Ultra-reliable clicking with timeout protection and multiple fallback strategies
         """
         if not await self._is_browser_ready():
             logger.error("❌ Browser not ready for clicking")
@@ -1075,33 +1075,67 @@ Return ONLY valid JSON, no explanation."""
                 # Wait for page stability before each attempt
                 await self._wait_for_page_stability(5000)
 
-                # Strategy 1: Smart click with visual analysis
-                result = await self.browser.smart_click(description)
-                if result and result.get('success'):
-                    logger.info(f"✅ Smart click succeeded on attempt {attempt + 1}")
-                    return True
+                # STRATEGY 1: Smart click with visual analysis (with timeout)
+                try:
+                    async with asyncio.timeout(10):  # 10 second timeout
+                        result = await self.browser.smart_click(description)
+                        if result and result.get('success'):
+                            logger.info(f"✅ Smart click succeeded on attempt {attempt + 1}")
+                            return True
+                except asyncio.TimeoutError:
+                    logger.warning(f"⏰ Smart click timed out on attempt {attempt + 1}")
 
-                # Strategy 2: Basic click by description
-                result = await self.browser.advanced.click_by_description(description)
-                if result and result.get('success'):
-                    logger.info(f"✅ Basic click succeeded on attempt {attempt + 1}")
-                    return True
+                # STRATEGY 2: Basic click by description (with timeout)
+                try:
+                    async with asyncio.timeout(8):  # 8 second timeout
+                        result = await self.browser.advanced.click_by_description(description)
+                        if result and result.get('success'):
+                            logger.info(f"✅ Basic click succeeded on attempt {attempt + 1}")
+                            return True
+                except asyncio.TimeoutError:
+                    logger.warning(f"⏰ Basic click timed out on attempt {attempt + 1}")
 
-                # Strategy 3: Accessibility-focused click
-                result = await self.browser.advanced.accessibility_click()
-                if result and result.get('success'):
-                    logger.info(f"✅ Accessibility click succeeded on attempt {attempt + 1}")
-                    return True
+                # STRATEGY 3: Universal cookie detector (for accept/consent buttons)
+                try:
+                    async with asyncio.timeout(5):  # 5 second timeout
+                        result = await self.browser.advanced.universal_cookie_detector()
+                        if result and result.get('success'):
+                            logger.info(f"✅ Universal detector succeeded on attempt {attempt + 1}")
+                            return True
+                except asyncio.TimeoutError:
+                    logger.warning(f"⏰ Universal detector timed out on attempt {attempt + 1}")
 
-                # Strategy 4: Universal cookie detector (for accept/consent buttons)
-                result = await self.browser.advanced.universal_cookie_detector()
-                if result and result.get('success'):
-                    logger.info(f"✅ Universal detector succeeded on attempt {attempt + 1}")
-                    return True
+                # STRATEGY 4: Direct YouTube video clicking (SPECIFIC FIX)
+                if any(word in description.lower() for word in ['video', 'youtube', 'watch', 'play']):
+                    try:
+                        async with asyncio.timeout(6):  # 6 second timeout
+                            # Try direct YouTube video selectors
+                            youtube_selectors = [
+                                '#video-title',
+                                'ytd-video-renderer #video-title', 
+                                '#thumbnail',
+                                'ytd-thumbnail',
+                                'a#thumbnail'
+                            ]
+                            
+                            for selector in youtube_selectors:
+                                try:
+                                    elements = await self.browser.page.query_selector_all(selector)
+                                    for element in elements:
+                                        if await element.is_visible():
+                                            logger.info(f"🎯 Found YouTube element: {selector}")
+                                            await element.click()
+                                            await asyncio.sleep(2)
+                                            logger.info(f"✅ Direct YouTube click succeeded: {selector}")
+                                            return True
+                                except Exception:
+                                    continue
+                    except asyncio.TimeoutError:
+                        logger.warning(f"⏰ YouTube click timed out on attempt {attempt + 1}")
 
-                # Wait before retry
+                # Wait before retry with exponential backoff
                 if attempt < max_attempts - 1:
-                    wait_time = 2 * (attempt + 1)  # Exponential backoff: 2, 4, 6 seconds
+                    wait_time = 2 * (attempt + 1)  # 2, 4, 6 seconds
                     logger.info(f"⏳ Waiting {wait_time}s before retry...")
                     await asyncio.sleep(wait_time)
 
@@ -1466,7 +1500,12 @@ Return ONLY valid JSON, no explanation."""
                     description = step.get('description', 'element')
                     self.action_steps.append(f"Click: {description}")
 
-                    # Use ULTRA-RELIABLE clicking with retries and multiple strategies
+                    # ENHANCED CLICKING: Wait for page to be ready after popup dismissal
+                    if i > 0 and plan.steps[i-1].get('action') == 'dismiss_popup':
+                        logger.info("🔄 Waiting extra time after popup dismissal...")
+                        await asyncio.sleep(2)  # Extra wait after popup
+
+                    # Use ULTRA-RELIABLE clicking with retries and timeout protection
                     success = await self._robust_click_execution(description, max_attempts=3)
 
                     if success:
