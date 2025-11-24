@@ -35,6 +35,9 @@ class PageAnalysis:
     elements: List[UIElement]
     state: str  # loading, ready, popup_visible, form_incomplete, etc.
     observations: List[str]  # what Sarah notices
+    has_search: bool = False
+    has_forms: bool = False
+    has_videos: bool = False
 
 
 @dataclass
@@ -43,6 +46,7 @@ class ActionPlan:
     goal: str  # what user wants to accomplish
     steps: List[Dict[str, Any]]  # sequence of actions
     reasoning: str  # why this plan
+    confidence: float = 0.5
 
 
 class VisionActionReasoner:
@@ -73,19 +77,34 @@ class VisionActionReasoner:
         page_type = self._infer_page_type(url, screenshot_description)
         observations.append(f"Page type: {page_type}")
 
-        # Identify interactive elements
-        elements = self._identify_ui_elements(screenshot_description)
+        # Identify interactive elements with ENHANCED detection
+        elements = self._identify_ui_elements_enhanced(screenshot_description, page_type)
         observations.append(f"Found {len(elements)} interactive elements")
 
         # Determine page state
         state = self._determine_page_state(screenshot_description)
         observations.append(f"Page state: {state}")
 
+        # Enhanced capabilities detection
+        has_search = self._detect_search_capability(screenshot_description, page_type)
+        has_forms = self._detect_form_capability(screenshot_description)
+        has_videos = self._detect_video_capability(screenshot_description, page_type)
+
+        if has_search:
+            observations.append("Page has search capability")
+        if has_forms:
+            observations.append("Page has forms")
+        if has_videos:
+            observations.append("Page has video content")
+
         analysis = PageAnalysis(
             page_type=page_type,
             elements=elements,
             state=state,
-            observations=observations
+            observations=observations,
+            has_search=has_search,
+            has_forms=has_forms,
+            has_videos=has_videos
         )
 
         self.last_analysis = analysis
@@ -112,7 +131,10 @@ class VisionActionReasoner:
                 return {
                     'type': 'navigate',
                     'target': url_match.group(0),
-                    'confidence': 0.95
+                    'query': '',
+                    'text': '',
+                    'confidence': 0.95,
+                    'original_message': user_message
                 }
             # Look for quoted destinations
             quote_match = re.search(r'["\']([^"\']+)["\']', user_message)
@@ -120,7 +142,10 @@ class VisionActionReasoner:
                 return {
                     'type': 'navigate',
                     'target': quote_match.group(1),
-                    'confidence': 0.85
+                    'query': '',
+                    'text': '',
+                    'confidence': 0.85,
+                    'original_message': user_message
                 }
             # Extract destination after navigation keyword (without quotes or http://)
             # Matches patterns like "go to youtube.com", "navigate to google", "open tiktok.com"
@@ -139,7 +164,10 @@ class VisionActionReasoner:
                         return {
                             'type': 'navigate',
                             'target': destination,
-                            'confidence': 0.9
+                            'query': '',
+                            'text': '',
+                            'confidence': 0.9,
+                            'original_message': user_message
                         }
                     break
 
@@ -155,8 +183,11 @@ class VisionActionReasoner:
                 if match:
                     return {
                         'type': 'search',
+                        'target': '',
                         'query': match.group(1).strip(),
-                        'confidence': 0.9
+                        'text': '',
+                        'confidence': 0.9,
+                        'original_message': user_message
                     }
 
         # Click/interaction intent
@@ -168,15 +199,21 @@ class VisionActionReasoner:
             return {
                 'type': 'click',
                 'target': target,
-                'confidence': 0.85
+                'query': '',
+                'text': '',
+                'confidence': 0.85,
+                'original_message': user_message
             }
 
         # Watch/view video intent
         if any(word in text_lower for word in ['watch', 'play', 'view video', 'see video']):
             return {
                 'type': 'interact_video',
-                'action': 'play',
-                'confidence': 0.9
+                'target': 'video',
+                'query': '',
+                'text': '',
+                'confidence': 0.9,
+                'original_message': user_message
             }
 
         # Input/typing intent
@@ -186,28 +223,43 @@ class VisionActionReasoner:
             if quote_match:
                 return {
                     'type': 'input',
+                    'target': 'input field',
+                    'query': '',
                     'text': quote_match.group(1),
-                    'confidence': 0.9
+                    'confidence': 0.9,
+                    'original_message': user_message
                 }
 
         # Observation/question intent
         if any(word in text_lower for word in ['what do you see', 'describe', 'what is', 'where are']):
             return {
                 'type': 'observe',
-                'confidence': 0.95
+                'target': 'page content',
+                'query': '',
+                'text': '',
+                'confidence': 0.95,
+                'original_message': user_message
             }
 
         # Acknowledge/confirmation (not an action)
-        if user_message.lower() in ['ok', 'ok cool', 'nice', 'great', 'thanks', 'good']:
+        if user_message.lower() in ['ok', 'ok cool', 'nice', 'great', 'thanks', 'good', 'yes']:
             return {
                 'type': 'acknowledgment',
-                'confidence': 0.95
+                'target': '',
+                'query': '',
+                'text': '',
+                'confidence': 0.95,
+                'original_message': user_message
             }
 
         # Unknown intent - need clarification
         return {
             'type': 'unknown',
-            'confidence': 0.3
+            'target': '',
+            'query': '',
+            'text': '',
+            'confidence': 0.3,
+            'original_message': user_message
         }
 
     def plan_actions(
@@ -223,135 +275,147 @@ class VisionActionReasoner:
         - If user wants to search + popup is visible → dismiss popup first
         - If user wants to click + multiple matches → choose most relevant
         """
-        intent_type = user_intent.get('type')
+        intent_type = user_intent.get('type', 'unknown')
+        target = user_intent.get('target', '')
+        query = user_intent.get('query', '')
+        text = user_intent.get('text', '')
+        confidence = user_intent.get('confidence', 0.5)
+        
         steps = []
         reasoning = ""
+        goal = ""
 
-        # Handle different intent types
+        # Handle different intent types with ENHANCED reasoning
         if intent_type == 'navigate':
-            # Simple navigation
+            goal = f"Navigate to {target}"
+            reasoning = f"User wants to navigate to {target}. Current page: {page_analysis.page_type}"
+            
             steps.append({
                 'action': 'navigate',
-                'target': user_intent['target']
+                'target': target,
+                'description': f'Navigate to {target}'
             })
-            reasoning = f"Navigate to {user_intent['target']}"
 
         elif intent_type == 'search':
+            # Use the standardized 'query' field for search
+            search_terms = query or target  # Fallback to target if query is empty
+            goal = f"Search for {search_terms}"
+            reasoning = f"User wants to search for '{search_terms}'. Current page has search capability: {'yes' if page_analysis.has_search else 'no'}"
+            
             # Check if popup is blocking
             if page_analysis.state == 'popup_visible':
                 steps.append({
                     'action': 'dismiss_popup',
-                    'method': 'accessibility_first'
+                    'method': 'accessibility_first',
+                    'description': 'Dismiss any popups before searching'
                 })
-                reasoning = "Dismiss popup before searching. "
-
-            # Perform search - HANDLE BOTH 'query' AND 'target' FIELDS
-            search_query = user_intent.get('query') or user_intent.get('target', '')
-            if not search_query:
-                # Fallback: try to extract from original message if available
-                original_message = user_intent.get('original_message', '')
-                if 'search' in original_message.lower():
-                    # Extract search terms after "search for" or similar
-                    search_match = re.search(r'(?:search for|search|find)\s+(.+)', original_message.lower())
-                    if search_match:
-                        search_query = search_match.group(1).strip()
-                    else:
-                        search_query = original_message
-                else:
-                    search_query = 'search'
-
+            
             steps.append({
                 'action': 'search',
-                'query': search_query
+                'query': search_terms,
+                'description': f'Search for "{search_terms}"'
             })
-            reasoning += f"Search for: {search_query}"
 
         elif intent_type == 'click':
-            # Check if popup is blocking
+            goal = f"Click {target}"
+            reasoning = f"User wants to click '{target}'. Page state: {page_analysis.state}"
+            
+            # Check if we need to dismiss popups first
             if page_analysis.state == 'popup_visible':
                 steps.append({
                     'action': 'dismiss_popup',
-                    'method': 'accessibility_first'
+                    'method': 'accessibility_first',
+                    'description': 'Dismiss any popups before clicking'
                 })
-                reasoning = "Dismiss popup before clicking. "
+            
+            # ENHANCED: Find the best matching element type
+            element_type = self._determine_element_type(target, page_analysis)
+            
+            steps.append({
+                'action': 'click_element',
+                'target': target,
+                'element_type': element_type,
+                'description': f'Click {target} ({element_type})'
+            })
 
-            # Find matching element
-            target = user_intent.get('target', '')
-            matching_elements = self._find_matching_elements(target, page_analysis.elements)
-
-            if matching_elements:
-                best_match = matching_elements[0]  # highest confidence
-                steps.append({
-                    'action': 'click_element',
-                    'description': target,
-                    'element_type': best_match.type
-                })
-                reasoning += f"Click {best_match.type}: {target}"
-            else:
-                # No clear match - use vision-guided click
-                steps.append({
-                    'action': 'click_by_description',
-                    'description': target
-                })
-                reasoning += f"Vision-guided click: {target}"
+        elif intent_type == 'input':
+            goal = f"Type '{text}' in {target}"
+            reasoning = f"User wants to type '{text}' in {target}. Page has forms: {'yes' if page_analysis.has_forms else 'no'}"
+            
+            steps.append({
+                'action': 'type_text',
+                'target': {
+                    'element': target,
+                    'text': text
+                },
+                'description': f'Type "{text}" in {target}'
+            })
 
         elif intent_type == 'interact_video':
-            # Check if we're on video page or search results
+            goal = f"Watch {target}"
+            reasoning = f"User wants to watch video content. Page has videos: {'yes' if page_analysis.has_videos else 'no'}"
+            
+            # Enhanced video interaction logic
             if page_analysis.page_type == 'search_engine':
-                # Need to click video first
+                # On search results - click video thumbnail first
                 steps.append({
                     'action': 'click_element',
-                    'description': 'video thumbnail',
-                    'element_type': 'video'
+                    'target': 'video thumbnail',
+                    'element_type': 'video_thumbnail',
+                    'description': 'Click video thumbnail to open video'
                 })
                 steps.append({
                     'action': 'wait',
-                    'duration': 2
+                    'duration': 3,
+                    'description': 'Wait for video page to load'
                 })
-                steps.append({
-                    'action': 'click_element',
-                    'description': 'play button',
-                    'element_type': 'button'
-                })
-                reasoning = "Click video thumbnail, then play"
-            else:
-                # Already on video page
-                steps.append({
-                    'action': 'click_element',
-                    'description': 'play button',
-                    'element_type': 'button'
-                })
-                reasoning = "Click play button on video"
+            
+            # Then click play button
+            steps.append({
+                'action': 'click_element',
+                'target': 'play button',
+                'element_type': 'play_button',
+                'description': 'Click play button to start video'
+            })
 
         elif intent_type == 'observe':
-            # Just describe what's visible
+            goal = f"Observe {target}"
+            reasoning = f"User wants to observe {target}. Current page analysis: {page_analysis.observations}"
+            
             steps.append({
                 'action': 'observe',
-                'return': 'description'
+                'description': f'Observe {target}'
             })
-            reasoning = "Describe current page state"
 
         elif intent_type == 'acknowledgment':
-            # No action needed
+            goal = "No action required"
+            reasoning = f"User acknowledgment - no browser action needed"
             steps = []
-            reasoning = "User acknowledgment - no action required"
 
         else:
             # Unknown intent - ask for clarification
+            goal = "Clarify user intent"
+            reasoning = f"User intent '{intent_type}' is unclear - need clarification"
+            
             steps.append({
                 'action': 'clarify',
-                'message': "I'm not sure what you want me to do. Can you be more specific?"
+                'message': "I'm not sure what you want me to do. Can you be more specific about what you'd like me to click or interact with?",
+                'description': 'Request clarification from user'
             })
-            reasoning = "Intent unclear - requesting clarification"
 
-        plan = ActionPlan(
-            goal=user_intent.get('type', 'unknown'),
+        # Add final observation step for all action plans (except observations and acknowledgments)
+        if steps and intent_type not in ['observe', 'acknowledgment', 'unknown']:
+            steps.append({
+                'action': 'observe',
+                'description': 'Observe results of actions'
+            })
+
+        return ActionPlan(
+            goal=goal,
+            reasoning=reasoning,
             steps=steps,
-            reasoning=reasoning
+            confidence=confidence
         )
-
-        self.last_plan = plan
-        return plan
 
     def should_take_action(self, user_intent: Dict[str, Any]) -> bool:
         """
@@ -375,57 +439,146 @@ class VisionActionReasoner:
             # Unknown - be conservative, don't act
             return False
 
-    # Helper methods
+    # ENHANCED HELPER METHODS
 
     def _infer_page_type(self, url: str, context: str) -> str:
         """Infer page type from URL and visual context"""
         url_lower = url.lower()
         context_lower = context.lower()
 
-        if 'google.com' in url_lower or 'search' in url_lower:
+        if 'google.com' in url_lower or 'search' in url_lower or 'query=' in url_lower:
             return 'search_engine'
-        elif 'youtube.com' in url_lower or 'video' in context_lower:
+        elif 'youtube.com' in url_lower or 'video' in context_lower or 'watch?v=' in url_lower:
             return 'video_site'
-        elif 'tiktok.com' in url_lower:
+        elif any(site in url_lower for site in ['tiktok.com', 'instagram.com', 'facebook.com', 'twitter.com']):
             return 'social_media'
-        elif 'form' in context_lower or 'input' in context_lower:
+        elif 'form' in context_lower or 'input' in context_lower or 'login' in context_lower:
             return 'form'
-        elif 'article' in context_lower or 'blog' in context_lower:
+        elif 'article' in context_lower or 'blog' in context_lower or 'news' in context_lower:
             return 'article'
+        elif 'shopping' in context_lower or 'product' in context_lower or 'amazon' in url_lower:
+            return 'ecommerce'
         else:
             return 'general'
 
-    def _identify_ui_elements(self, context: str) -> List[UIElement]:
-        """Identify interactive elements from visual context"""
+    def _identify_ui_elements_enhanced(self, context: str, page_type: str) -> List[UIElement]:
+        """ENHANCED: Intelligently identify interactive elements from visual context"""
         elements = []
         context_lower = context.lower()
 
-        # Look for common UI elements
-        if 'button' in context_lower:
-            elements.append(UIElement('button', 'button', 'click', 0.8))
-        if 'link' in context_lower:
-            elements.append(UIElement('link', 'link', 'click', 0.8))
-        if 'video' in context_lower or 'thumbnail' in context_lower:
-            elements.append(UIElement('video', 'video thumbnail', 'click', 0.85))
-        if 'input' in context_lower or 'search box' in context_lower:
-            elements.append(UIElement('input', 'input field', 'type', 0.85))
-        if 'popup' in context_lower or 'dialog' in context_lower or 'modal' in context_lower:
-            elements.append(UIElement('popup', 'popup dialog', 'dismiss', 0.9))
+        # VIDEO ELEMENT DETECTION with context awareness
+        video_indicators = ['video', 'thumbnail', 'play', 'watch', 'duration', 'views']
+        if any(indicator in context_lower for indicator in video_indicators):
+            if 'thumbnail' in context_lower or 'preview' in context_lower:
+                elements.append(UIElement('video_thumbnail', 'video thumbnail', 'click', 0.9))
+            elif 'play' in context_lower or 'start video' in context_lower:
+                elements.append(UIElement('play_button', 'play button', 'click', 0.85))
+            else:
+                elements.append(UIElement('video', 'video content', 'click', 0.8))
 
-        return elements
+        # BUTTON DETECTION with purpose understanding
+        button_indicators = ['button', 'btn', 'click here', 'tap to', 'press', 'select']
+        if any(indicator in context_lower for indicator in button_indicators):
+            # Determine button purpose from context
+            if any(word in context_lower for word in ['search', 'magnifying', 'find']):
+                elements.append(UIElement('search_button', 'search button', 'click', 0.85))
+            elif any(word in context_lower for word in ['menu', 'hamburger', 'navigation']):
+                elements.append(UIElement('menu_button', 'menu button', 'click', 0.8))
+            elif any(word in context_lower for word in ['play', 'start', 'watch']):
+                elements.append(UIElement('play_button', 'play button', 'click', 0.9))
+            elif any(word in context_lower for word in ['accept', 'agree', 'consent', 'ok', 'continue']):
+                elements.append(UIElement('accept_button', 'accept/consent button', 'click', 0.95))
+            else:
+                elements.append(UIElement('button', 'interactive button', 'click', 0.7))
+
+        # LINK DETECTION with navigation context
+        if any(word in context_lower for word in ['link', 'navigation', 'go to', 'href', 'anchor']):
+            elements.append(UIElement('link', 'navigation link', 'click', 0.8))
+
+        # INPUT FIELD DETECTION with type identification
+        input_indicators = ['input', 'type here', 'search box', 'text field', 'form', 'enter text']
+        if any(indicator in context_lower for indicator in input_indicators):
+            if 'search' in context_lower or 'find' in context_lower:
+                elements.append(UIElement('search_input', 'search input field', 'type', 0.9))
+            elif 'email' in context_lower or 'password' in context_lower:
+                elements.append(UIElement('form_input', 'form input field', 'type', 0.8))
+            else:
+                elements.append(UIElement('input', 'text input field', 'type', 0.8))
+
+        # PAGE-SPECIFIC ELEMENTS based on page type
+        if page_type == 'video_site':
+            elements.extend([
+                UIElement('video_thumbnail', 'video thumbnail', 'click', 0.9),
+                UIElement('play_button', 'play button', 'click', 0.85),
+                UIElement('video_title', 'video title link', 'click', 0.8)
+            ])
+        elif page_type == 'search_engine':
+            elements.extend([
+                UIElement('search_input', 'search box', 'type', 0.9),
+                UIElement('search_button', 'search button', 'click', 0.8),
+                UIElement('result_link', 'search result', 'click', 0.85)
+            ])
+        elif page_type == 'social_media':
+            elements.extend([
+                UIElement('post', 'social media post', 'click', 0.8),
+                UIElement('like_button', 'like button', 'click', 0.7),
+                UIElement('comment_button', 'comment button', 'click', 0.7)
+            ])
+
+        # Remove duplicates and sort by confidence
+        unique_elements = {}
+        for element in elements:
+            key = (element.type, element.description)
+            if key not in unique_elements or element.confidence > unique_elements[key].confidence:
+                unique_elements[key] = element
+
+        return sorted(unique_elements.values(), key=lambda e: e.confidence, reverse=True)
 
     def _determine_page_state(self, context: str) -> str:
         """Determine current page state"""
         context_lower = context.lower()
 
-        if any(word in context_lower for word in ['popup', 'dialog', 'modal', 'cookie', 'consent']):
+        if any(word in context_lower for word in ['popup', 'dialog', 'modal', 'cookie', 'consent', 'overlay']):
             return 'popup_visible'
-        elif 'loading' in context_lower:
+        elif any(word in context_lower for word in ['loading', 'spinner', 'progress', 'waiting']):
             return 'loading'
-        elif 'error' in context_lower:
+        elif any(word in context_lower for word in ['error', 'failed', 'not found', '404']):
             return 'error'
+        elif any(word in context_lower for word in ['login', 'sign in', 'authentication']):
+            return 'authentication_required'
         else:
             return 'ready'
+
+    def _detect_search_capability(self, context: str, page_type: str) -> bool:
+        """Detect if page has search functionality"""
+        context_lower = context.lower()
+        
+        # Direct indicators
+        if any(word in context_lower for word in ['search', 'find', 'magnifying', 'query']):
+            return True
+        
+        # Page type based inference
+        if page_type in ['search_engine', 'ecommerce', 'social_media']:
+            return True
+            
+        return False
+
+    def _detect_form_capability(self, context: str) -> bool:
+        """Detect if page has form inputs"""
+        context_lower = context.lower()
+        return any(word in context_lower for word in ['form', 'input', 'text field', 'type here', 'enter'])
+
+    def _detect_video_capability(self, context: str, page_type: str) -> bool:
+        """Detect if page has video content"""
+        context_lower = context.lower()
+        
+        if any(word in context_lower for word in ['video', 'play', 'watch', 'thumbnail']):
+            return True
+            
+        if page_type == 'video_site':
+            return True
+            
+        return False
 
     def _extract_click_target(self, user_message: str) -> str:
         """Extract what user wants to click"""
@@ -436,22 +589,62 @@ class VisionActionReasoner:
         if quote_match:
             return quote_match.group(1)
 
-        # Look for common patterns
+        # Look for common patterns with better context
         patterns = [
-            r'click (?:the )?(.+?)(?:\.|$)',
+            r'click (?:on |the )?(.+?)(?:\.|$| button| link)',
             r'select (?:the )?(.+?)(?:\.|$)',
             r'press (?:the )?(.+?)(?:\.|$)',
+            r'tap (?:on |the )?(.+?)(?:\.|$)',
+            r'hit (?:the )?(.+?)(?:\.|$)',
         ]
 
         for pattern in patterns:
             match = re.search(pattern, text_lower)
             if match:
                 target = match.group(1).strip()
-                # Filter out common words
+                # Filter out common words and improve target description
                 if target not in ['it', 'that', 'this', 'one']:
+                    # Enhance target description
+                    if 'button' in text_lower and 'button' not in target:
+                        target = f"{target} button"
+                    elif 'link' in text_lower and 'link' not in target:
+                        target = f"{target} link"
+                    elif 'video' in text_lower and 'video' not in target:
+                        target = f"{target} video"
                     return target
 
-        # Default
+        # Default based on context
+        if 'video' in text_lower:
+            return 'video'
+        elif 'button' in text_lower:
+            return 'button'
+        elif 'link' in text_lower:
+            return 'link'
+        else:
+            return 'element'
+
+    def _determine_element_type(self, target: str, page_analysis: PageAnalysis) -> str:
+        """Determine the most likely element type for a given target"""
+        target_lower = target.lower()
+        
+        # Direct type matches
+        if any(word in target_lower for word in ['video', 'play', 'watch']):
+            return 'video'
+        elif any(word in target_lower for word in ['button', 'btn']):
+            return 'button'
+        elif any(word in target_lower for word in ['link', 'navigation']):
+            return 'link'
+        elif any(word in target_lower for word in ['input', 'search', 'text']):
+            return 'input'
+        
+        # Context-based inference
+        if page_analysis.has_videos and any(word in target_lower for word in ['thumbnail', 'preview']):
+            return 'video_thumbnail'
+            
+        # Fallback to most common element type on the page
+        if page_analysis.elements:
+            return page_analysis.elements[0].type
+            
         return 'element'
 
     def _find_matching_elements(
@@ -464,7 +657,11 @@ class VisionActionReasoner:
         matches = []
 
         for element in elements:
-            if target_lower in element.description.lower():
+            # Multiple matching strategies
+            description_match = target_lower in element.description.lower()
+            type_match = target_lower in element.type.lower()
+            
+            if description_match or type_match:
                 matches.append(element)
 
         # Sort by confidence
