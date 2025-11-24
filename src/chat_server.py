@@ -539,6 +539,47 @@ Important:
 
                                 return
 
+                # FAST-PATH FOR CONVERSATIONAL MESSAGES
+                # Skip expensive LLM intent parsing + screenshots for simple chat
+                content_lower = content.lower()
+                is_conversational = (
+                    # Questions
+                    content.strip().endswith('?') or
+                    # Acknowledgments
+                    content_lower in ['ok', 'okay', 'cool', 'nice', 'great', 'thanks', 'thank you', 'yes', 'no', 'yep', 'nope'] or
+                    # Short responses
+                    len(content.split()) <= 3 and not any(action_word in content_lower for action_word in ['go', 'click', 'search', 'type', 'find', 'open', 'navigate', 'hit', 'press'])
+                )
+
+                if is_conversational:
+                    # Pure conversation - skip expensive action planning
+                    logger.info("💬 Conversational message - fast path (skipping action planning + screenshots)")
+
+                    # Simple conversation - no screenshot needed
+                    user_msg = self._format_message_for_api('user', content, None)
+                    self.conversation_history.append(user_msg)
+                    self._save_message_to_memory('user', content)
+
+                    # Get response quickly
+                    response = await self.get_sarah_response()
+
+                    self.conversation_history.append({
+                        'role': 'assistant',
+                        'content': response
+                    })
+                    self._save_message_to_memory('assistant', response)
+
+                    if len(self.conversation_history) > self.max_history:
+                        self.conversation_history = self.conversation_history[-self.max_history:]
+
+                    await self.send_message(websocket, {
+                        'type': 'sarah_message',
+                        'message': response
+                    })
+
+                    logger.info(f"💬 Sarah: {response[:100]}...")
+                    return
+
                 # VISION-GUIDED ACTION REASONING - Execute before Claude response
                 # This replaces hardcoded pattern matching with intelligent reasoning
                 action_result = None
