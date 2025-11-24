@@ -952,6 +952,53 @@ Return ONLY valid JSON, no explanation."""
             # Fallback to keyword-based if LLM fails
             return self.action_reasoner.parse_user_intent(user_message)
 
+    async def _check_for_real_popup(self) -> bool:
+        """
+        Actually check if there's a visible popup/dialog
+        More reliable than just analyzing page context
+        """
+        if not self.browser or not self.browser.page:
+            return False
+        
+        try:
+            # Check for common popup selectors
+            popup_selectors = [
+                '[role="dialog"]',
+                '.modal',
+                '.popup',
+                '.overlay',
+                '[class*="cookie"]',
+                '[class*="consent"]',
+                '.dialog',
+                '.modal-dialog'
+            ]
+            
+            for selector in popup_selectors:
+                elements = await self.browser.page.query_selector_all(selector)
+                for element in elements:
+                    is_visible = await element.is_visible()
+                    if is_visible:
+                        logger.info(f"🎯 Found real popup: {selector}")
+                        return True
+            
+            # Also check for large overlays that might be popups
+            overlays = await self.browser.page.query_selector_all('[class*="overlay"], [class*="backdrop"]')
+            for overlay in overlays:
+                is_visible = await overlay.is_visible()
+                if is_visible:
+                    # Check if it covers significant portion of screen
+                    bounding_box = await overlay.bounding_box()
+                    if bounding_box and bounding_box['width'] > 300 and bounding_box['height'] > 200:
+                        logger.info("🎯 Found large overlay (likely popup)")
+                        return True
+            
+            logger.info("ℹ️  No real popup detected")
+            return False
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Popup check failed: {e}")
+            return False
+
     async def _parse_user_intent_and_plan(self, user_message: str) -> Optional[dict]:
         """
         Parse user intent and create action plan using vision-guided reasoning
@@ -1043,6 +1090,15 @@ Return ONLY valid JSON, no explanation."""
 
         # Create action plan
         action_plan = self.action_reasoner.plan_actions(user_intent, page_analysis)
+
+        # SMART POPUP HANDLING: Only dismiss popups if they actually exist
+        if action_plan.steps and action_plan.steps[0].get('action') == 'dismiss_popup':
+            # Check if there's actually a popup before adding dismissal step
+            has_real_popup = await self._check_for_real_popup()
+            if not has_real_popup:
+                logger.info("🎯 No real popup found - skipping popup dismissal step")
+                # Remove the popup dismissal step
+                action_plan.steps = action_plan.steps[1:] if len(action_plan.steps) > 1 else []
 
         logger.info(f"📋 Action plan: {action_plan.reasoning}")
         logger.info(f"   Steps: {len(action_plan.steps)}")
