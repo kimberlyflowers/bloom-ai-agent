@@ -298,34 +298,51 @@ Important:
         Returns:
             bool: True if valid click target, False if descriptive text
         """
-        if not text:
+        if not text or len(text.strip()) < 2:
+            logger.warning(f"🛑 Blocked empty/too short click target: '{text}'")
             return False
 
         text_lower = text.strip().lower()
 
-        # Block Sarah's observation phrases
-        invalid_phrases = [
-            "i'm about to click",
-            "i am about to click",
-            "clicking on",
-            "i'll click",
-            "let me click",
-            "i see",
-            "i notice",
-            "observing",
-            "looking at"
+        # Block Sarah's observation/description phrases
+        invalid_patterns = [
+            # Sarah's first-person observations
+            "i'm about to click", "i am about to click", "i'll click", "let me click",
+            "i see", "i notice", "i can see", "observing", "looking at", "looking for",
+            "now i can see", "looking at the", "i can see the",
+
+            # Sentence fragments (incomplete sentences starting mid-word)
+            "m back on", "m about to", "t changed yet", "s changed", "perfect!",
+
+            # Navigation descriptions
+            "click on", "navigate to", "search for", "type in", "enter in",
+
+            # Location descriptions
+            "here", "there", "that's", "it's", "this is"
         ]
 
-        if any(phrase in text_lower for phrase in invalid_phrases):
-            logger.warning(f"🛑 Blocked invalid click target: '{text}' (observation text)")
+        # Check for invalid patterns
+        for pattern in invalid_patterns:
+            if pattern in text_lower:
+                logger.warning(f"🛑 BLOCKED INVALID CLICK TARGET: '{text}' (contains '{pattern}')")
+                return False
+
+        # Block if it looks like a sentence fragment (starts with lowercase + short word)
+        words = text.split()
+        if len(words) > 0:
+            first_word = words[0]
+            # Sentence fragment check: starts with lowercase single letter or short word
+            if len(first_word) <= 2 and first_word[0].islower():
+                logger.warning(f"🛑 BLOCKED SENTENCE FRAGMENT: '{text}' (starts with '{first_word}')")
+                return False
+
+        # Block if text is too long (likely a sentence/description, not a UI element)
+        if len(words) > 8:
+            logger.warning(f"🛑 BLOCKED LONG TEXT: '{text}' ({len(words)} words - likely observation)")
             return False
 
-        # Valid if it's short and specific
-        if len(text.split()) <= 5:
-            return True
-
-        logger.warning(f"⚠️  Potentially invalid click target: '{text}' (too descriptive)")
-        return True  # Allow but warn
+        # Valid click target
+        return True
 
     async def _stream_immediate_response(self, message: str):
         """
@@ -1690,16 +1707,17 @@ Return ONLY valid JSON, no explanation."""
                             overall_success = False
                             self.action_steps.append(f"❌ Could not dismiss popup")
 
-                elif action_type == 'click_element' or action_type == 'click_by_description':
+                elif action_type == 'click_element' or action_type == 'click_by_description' or action_type == 'click':
                     description = step.get('description', 'element')
-                    self.action_steps.append(f"Click: {description}")
 
-                    # 🛑 NEW: Validate click target (prevent clicking observation text)
+                    # 🛑 NEW: Validate click target BEFORE logging (prevent clicking observation text)
                     if not await self._should_click_text(description):
-                        logger.error(f"❌ Invalid click target: '{description}'")
-                        self.action_steps.append(f"❌ Cannot click descriptive text")
+                        logger.error(f"❌ BLOCKED INVALID CLICK TARGET: '{description}'")
+                        self.action_steps.append(f"❌ Cannot click descriptive text: '{description}'")
                         overall_success = False
                         continue
+
+                    self.action_steps.append(f"Click: {description}")
 
                     # ENHANCED CLICKING: Wait for page to be ready after popup dismissal
                     if i > 0 and plan.steps[i-1].get('action') == 'dismiss_popup':
