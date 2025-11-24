@@ -20,7 +20,17 @@ from playwright.async_api import async_playwright, Browser, Page, BrowserContext
 from src.live_screen_stream import PlaywrightScreenStreamer
 from src.advanced_browser_control import AdvancedBrowserController
 
+# Sarah's improved clicking system - helps her hands work better!
+try:
+    from src.sarah_improved_clicking import ImprovedClicking
+    IMPROVED_CLICKING_AVAILABLE = True
+except ImportError:
+    IMPROVED_CLICKING_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
+
+if not IMPROVED_CLICKING_AVAILABLE:
+    logger.warning("⚠️  ImprovedClicking not available - using basic clicking only")
 
 
 class SarahBrowser:
@@ -56,6 +66,13 @@ class SarahBrowser:
 
         # Advanced browser controller (vision-guided interactions)
         self.advanced = AdvancedBrowserController()
+
+        # Improved clicking system - helps Sarah's hands work better!
+        if IMPROVED_CLICKING_AVAILABLE:
+            self.improved_clicker = ImprovedClicking()
+            logger.info("✅ Sarah's improved clicking loaded - hands upgraded!")
+        else:
+            self.improved_clicker = None
 
         # State
         self.is_running = False
@@ -263,6 +280,87 @@ class SarahBrowser:
             return {'success': True, 'message': f'Typed into {selector}'}
         except Exception as e:
             return {'success': False, 'message': str(e)}
+
+    async def smart_click(self, description: str, timeout: int = 10000) -> dict:
+        """
+        Sarah's improved clicking - finds and clicks elements by description!
+
+        This helps Sarah's hands work better by trying 8 different strategies
+        to find and click elements. She can just describe what she sees instead
+        of needing exact CSS selectors.
+
+        Args:
+            description: What Sarah sees (e.g., "Accept all", "Search", "Login button")
+            timeout: Timeout in milliseconds
+
+        Returns:
+            dict with success status and method used
+
+        Examples:
+            await sarah.smart_click("Accept all")  # Finds cookie button
+            await sarah.smart_click("Search")      # Finds search box
+            await sarah.smart_click("Sign in")     # Finds login link/button
+        """
+        if not self.page:
+            return {'success': False, 'message': 'Browser not running'}
+
+        if self.improved_clicker:
+            # Use improved clicking (8 strategies!)
+            result = await self.improved_clicker.click_element(self.page, description, timeout)
+            return result
+        else:
+            # Fallback to basic click if improved clicker not available
+            logger.warning(f"⚠️  Improved clicking not available, using fallback for '{description}'")
+            return await self.click(f"//*[contains(text(), '{description}')]")
+
+    async def smart_type(self, text: str, input_description: str = None) -> dict:
+        """
+        Type text into an input field using improved clicking to find it
+
+        Args:
+            text: Text to type
+            input_description: Description of input (e.g., "Search", "Email", "Password")
+
+        Examples:
+            await sarah.smart_type("hello world", "Search")
+            await sarah.smart_type("test@example.com", "Email")
+        """
+        if not self.page:
+            return {'success': False, 'message': 'Browser not running'}
+
+        if self.improved_clicker:
+            result = await self.improved_clicker.type_text(self.page, text, input_description)
+            return result
+        else:
+            # Fallback
+            logger.warning("⚠️  Improved typing not available, using basic typing")
+            return await self.type_text(input_description or "input", text)
+
+    async def press_key(self, key: str) -> dict:
+        """
+        Press a keyboard key
+
+        Args:
+            key: Key name (e.g., "Enter", "Escape", "Tab", "ArrowDown")
+
+        Examples:
+            await sarah.press_key("Enter")    # Submit form
+            await sarah.press_key("Escape")   # Close dialog
+            await sarah.press_key("Tab")      # Next field
+        """
+        if not self.page:
+            return {'success': False, 'message': 'Browser not running'}
+
+        if self.improved_clicker:
+            result = await self.improved_clicker.press_key(self.page, key)
+            return result
+        else:
+            # Fallback
+            try:
+                await self.page.keyboard.press(key)
+                return {'success': True, 'message': f'Pressed {key}'}
+            except Exception as e:
+                return {'success': False, 'message': str(e)}
 
     async def screenshot(self, full_page: bool = False) -> Optional[bytes]:
         """Take a screenshot"""
