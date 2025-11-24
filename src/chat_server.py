@@ -1024,6 +1024,35 @@ Important:
 
                     if success:
                         self.action_steps.append(f"✅ Successfully navigated to {target}")
+
+                        # AUTONOMOUS POPUP HANDLING - automatically dismiss cookies/popups after navigation
+                        # Wait for page to settle
+                        await asyncio.sleep(1.5)
+
+                        logger.info("🔍 Checking for popups/cookies automatically...")
+                        self.action_steps.append("Checking for popups/cookies...")
+
+                        # Try universal cookie detector first
+                        popup_result = await self.browser.advanced.universal_cookie_detector()
+                        popup_dismissed = popup_result.get('success', False) if isinstance(popup_result, dict) else False
+
+                        if popup_dismissed:
+                            button_text = popup_result.get('button_text', 'unknown')
+                            self.action_steps.append(f"✅ Auto-dismissed popup: '{button_text}'")
+                            logger.info(f"✅ Auto-dismissed popup: '{button_text}'")
+                        else:
+                            # Try accessibility click as fallback
+                            accessibility_result = await self.browser.advanced.accessibility_click()
+                            accessibility_success = accessibility_result.get('success', False) if isinstance(accessibility_result, dict) else False
+
+                            if accessibility_success:
+                                button_text = accessibility_result.get('button_text', 'unknown')
+                                self.action_steps.append(f"✅ Auto-dismissed via accessibility: '{button_text}'")
+                                logger.info(f"✅ Auto-dismissed via accessibility: '{button_text}'")
+                            else:
+                                # No popup detected or couldn't dismiss - this is fine, not all sites have popups
+                                logger.info("ℹ️  No popup detected or already dismissed")
+                                self.action_steps.append("ℹ️  Page is clean (no popups)")
                     else:
                         overall_success = False
                         self.action_steps.append(f"❌ Navigation failed")
@@ -1036,6 +1065,35 @@ Important:
 
                     if success:
                         self.action_steps.append(f"✅ Successfully searched for '{query}'")
+
+                        # AUTONOMOUS POPUP HANDLING - automatically dismiss cookies/popups after search
+                        # Wait for page to settle
+                        await asyncio.sleep(1.5)
+
+                        logger.info("🔍 Checking for popups/cookies automatically...")
+                        self.action_steps.append("Checking for popups/cookies...")
+
+                        # Try universal cookie detector first
+                        popup_result = await self.browser.advanced.universal_cookie_detector()
+                        popup_dismissed = popup_result.get('success', False) if isinstance(popup_result, dict) else False
+
+                        if popup_dismissed:
+                            button_text = popup_result.get('button_text', 'unknown')
+                            self.action_steps.append(f"✅ Auto-dismissed popup: '{button_text}'")
+                            logger.info(f"✅ Auto-dismissed popup: '{button_text}'")
+                        else:
+                            # Try accessibility click as fallback
+                            accessibility_result = await self.browser.advanced.accessibility_click()
+                            accessibility_success = accessibility_result.get('success', False) if isinstance(accessibility_result, dict) else False
+
+                            if accessibility_success:
+                                button_text = accessibility_result.get('button_text', 'unknown')
+                                self.action_steps.append(f"✅ Auto-dismissed via accessibility: '{button_text}'")
+                                logger.info(f"✅ Auto-dismissed via accessibility: '{button_text}'")
+                            else:
+                                # No popup detected or couldn't dismiss - this is fine
+                                logger.info("ℹ️  No popup detected or already dismissed")
+                                self.action_steps.append("ℹ️  Page is clean (no popups)")
                     else:
                         overall_success = False
                         self.action_steps.append(f"❌ Search failed")
