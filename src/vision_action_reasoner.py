@@ -59,4 +59,71 @@ class VisionActionReasoner:
         state = self._determine_page_state(screenshot_description)
         observations.append(f"Page state: {state}")
         
-        has_search = self._detect_search_capability
+        has_search = self._detect_search_capability(screenshot_description)
+        has_forms = self._detect_forms(screenshot_description)
+        has_videos = self._detect_videos(screenshot_description)
+        
+        if has_search:
+            observations.append("Search functionality available")
+        if has_forms:
+            observations.append("Forms detected")
+        if has_videos:
+            observations.append("Video content available")
+            
+        analysis = PageAnalysis(
+            page_type=page_type,
+            elements=elements,
+            state=state,
+            observations=observations,
+            has_search=has_search,
+            has_forms=has_forms,
+            has_videos=has_videos
+        )
+        
+        self.last_analysis = analysis
+        return analysis
+
+    def _infer_page_type(self, url: str, description: str) -> str:
+        """Determine what type of page we're on"""
+        url_lower = url.lower()
+        desc_lower = description.lower()
+        
+        if any(site in url_lower for site in ['youtube.com', 'youtu.be']):
+            return 'video_platform'
+        elif any(site in url_lower for site in ['tiktok.com']):
+            return 'social_video'
+        elif any(site in url_lower for site in ['google.com', 'search?']):
+            return 'search_engine'
+        elif any(site in url_lower for site in ['instagram.com', 'facebook.com', 'twitter.com']):
+            return 'social_media'
+        elif 'login' in desc_lower or 'sign in' in desc_lower:
+            return 'login_page'
+        elif 'cookie' in desc_lower or 'consent' in desc_lower:
+            return 'consent_dialog'
+        elif 'video' in desc_lower:
+            return 'video_content'
+        elif 'search' in desc_lower:
+            return 'search_page'
+        else:
+            return 'generic_page'
+
+    def _identify_clickable_elements(self, description: str, page_type: str) -> List[UIElement]:
+        """Identify all potentially clickable elements on the page"""
+        elements = []
+        desc_lower = description.lower()
+        
+        # COMMON BUTTON PATTERNS
+        button_patterns = [
+            (r'(login|sign in) button', 'login_button', 'click'),
+            (r'(sign up|register) button', 'signup_button', 'click'),
+            (r'(search) button', 'search_button', 'click'),
+            (r'(menu|hamburger) button', 'menu_button', 'click'),
+            (r'(play) button', 'play_button', 'click'),
+            (r'(pause) button', 'pause_button', 'click'),
+            (r'(like|thumbs up) button', 'like_button', 'click'),
+            (r'(subscribe) button', 'subscribe_button', 'click'),
+            (r'(accept|agree) button', 'accept_button', 'click'),
+            (r'(reject|decline) button', 'reject_button', 'click'),
+            (r'(close|x) button', 'close_button', 'click'),
+            (r'(next|continue) button', 'next_button', 'click'),
+            (r'(back|previous) button',
