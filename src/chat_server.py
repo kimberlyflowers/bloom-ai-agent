@@ -1060,8 +1060,71 @@ Important:
                 elif action_type == 'search':
                     query = step.get('query')
                     self.action_steps.append(f"Search for '{query}'")
-                    result = await self.browser.search_google(query)
-                    success = result.get('success', False) if isinstance(result, dict) else False
+
+                    # CONTEXT-AWARE SEARCH - check if we're already on a searchable site
+                    current_url = self.browser.page.url if self.browser and self.browser.page else ""
+
+                    # Sites with their own search functionality - use their search bar instead of Google
+                    searchable_sites = ['youtube.com', 'tiktok.com', 'instagram.com', 'twitter.com',
+                                      'facebook.com', 'linkedin.com', 'reddit.com', 'amazon.com']
+
+                    on_searchable_site = any(site in current_url for site in searchable_sites)
+
+                    if on_searchable_site:
+                        # Search on the current site using its search box
+                        logger.info(f"🎯 Searching on current site ({current_url}) instead of Google")
+                        self.action_steps.append(f"Searching on current site for '{query}'")
+
+                        try:
+                            # Find and click the search box
+                            search_box_selectors = [
+                                'input[type="search"]',
+                                'input[name*="search" i]',
+                                'input[placeholder*="search" i]',
+                                'input[aria-label*="search" i]',
+                                'input[id*="search" i]'
+                            ]
+
+                            search_box_found = False
+                            for selector in search_box_selectors:
+                                try:
+                                    search_box = await self.browser.page.wait_for_selector(selector, timeout=2000)
+                                    if search_box:
+                                        # Click the search box
+                                        await search_box.click()
+                                        await asyncio.sleep(0.3)
+
+                                        # Type the query
+                                        await search_box.fill(query)
+                                        await asyncio.sleep(0.5)
+
+                                        # Press Enter
+                                        await search_box.press('Enter')
+                                        await asyncio.sleep(2)  # Wait for results
+
+                                        search_box_found = True
+                                        self.action_steps.append(f"✅ Searched on site for '{query}'")
+                                        logger.info(f"✅ Successfully searched on site for '{query}'")
+                                        success = True
+                                        break
+                                except Exception as e:
+                                    continue
+
+                            if not search_box_found:
+                                logger.warning("⚠️ Search box not found - falling back to Google")
+                                self.action_steps.append("⚠️ Search box not found - using Google instead")
+                                result = await self.browser.search_google(query)
+                                success = result.get('success', False) if isinstance(result, dict) else False
+                        except Exception as e:
+                            logger.error(f"❌ Site search failed: {e}")
+                            self.action_steps.append(f"❌ Site search failed - using Google instead")
+                            result = await self.browser.search_google(query)
+                            success = result.get('success', False) if isinstance(result, dict) else False
+                    else:
+                        # Not on a searchable site - use Google
+                        logger.info(f"🌐 Searching on Google for '{query}'")
+                        result = await self.browser.search_google(query)
+                        success = result.get('success', False) if isinstance(result, dict) else False
 
                     if success:
                         self.action_steps.append(f"✅ Successfully searched for '{query}'")
