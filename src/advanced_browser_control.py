@@ -765,6 +765,186 @@ class AdvancedBrowserController:
             logger.error(f"Coordinate click failed: {e}")
             return {'success': False, 'message': str(e)}
 
+    async def universal_cookie_detector(self) -> Dict[str, Any]:
+        """
+        UNIVERSAL COOKIE BUTTON DETECTOR - Works on ANY website!
+
+        Uses visual and structural patterns instead of text keywords:
+        1. Find cookie/consent banners by common attributes
+        2. Within banner, find most prominent button (size, position, styling)
+        3. Prioritize primary-styled buttons (colored backgrounds)
+        4. Avoid secondary buttons (reject, manage, settings)
+
+        This works across ALL sites regardless of language or button text!
+        """
+        if not self.page:
+            return {'success': False, 'message': 'No page available'}
+
+        logger.info("🌍 UNIVERSAL COOKIE DETECTOR - Language-independent detection...")
+
+        try:
+            import asyncio
+            import random
+
+            # Find and click the most likely "accept all" button using visual heuristics
+            result = await self.page.evaluate('''() => {
+                // STEP 1: Find cookie/consent banner containers
+                const bannerSelectors = [
+                    '[class*="cookie"]', '[id*="cookie"]',
+                    '[class*="consent"]', '[id*="consent"]',
+                    '[class*="gdpr"]', '[id*="gdpr"]',
+                    '[class*="banner"]', '[id*="banner"]',
+                    '[role="dialog"]', '[role="banner"]',
+                    '[class*="notice"]', '[id*="notice"]',
+                    '[class*="privacy"]', '[id*="privacy"]'
+                ];
+
+                let banners = [];
+                bannerSelectors.forEach(sel => {
+                    try {
+                        const elements = document.querySelectorAll(sel);
+                        elements.forEach(el => {
+                            // Must be visible and positioned
+                            const rect = el.getBoundingClientRect();
+                            const style = window.getComputedStyle(el);
+                            if (rect.width > 100 && rect.height > 50 &&
+                                style.display !== 'none' && style.visibility !== 'hidden') {
+                                banners.push(el);
+                            }
+                        });
+                    } catch (e) {}
+                });
+
+                // Also check for fixed/sticky positioned elements at top/bottom
+                const allElements = document.querySelectorAll('*');
+                allElements.forEach(el => {
+                    const style = window.getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
+                    if ((style.position === 'fixed' || style.position === 'sticky') &&
+                        rect.width > 200 && rect.height > 50 &&
+                        (rect.bottom > window.innerHeight - 200 || rect.top < 200)) {
+                        banners.push(el);
+                    }
+                });
+
+                if (banners.length === 0) {
+                    return {found: false, reason: 'No cookie banner detected'};
+                }
+
+                // STEP 2: Within each banner, find all buttons
+                let bestButton = null;
+                let bestScore = 0;
+
+                banners.forEach(banner => {
+                    const buttons = banner.querySelectorAll('button, a, [role="button"]');
+
+                    buttons.forEach(btn => {
+                        const rect = btn.getBoundingClientRect();
+                        const style = window.getComputedStyle(btn);
+                        const text = (btn.innerText || btn.textContent || '').toLowerCase();
+
+                        // Must be visible
+                        if (rect.width === 0 || rect.height === 0 ||
+                            style.display === 'none' || style.visibility === 'hidden') {
+                            return;
+                        }
+
+                        // SCORING SYSTEM (higher = more likely to be "Accept All")
+                        let score = 0;
+
+                        // Size bonus (bigger buttons are usually primary)
+                        score += rect.width * rect.height / 1000;
+
+                        // Background color bonus (colored buttons are usually primary)
+                        const bgColor = style.backgroundColor;
+                        if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' &&
+                            bgColor !== 'transparent' && bgColor !== 'rgb(255, 255, 255)') {
+                            score += 50;
+                        }
+
+                        // Position bonus (first button is often primary)
+                        const allBtns = Array.from(banner.querySelectorAll('button, a, [role="button"]'));
+                        const index = allBtns.indexOf(btn);
+                        if (index === 0) score += 30;
+
+                        // Text length bonus (shorter text is often "Accept All" vs "Manage Preferences")
+                        if (text.length < 20) score += 20;
+                        if (text.length < 10) score += 10;
+
+                        // POSITIVE KEYWORD BONUS (accept-related words in ANY language)
+                        const acceptKeywords = [
+                            'accept', 'agree', 'ok', 'yes', 'allow', 'enable', 'consent',
+                            // Multi-language
+                            'akkoord', 'accepteren', 'akzeptieren', 'aceptar', 'aceitar',
+                            'accepter', 'accetto', 'toestaan', 'zustimmen', 'continuar',
+                            'continue', 'proceed', 'doorgaan'
+                        ];
+                        const hasAcceptWord = acceptKeywords.some(word => text.includes(word));
+                        if (hasAcceptWord) score += 40;
+
+                        // EXTRA bonus for "all" variations (Accept ALL is the primary button)
+                        const allVariations = ['all', 'alle', 'alles', 'tout', 'todo', 'todas', 'tudo'];
+                        const hasAll = allVariations.some(word => text.includes(word));
+                        if (hasAcceptWord && hasAll) score += 30;
+
+                        // NEGATIVE scoring (avoid these buttons)
+                        const rejectWords = ['manage', 'settings', 'reject', 'decline', 'refuse',
+                                           'beheren', 'afwijzen', 'weigeren', 'opties', 'instellingen',
+                                           'preferences', 'options', 'customize', 'learn more',
+                                           'cookie policy', 'privacy policy', 'details', 'meer info'];
+                        if (rejectWords.some(word => text.includes(word))) {
+                            score -= 100;
+                        }
+
+                        // Track best button
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestButton = btn;
+                        }
+                    });
+                });
+
+                if (bestButton && bestScore > 10) {
+                    const rect = bestButton.getBoundingClientRect();
+                    return {
+                        found: true,
+                        text: bestButton.innerText || bestButton.textContent,
+                        score: bestScore,
+                        x: rect.left + rect.width / 2,
+                        y: rect.top + rect.height / 2
+                    };
+                }
+
+                return {found: false, reason: 'No suitable button found', bannersFound: banners.length};
+            }''')
+
+            if result.get('found'):
+                button_text = result.get('text', 'unknown')
+                score = result.get('score', 0)
+                logger.info(f"✅ Found likely accept button: '{button_text}' (score: {score})")
+
+                # Human-like delay
+                await asyncio.sleep(random.uniform(0.8, 1.5))
+
+                # Click the button
+                await self.page.mouse.click(result['x'], result['y'])
+                await asyncio.sleep(random.uniform(0.5, 1.0))
+
+                return {
+                    'success': True,
+                    'method': 'universal-visual-detection',
+                    'button_text': button_text,
+                    'confidence_score': score
+                }
+            else:
+                reason = result.get('reason', 'unknown')
+                logger.info(f"ℹ️  Universal detector: {reason}")
+                return {'success': False, 'message': reason}
+
+        except Exception as e:
+            logger.error(f"Universal cookie detector failed: {e}")
+            return {'success': False, 'message': str(e)}
+
     async def stealth_click_button(self, keywords: List[str] = None) -> Dict[str, Any]:
         """
         STEALTH MODE: Click button like a HUMAN (not a bot!)

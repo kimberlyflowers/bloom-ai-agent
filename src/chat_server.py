@@ -1095,19 +1095,34 @@ Important:
 
         # Detect click intent (EXPANDED for CAPTCHA, buttons, etc!)
         if any(word in text_lower for word in ['clicking', 'click on', 'click the', 'clicking on', 'clicking the', 'i\'ll click']):
-            # PRIORITY 1: Cookie/consent dialogs - try ACCESSIBILITY first (most human-like!)
+            # PRIORITY 1: Cookie/consent dialogs - UNIVERSAL DETECTOR first!
             # Only trigger if it's actually about clicking accept/ok buttons, not just saying "ok" casually
             if any(phrase in text_lower for phrase in [
                 'click accept', 'click ok', 'click the ok', 'click the accept',
                 'accept all', 'accept cookies', 'alles accepteren', 'cookie', 'consent'
             ]):
-                logger.info("♿ Cookie/consent click detected - using ACCESSIBILITY MODE first!")
+                logger.info("🌍 Cookie/consent click detected - using UNIVERSAL DETECTOR!")
 
                 # Track steps for learning
-                self.action_steps.append("Attempt to click accept/ok button (accessibility mode)")
+                self.action_steps.append("Attempt to click accept/ok button (universal visual detection)")
 
-                # TRY 1: ACCESSIBILITY click (ARIA labels + keyboard navigation)
-                # This mimics screen readers and assistive tech - REQUIRED to work by law!
+                # TRY 0: UNIVERSAL COOKIE DETECTOR (language-independent visual detection)
+                # Uses visual/structural patterns - works on ANY site regardless of language!
+                universal_result = await self.browser.advanced.universal_cookie_detector()
+                universal_success = universal_result.get('success', False) if isinstance(universal_result, dict) else False
+
+                if universal_success:
+                    method = universal_result.get('method', 'universal')
+                    button_text = universal_result.get('button_text', 'unknown')
+                    score = universal_result.get('confidence_score', 0)
+                    self.action_steps.append(f"✅ Universal detector success: '{button_text}' (score: {score})")
+                    logger.info(f"✅ UNIVERSAL SUCCESS - {button_text} (score: {score})")
+                    return True
+
+                # TRY 1: ACCESSIBILITY click (fallback if universal fails)
+                logger.info("♿ Universal failed - trying ACCESSIBILITY MODE as fallback!")
+                self.action_steps.append("Universal detector failed - trying accessibility mode")
+
                 result = await self.browser.advanced.accessibility_click()
                 success = result.get('success', False) if isinstance(result, dict) else False
 
