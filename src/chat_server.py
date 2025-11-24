@@ -295,29 +295,36 @@ Important:
 
     async def _should_click_text(self, text: str) -> bool:
         """
-        NEW METHOD - Validate if text is a valid click target
+        🚨 HARD BLOCK on observation text - Enhanced validation
         Prevents clicking on Sarah's observation/description text
 
         Returns:
             bool: True if valid click target, False if descriptive text
         """
         if not text or len(text.strip()) < 2:
-            logger.warning(f"🛑 Blocked empty/too short click target: '{text}'")
             return False
 
         text_lower = text.strip().lower()
 
-        # Block Sarah's observation/description phrases
-        invalid_patterns = [
+        # 🚨 HARD BLOCK PATTERNS - Sarah's observations (ENHANCED)
+        hard_block_patterns = [
             # Sarah's first-person observations
+            "m back on", "i can see", "perfect!", "now let me", "looking at",
+            "the homepage", "search bar", "let me search", "i notice",
+            "it looks like", "oh interesting", "that's totally fine",
+            "i see we've", "landed on", "instead of staying", "✨", "🎯",
+            "i'm back", "homepage with", "in the left sidebar", "is already",
+            "perfect! i", "looking at the", "i can see the", "now i can see",
+            "observing", "watching", "notice that", "appears to be",
+
+            # Additional first-person phrases
             "i'm about to click", "i am about to click", "i'll click", "let me click",
-            "i see", "i notice", "i can see", "observing", "looking at", "looking for",
-            "now i can see", "looking at the", "i can see the", "now let me",
-            "let me search", "oh interesting", "that's totally fine", "i see we've",
+            "i see", "i notice", "looking for", "now let me",
+            "oh interesting", "that's totally fine",
 
             # Sentence fragments (incomplete sentences starting mid-word)
-            "m back on", "m about to", "t changed yet", "s changed", "perfect!",
-            "the homepage", "search bar at the top", "landed on", "instead of staying",
+            "m about to", "t changed yet", "s changed",
+            "search bar at the top", "instead of staying",
 
             # Navigation descriptions
             "click on", "navigate to", "search for", "type in", "enter in",
@@ -327,27 +334,24 @@ Important:
             "here", "there", "that's", "it's", "this is", "at the top", "in the"
         ]
 
-        # Check for invalid patterns
-        for pattern in invalid_patterns:
+        for pattern in hard_block_patterns:
             if pattern in text_lower:
-                logger.warning(f"🛑 BLOCKED INVALID CLICK TARGET: '{text}' (contains '{pattern}')")
+                logger.warning(f"🚫 HARD BLOCKED: '{text}' (contains '{pattern}')")
                 return False
 
-        # Block if it looks like a sentence fragment (starts with lowercase + short word)
+        # Block sentence fragments (starts mid-word)
         words = text.split()
         if len(words) > 0:
             first_word = words[0]
-            # Sentence fragment check: starts with lowercase single letter or short word
             if len(first_word) <= 2 and first_word[0].islower():
-                logger.warning(f"🛑 BLOCKED SENTENCE FRAGMENT: '{text}' (starts with '{first_word}')")
+                logger.warning(f"🚫 BLOCKED SENTENCE FRAGMENT: '{text}'")
                 return False
 
-        # Block if text is too long (likely a sentence/description, not a UI element)
-        if len(words) > 8:
-            logger.warning(f"🛑 BLOCKED LONG TEXT: '{text}' ({len(words)} words - likely observation)")
+        # Block long descriptive text
+        if len(words) > 6:
+            logger.warning(f"🚫 BLOCKED LONG TEXT: '{text}' ({len(words)} words)")
             return False
 
-        # Valid click target
         return True
 
     async def _stream_immediate_response(self, message: str):
@@ -1672,14 +1676,24 @@ Return ONLY valid JSON, no explanation."""
                 if action_type == 'navigate':
                     target = step.get('target')
                     self.action_steps.append(f"Navigate to {target}")
-                    
+
                     # Wait for browser readiness
                     if not await self._is_browser_ready():
                         overall_success = False
                         continue
-                    
-                    result = await self.browser.navigate(target)
-                    success = result.get('success', False) if isinstance(result, dict) else False
+
+                    # ⏰ DRAMATIC TIMEOUT REDUCTION: 8s max for navigation
+                    try:
+                        result = await asyncio.wait_for(
+                            self.browser.navigate(target),
+                            timeout=8.0
+                        )
+                        success = result.get('success', False) if isinstance(result, dict) else False
+                    except asyncio.TimeoutError:
+                        logger.error(f"⏰ NAVIGATE TIMEOUT: '{target}' took >8s - CANCELLING ALL ACTIONS")
+                        await self._stream_immediate_response(f"⏰ Navigation taking too long, cancelling...")
+                        self.action_steps.append(f"⏰ Navigation timed out: '{target}'")
+                        return False  # STOP ENTIRE ACTION PLAN IMMEDIATELY
 
                     if success:
                         self.action_steps.append(f"✅ Successfully navigated to {target}")
@@ -1716,17 +1730,17 @@ Return ONLY valid JSON, no explanation."""
                         overall_success = False
                         continue
 
-                    # ⏰ NEW: Search timeout (20s max - reduced from 30s)
+                    # ⏰ DRAMATIC TIMEOUT REDUCTION: 10s max (was 30s)
                     try:
                         # 🌍 UNIVERSAL ELEMENT LOCATOR - Works on ANY site, ANY language
                         # Uses LLM vision to find search box semantically
                         # NO hardcoded selectors, NO language assumptions
                         success = await asyncio.wait_for(
                             self._universal_search(query),
-                            timeout=20.0
+                            timeout=10.0
                         )
                     except asyncio.TimeoutError:
-                        logger.error(f"⏰ SEARCH TIMEOUT: '{query}' took >20s - CANCELLING ALL ACTIONS")
+                        logger.error(f"⏰ SEARCH TIMEOUT: '{query}' took >10s - CANCELLING ALL ACTIONS")
                         await self._stream_immediate_response(f"⏰ Search taking too long, cancelling...")
                         self.action_steps.append(f"⏰ Search timed out: '{query}'")
                         return False  # 🆕 STOP ENTIRE ACTION PLAN IMMEDIATELY
@@ -1807,14 +1821,14 @@ Return ONLY valid JSON, no explanation."""
                         logger.info("🔄 Waiting extra time after popup dismissal...")
                         await asyncio.sleep(2)  # Extra wait after popup
 
-                    # ⏰ NEW: Click timeout (15s max - reduced from 30s)
+                    # ⏰ DRAMATIC TIMEOUT REDUCTION: 12s max (was 30s)
                     try:
                         # 🌍 UNIVERSAL ELEMENT LOCATOR - Works on ANY site, ANY language
                         # Uses LLM vision to find element semantically
                         # NO hardcoded selectors, NO language assumptions
                         success = await asyncio.wait_for(
                             self._universal_click(description),
-                            timeout=15.0
+                            timeout=12.0
                         )
 
                         if success:
@@ -1825,7 +1839,7 @@ Return ONLY valid JSON, no explanation."""
                             self.action_steps.append(f"❌ Click failed for '{description}'")
 
                     except asyncio.TimeoutError:
-                        logger.error(f"⏰ CLICK TIMEOUT: '{description}' took >15s - CANCELLING ALL ACTIONS")
+                        logger.error(f"⏰ CLICK TIMEOUT: '{description}' took >12s - CANCELLING ALL ACTIONS")
                         await self._stream_immediate_response(f"⏰ Click taking too long, cancelling...")
                         self.action_steps.append(f"⏰ Click timed out: '{description}'")
                         return False  # 🆕 STOP ENTIRE ACTION PLAN IMMEDIATELY
