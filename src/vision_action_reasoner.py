@@ -245,12 +245,26 @@ class VisionActionReasoner:
                 })
                 reasoning = "Dismiss popup before searching. "
 
-            # Perform search
+            # Perform search - HANDLE BOTH 'query' AND 'target' FIELDS
+            search_query = user_intent.get('query') or user_intent.get('target', '')
+            if not search_query:
+                # Fallback: try to extract from original message if available
+                original_message = user_intent.get('original_message', '')
+                if 'search' in original_message.lower():
+                    # Extract search terms after "search for" or similar
+                    search_match = re.search(r'(?:search for|search|find)\s+(.+)', original_message.lower())
+                    if search_match:
+                        search_query = search_match.group(1).strip()
+                    else:
+                        search_query = original_message
+                else:
+                    search_query = 'search'
+
             steps.append({
                 'action': 'search',
-                'query': user_intent['query']
+                'query': search_query
             })
-            reasoning += f"Search for: {user_intent['query']}"
+            reasoning += f"Search for: {search_query}"
 
         elif intent_type == 'click':
             # Check if popup is blocking
