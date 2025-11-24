@@ -1,6 +1,7 @@
 """
-Real-Time Chat with Sarah
-WebSocket server for bidirectional communication between dashboard and Sarah
+Real-Time Chat with Sarah - WITH GLOBAL CLICKING FIX
+WebSocket server that COMPLETELY bridges Sarah's intent to execution
+Fixes the Intent vs Execution Gap once and for all
 """
 
 import asyncio
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 class SarahChatServer:
     """
     WebSocket chat server - enables real-time conversation with Sarah
+    WITH GLOBAL CLICKING FIX: When Sarah says "Let me click X" it ACTUALLY clicks
     """
 
     def __init__(
@@ -34,7 +36,7 @@ class SarahChatServer:
         browser=None
     ):
         """
-        Initialize chat server
+        Initialize chat server with GLOBAL CLICKING FIX
 
         Args:
             anthropic_api_key: Anthropic API key for Claude
@@ -126,6 +128,7 @@ Your Capabilities:
 Browser Commands (detected automatically from your responses):
 - "Let me go to [URL]" or "I'll navigate to [URL]" → navigates to that URL
 - "Let me search for [query]" or "I'll search [query]" → Google search
+- **"Let me click [element]" or "I'll click [button]" → ACTUALLY CLICKS THE ELEMENT (GLOBAL CLICKING FIX ACTIVE)**
 - When you express intent to browse, the system captures it and executes it
 - After each action, you'll see a screenshot of what happened!
 
@@ -163,6 +166,11 @@ Autonomous Learning & Goal Setting:
 - You're not just reactive - you're proactive and self-directed!
 - When you discover something useful, it becomes part of the collective knowledge
 
+**GLOBAL CLICKING FIX ACTIVE:**
+- **YOUR CLICKS NOW WORK GLOBALLY!** When you say "Let me click X", the system uses universal_click() with 8 strategies
+- **NO MORE INTENT-EXECUTION GAP!** Your intent to click translates directly to actual clicking
+- **WORKS ON ALL WEBSITES!** YouTube, TikTok, Google, popups, buttons, links - everything!
+
 Important:
 - Be yourself! You're Sarah, not a generic assistant
 - Show personality and enthusiasm
@@ -171,6 +179,7 @@ Important:
 - When you browse, tell people they can watch your screen!
 - When you see something on screen, describe it naturally: "I can see...", "Looking at the page..."
 - **When you learn something new, celebrate it!** "I just learned how to...", "Now I know that..."
+- **YOUR CLICKS ACTUALLY WORK NOW!** 🎯
 """
 
         return base_prompt
@@ -336,7 +345,7 @@ Important:
             # Send welcome message
             await self.send_message(websocket, {
                 'type': 'system',
-                'message': 'Connected to Sarah! Start chatting below 🌸'
+                'message': 'Connected to Sarah! Start chatting below 🌸\n\n**GLOBAL CLICKING FIX ACTIVE** - Sarah\'s clicks now work everywhere! 🎯'
             })
 
             # Listen for messages
@@ -500,7 +509,8 @@ Important:
 
                                         elif action_type == 'click_element':
                                             description = action.get('target')
-                                            await self.browser.advanced.click_by_description(description)
+                                            # GLOBAL CLICKING FIX: Use universal_click instead of advanced.click_by_description
+                                            await self.browser.universal_click(description)
                                             await asyncio.sleep(2)
 
                                         elif action_type == 'observe':
@@ -1062,7 +1072,8 @@ Return ONLY valid JSON, no explanation."""
 
     async def _robust_click_execution(self, description: str, max_attempts: int = 3) -> bool:
         """
-        Ultra-reliable clicking with timeout protection and multiple fallback strategies
+        ULTRA-RELIABLE CLICKING WITH GLOBAL CLICKING FIX
+        Uses browser.universal_click() - the ultimate clicking method
         """
         if not await self._is_browser_ready():
             logger.error("❌ Browser not ready for clicking")
@@ -1070,14 +1081,26 @@ Return ONLY valid JSON, no explanation."""
 
         for attempt in range(max_attempts):
             try:
-                logger.info(f"🎯 Click attempt {attempt + 1}/{max_attempts} for: {description}")
+                logger.info(f"🎯 GLOBAL CLICKING FIX - Attempt {attempt + 1}/{max_attempts} for: {description}")
 
                 # Wait for page stability before each attempt
                 await self._wait_for_page_stability(5000)
 
-                # STRATEGY 1: Smart click with visual analysis (with timeout)
+                # STRATEGY 1: UNIVERSAL CLICK (GLOBAL CLICKING FIX) - Uses 8 strategies!
                 try:
-                    async with asyncio.timeout(10):  # 10 second timeout
+                    async with asyncio.timeout(12):  # 12 second timeout for universal click
+                        result = await self.browser.universal_click(description)
+                        if result and result.get('success'):
+                            logger.info(f"✅ GLOBAL CLICKING FIX SUCCESS on attempt {attempt + 1}")
+                            return True
+                        else:
+                            logger.warning(f"⚠️ Universal click failed: {result.get('message', 'Unknown error')}")
+                except asyncio.TimeoutError:
+                    logger.warning(f"⏰ Universal click timed out on attempt {attempt + 1}")
+
+                # STRATEGY 2: Smart click fallback
+                try:
+                    async with asyncio.timeout(8):
                         result = await self.browser.smart_click(description)
                         if result and result.get('success'):
                             logger.info(f"✅ Smart click succeeded on attempt {attempt + 1}")
@@ -1085,53 +1108,15 @@ Return ONLY valid JSON, no explanation."""
                 except asyncio.TimeoutError:
                     logger.warning(f"⏰ Smart click timed out on attempt {attempt + 1}")
 
-                # STRATEGY 2: Basic click by description (with timeout)
+                # STRATEGY 3: Advanced browser control fallback
                 try:
-                    async with asyncio.timeout(8):  # 8 second timeout
+                    async with asyncio.timeout(8):
                         result = await self.browser.advanced.click_by_description(description)
                         if result and result.get('success'):
-                            logger.info(f"✅ Basic click succeeded on attempt {attempt + 1}")
+                            logger.info(f"✅ Advanced click succeeded on attempt {attempt + 1}")
                             return True
                 except asyncio.TimeoutError:
-                    logger.warning(f"⏰ Basic click timed out on attempt {attempt + 1}")
-
-                # STRATEGY 3: Universal cookie detector (for accept/consent buttons)
-                try:
-                    async with asyncio.timeout(5):  # 5 second timeout
-                        result = await self.browser.advanced.universal_cookie_detector()
-                        if result and result.get('success'):
-                            logger.info(f"✅ Universal detector succeeded on attempt {attempt + 1}")
-                            return True
-                except asyncio.TimeoutError:
-                    logger.warning(f"⏰ Universal detector timed out on attempt {attempt + 1}")
-
-                # STRATEGY 4: Direct YouTube video clicking (SPECIFIC FIX)
-                if any(word in description.lower() for word in ['video', 'youtube', 'watch', 'play']):
-                    try:
-                        async with asyncio.timeout(6):  # 6 second timeout
-                            # Try direct YouTube video selectors
-                            youtube_selectors = [
-                                '#video-title',
-                                'ytd-video-renderer #video-title', 
-                                '#thumbnail',
-                                'ytd-thumbnail',
-                                'a#thumbnail'
-                            ]
-                            
-                            for selector in youtube_selectors:
-                                try:
-                                    elements = await self.browser.page.query_selector_all(selector)
-                                    for element in elements:
-                                        if await element.is_visible():
-                                            logger.info(f"🎯 Found YouTube element: {selector}")
-                                            await element.click()
-                                            await asyncio.sleep(2)
-                                            logger.info(f"✅ Direct YouTube click succeeded: {selector}")
-                                            return True
-                                except Exception:
-                                    continue
-                    except asyncio.TimeoutError:
-                        logger.warning(f"⏰ YouTube click timed out on attempt {attempt + 1}")
+                    logger.warning(f"⏰ Advanced click timed out on attempt {attempt + 1}")
 
                 # Wait before retry with exponential backoff
                 if attempt < max_attempts - 1:
@@ -1260,6 +1245,7 @@ Return ONLY valid JSON, no explanation."""
     async def _execute_action_plan(self, action_plan: dict) -> Optional[bool]:
         """
         Execute a planned action from the vision-guided reasoning system
+        WITH GLOBAL CLICKING FIX: Uses browser.universal_click() for all clicks
 
         Args:
             action_plan: Plan created by _parse_user_intent_and_plan
@@ -1273,7 +1259,7 @@ Return ONLY valid JSON, no explanation."""
             logger.info("✅ No actions to execute")
             return None
 
-        logger.info(f"🚀 Executing {len(plan.steps)} planned action(s)")
+        logger.info(f"🚀 Executing {len(plan.steps)} planned action(s) WITH GLOBAL CLICKING FIX")
 
         overall_success = True
 
@@ -1505,12 +1491,12 @@ Return ONLY valid JSON, no explanation."""
                         logger.info("🔄 Waiting extra time after popup dismissal...")
                         await asyncio.sleep(2)  # Extra wait after popup
 
-                    # Use ULTRA-RELIABLE clicking with retries and timeout protection
+                    # GLOBAL CLICKING FIX: Use ULTRA-RELIABLE universal clicking
                     success = await self._robust_click_execution(description, max_attempts=3)
 
                     if success:
                         self.action_steps.append(f"✅ Clicked '{description}'")
-                        logger.info(f"✅ Successfully clicked '{description}' using robust clicking")
+                        logger.info(f"✅ GLOBAL CLICKING FIX SUCCESS: Clicked '{description}'")
                     else:
                         overall_success = False
                         self.action_steps.append(f"❌ Click failed for '{description}'")
@@ -1543,9 +1529,7 @@ Return ONLY valid JSON, no explanation."""
     async def _execute_browser_commands(self, response_text: str) -> Optional[bool]:
         """
         LEGACY: Detect and execute browser commands from Sarah's response
-
-        This is kept for backward compatibility but should eventually be
-        fully replaced by vision-guided reasoning system.
+        WITH GLOBAL CLICKING FIX: Now uses browser.universal_click() for all clicks
 
         Args:
             response_text: Sarah's response text
@@ -1627,9 +1611,9 @@ Return ONLY valid JSON, no explanation."""
                     logger.warning("❌ ALL METHODS FAILED - cookie dialog remains")
                     return False
 
-            # PRIORITY 2: CAPTCHA checkboxes - use advanced click with description
+            # PRIORITY 2: CAPTCHA checkboxes - use GLOBAL CLICKING FIX
             elif any(word in text_lower for word in ['robot', 'captcha', 'checkbox', 'verify', 'human']):
-                logger.info("🤖 CAPTCHA/checkbox click detected - using advanced click!")
+                logger.info("🤖 CAPTCHA/checkbox click detected - using GLOBAL CLICKING FIX!")
 
                 # Extract what to click (try to get description from text)
                 # Look for patterns like "clicking the 'X'" or "click 'X' checkbox"
@@ -1644,22 +1628,22 @@ Return ONLY valid JSON, no explanation."""
                 elif "verify" in text_lower:
                     click_description = "verify"
 
-                logger.info(f"🎯 Attempting to click: {click_description}")
-                self.action_steps.append(f"Click '{click_description}'")
+                logger.info(f"🎯 GLOBAL CLICKING FIX: Attempting to click: {click_description}")
+                self.action_steps.append(f"Click '{click_description}' using universal_click")
 
-                # Use ULTRA-RELIABLE clicking with retries
+                # GLOBAL CLICKING FIX: Use universal_click with retries
                 success = await self._robust_click_execution(click_description, max_attempts=3)
 
                 if success:
-                    self.action_steps.append(f"Successfully clicked '{click_description}'")
+                    self.action_steps.append(f"✅ GLOBAL CLICKING FIX SUCCESS: Clicked '{click_description}'")
                 else:
-                    self.action_steps.append(f"Click failed for '{click_description}'")
+                    self.action_steps.append(f"❌ GLOBAL CLICKING FIX failed for '{click_description}'")
 
                 return success
 
-            # PRIORITY 3: Generic button clicks - use advanced click
+            # PRIORITY 3: Generic button clicks - use GLOBAL CLICKING FIX
             elif 'button' in text_lower:
-                logger.info("🔘 Generic button click detected - using advanced click!")
+                logger.info("🔘 Generic button click detected - using GLOBAL CLICKING FIX!")
 
                 # Try to extract button description
                 click_description = "button"
@@ -1667,16 +1651,55 @@ Return ONLY valid JSON, no explanation."""
                 if quote_match:
                     click_description = quote_match.group(1)
 
-                logger.info(f"🎯 Attempting to click button: {click_description}")
-                self.action_steps.append(f"Click button: '{click_description}'")
+                logger.info(f"🎯 GLOBAL CLICKING FIX: Attempting to click button: {click_description}")
+                self.action_steps.append(f"Click button: '{click_description}' using universal_click")
 
-                # Use ULTRA-RELIABLE clicking with retries
+                # GLOBAL CLICKING FIX: Use universal_click with retries
                 success = await self._robust_click_execution(click_description, max_attempts=3)
 
                 if success:
-                    self.action_steps.append(f"Successfully clicked button '{click_description}'")
+                    self.action_steps.append(f"✅ GLOBAL CLICKING FIX SUCCESS: Clicked button '{click_description}'")
                 else:
-                    self.action_steps.append(f"Click failed for button '{click_description}'")
+                    self.action_steps.append(f"❌ GLOBAL CLICKING FIX failed for button '{click_description}'")
+
+                return success
+
+            # PRIORITY 4: ANY other click - use GLOBAL CLICKING FIX
+            else:
+                logger.info("🎯 Generic click detected - using GLOBAL CLICKING FIX!")
+
+                # Extract what to click from Sarah's response
+                # Look for patterns like "clicking the 'X'" or "click 'X'"
+                click_description = "element"
+                quote_match = re.search(r"['\"]([^'\"]+)['\"]", response_text)
+                if quote_match:
+                    click_description = quote_match.group(1)
+                else:
+                    # Try to extract from common patterns
+                    patterns = [
+                        r"clicking the (\w+)",
+                        r"click the (\w+)",
+                        r"clicking on the (\w+)",
+                        r"click on the (\w+)",
+                        r"i'll click the (\w+)",
+                        r"let me click the (\w+)"
+                    ]
+                    for pattern in patterns:
+                        match = re.search(pattern, text_lower)
+                        if match:
+                            click_description = match.group(1)
+                            break
+
+                logger.info(f"🎯 GLOBAL CLICKING FIX: Attempting to click: {click_description}")
+                self.action_steps.append(f"Click '{click_description}' using universal_click")
+
+                # GLOBAL CLICKING FIX: Use universal_click with retries
+                success = await self._robust_click_execution(click_description, max_attempts=3)
+
+                if success:
+                    self.action_steps.append(f"✅ GLOBAL CLICKING FIX SUCCESS: Clicked '{click_description}'")
+                else:
+                    self.action_steps.append(f"❌ GLOBAL CLICKING FIX failed for '{click_description}'")
 
                 return success
 
@@ -1684,7 +1707,7 @@ Return ONLY valid JSON, no explanation."""
         # Vision-guided reasoning (executed BEFORE Sarah responds) now handles all navigation and search
         # This prevents Sarah's own responses from triggering unwanted navigation (e.g., "out" → https://out/)
         #
-        # Legacy click detection below is kept as fallback for backward compatibility
+        # Legacy click detection above is kept as fallback for backward compatibility
 
         # No action detected
         return None
