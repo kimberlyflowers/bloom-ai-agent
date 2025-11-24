@@ -1068,7 +1068,42 @@ Important:
                     logger.info(f"🔍 Checking current page for search box: {current_url}")
 
                     try:
-                        # Find visible search boxes on current page
+                        # STEP 1: Look for search ICONS/BUTTONS first (magnifying glass, search buttons)
+                        # Many UIs hide the search box until you click the icon
+                        search_icon_selectors = [
+                            'button[aria-label*="search" i]',
+                            'button[title*="search" i]',
+                            'a[aria-label*="search" i]',
+                            '[role="button"][aria-label*="search" i]',
+                            'button svg[class*="search" i]',
+                            'button [class*="search" i]',
+                            'button [data-icon*="search" i]',
+                            # Common icon class names
+                            'button.search-icon',
+                            'button .icon-search',
+                            '.search-button',
+                            '#search-button'
+                        ]
+
+                        search_icon_clicked = False
+                        for selector in search_icon_selectors:
+                            try:
+                                icons = await self.browser.page.query_selector_all(selector)
+                                for icon in icons:
+                                    is_visible = await icon.is_visible()
+                                    if is_visible:
+                                        logger.info(f"🔍 Found search icon/button (selector: {selector})")
+                                        self.action_steps.append("Clicking search icon to open search box")
+                                        await icon.click()
+                                        await asyncio.sleep(0.5)  # Wait for search box to appear
+                                        search_icon_clicked = True
+                                        break
+                                if search_icon_clicked:
+                                    break
+                            except Exception as e:
+                                continue
+
+                        # STEP 2: Find visible search text inputs (may appear after clicking icon)
                         search_box_selectors = [
                             'input[type="search"]',
                             'input[name*="search" i]',
