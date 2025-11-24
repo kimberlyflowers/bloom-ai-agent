@@ -888,12 +888,12 @@ Important:
     async def _llm_parse_user_intent(self, user_message: str) -> Dict[str, Any]:
         """
         Use Claude to parse user intent - understands ALL natural language variations
-        No hardcoded keywords - true natural language understanding
+        Returns STANDARDIZED intent format
         """
         try:
             response = await asyncio.to_thread(
                 self.anthropic.messages.create,
-                model="claude-3-5-haiku-20241022",  # Fast and cheap for intent parsing
+                model="claude-3-5-haiku-20241022",
                 max_tokens=200,
                 temperature=0,
                 messages=[{
@@ -905,28 +905,30 @@ User message: "{user_message}"
 **IMPORTANT CONTEXT:** This is Sarah Rodriguez (the AI agent) speaking about HER OWN actions.
 When Sarah says "I'm going to click X" or "Let me click Y" - that means SHE wants to perform the action.
 
-Possible action types:
-- navigate: User OR Sarah wants to go to a URL/website
-- search: User OR Sarah wants to search for something
-- click: User OR Sarah wants to click an element
-- type: User OR Sarah wants to type text
-- observe: User OR Sarah wants to know what's on screen
-- acknowledgment: Just saying ok/thanks/cool
-- unknown: Can't determine intent
+STANDARDIZED INTENT FORMAT:
+- navigate: {{"type": "navigate", "target": "URL or site name", "confidence": 0.0-1.0}}
+- search: {{"type": "search", "query": "search terms", "confidence": 0.0-1.0}}
+- click: {{"type": "click", "target": "element description", "confidence": 0.0-1.0}}
+- type: {{"type": "type", "target": "element", "text": "text to type", "confidence": 0.0-1.0}}
+- observe: {{"type": "observe", "target": "what to observe", "confidence": 0.0-1.0}}
+- acknowledgment: {{"type": "acknowledgment", "confidence": 0.0-1.0}}
+- unknown: {{"type": "unknown", "confidence": 0.0-1.0}}
 
 Return JSON format:
 {{
   "type": "action_type",
-  "target": "what to navigate to / click / search for (if applicable)",
+  "target": "what to navigate to / click / observe",
+  "query": "search terms (for search actions)",
+  "text": "text to type (for type actions)", 
   "confidence": 0.0-1.0
 }}
 
 Examples:
-"go to youtube" → {{"type": "navigate", "target": "youtube", "confidence": 0.95}}
-"hit the home button" → {{"type": "click", "target": "home button", "confidence": 0.9}}
+"go to youtube" → {{"type": "navigate", "target": "youtube.com", "confidence": 0.95}}
 "search for cats" → {{"type": "search", "query": "cats", "confidence": 0.95}}
-"I'm going to click the search bar" → {{"type": "click", "target": "search bar", "confidence": 0.95}}
-"Let me click that button" → {{"type": "click", "target": "button", "confidence": 0.9}}
+"click the home button" → {{"type": "click", "target": "home button", "confidence": 0.9}}
+"type hello in the search box" → {{"type": "type", "target": "search box", "text": "hello", "confidence": 0.9}}
+"look at the videos" → {{"type": "observe", "target": "videos", "confidence": 0.8}}
 "ok cool" → {{"type": "acknowledgment", "confidence": 0.95}}
 
 Return ONLY valid JSON, no explanation."""
@@ -944,13 +946,32 @@ Return ONLY valid JSON, no explanation."""
             intent_json = intent_json.strip()
 
             user_intent = json.loads(intent_json)
-            logger.info(f"🧠 LLM parsed intent: {user_intent}")
-            return user_intent
+            
+            # STANDARDIZE THE INTENT FORMAT
+            standardized_intent = {
+                'type': user_intent.get('type', 'unknown'),
+                'target': user_intent.get('target', ''),
+                'query': user_intent.get('query', ''),
+                'text': user_intent.get('text', ''),
+                'confidence': user_intent.get('confidence', 0.5),
+                'original_message': user_message  # Keep original for context
+            }
+            
+            logger.info(f"🧠 LLM parsed intent: {standardized_intent}")
+            return standardized_intent
 
         except Exception as e:
             logger.error(f"❌ LLM intent parsing failed: {e}")
-            # Fallback to keyword-based if LLM fails
-            return self.action_reasoner.parse_user_intent(user_message)
+            # Fallback to keyword-based with standardized format
+            fallback_intent = self.action_reasoner.parse_user_intent(user_message)
+            return {
+                'type': fallback_intent.get('type', 'unknown'),
+                'target': fallback_intent.get('target', ''),
+                'query': fallback_intent.get('query', ''),
+                'text': fallback_intent.get('text', ''),
+                'confidence': fallback_intent.get('confidence', 0.5),
+                'original_message': user_message
+            }
 
     async def _check_for_real_popup(self) -> bool:
         """
