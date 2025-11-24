@@ -892,7 +892,7 @@ Important:
             return None
 
         # Get current page context for vision analysis
-        current_url = await self.browser.page.url if self.browser and self.browser.page else "unknown"
+        current_url = self.browser.page.url if self.browser and self.browser.page else "unknown"
 
         # Build rich page context using page title, visible elements, etc.
         page_context = f"URL: {current_url}"
