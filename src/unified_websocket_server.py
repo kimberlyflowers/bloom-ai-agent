@@ -43,7 +43,12 @@ class UnifiedWebSocketServer:
         self.server = await websockets.serve(
             self.handle_connection,
             "0.0.0.0",
-            self.port
+            self.port,
+            # Low-latency configuration for real-time chat
+            ping_interval=5,      # Send keepalive ping every 5 seconds (instead of 20)
+            ping_timeout=10,      # Wait 10 seconds for pong (instead of 20)
+            compression=None,     # Disable compression for lower latency
+            max_size=10485760     # 10MB max message size (default is 1MB)
         )
 
         logger.info(f"✅ Unified server running on ws://0.0.0.0:{self.port}")
