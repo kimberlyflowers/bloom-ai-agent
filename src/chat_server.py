@@ -885,6 +885,68 @@ Important:
             logger.error(f"Error getting relevant knowledge: {e}")
             return ""
 
+    async def _llm_parse_user_intent(self, user_message: str) -> Dict[str, Any]:
+        """
+        Use Claude to parse user intent - understands ALL natural language variations
+        No hardcoded keywords - true natural language understanding
+        """
+        try:
+            response = await asyncio.to_thread(
+                self.anthropic.messages.create,
+                model="claude-3-5-haiku-20241022",  # Fast and cheap for intent parsing
+                max_tokens=200,
+                temperature=0,
+                messages=[{
+                    'role': 'user',
+                    'content': f"""Parse the user's intent and return JSON only.
+
+User message: "{user_message}"
+
+Possible action types:
+- navigate: User wants to go to a URL/website
+- search: User wants to search for something
+- click: User wants to click an element
+- type: User wants to type text
+- observe: User wants to know what's on screen
+- acknowledgment: Just saying ok/thanks/cool
+- unknown: Can't determine intent
+
+Return JSON format:
+{{
+  "type": "action_type",
+  "target": "what to navigate to / click / search for (if applicable)",
+  "confidence": 0.0-1.0
+}}
+
+Examples:
+"go to youtube" → {{"type": "navigate", "target": "youtube", "confidence": 0.95}}
+"hit the home button" → {{"type": "click", "target": "home button", "confidence": 0.9}}
+"search for cats" → {{"type": "search", "query": "cats", "confidence": 0.95}}
+"ok cool" → {{"type": "acknowledgment", "confidence": 0.95}}
+
+Return ONLY valid JSON, no explanation."""
+                }]
+            )
+
+            # Parse JSON response
+            import json
+            intent_json = response.content[0].text.strip()
+            # Remove markdown code blocks if present
+            if intent_json.startswith('```'):
+                intent_json = intent_json.split('```')[1]
+                if intent_json.startswith('json'):
+                    intent_json = intent_json[4:]
+            intent_json = intent_json.strip()
+
+            user_intent = json.loads(intent_json)
+            logger.info(f"🧠 LLM parsed intent: {user_intent}")
+            return user_intent
+
+        except Exception as e:
+            logger.error(f"❌ LLM intent parsing failed: {e}")
+            # Fallback to keyword-based if LLM fails
+            return self.action_reasoner.parse_user_intent(user_message)
+
     async def _parse_user_intent_and_plan(self, user_message: str) -> Optional[dict]:
         """
         Parse user intent and create action plan using vision-guided reasoning
@@ -897,8 +959,8 @@ Important:
         Returns:
             Action plan dict or None if no action needed
         """
-        # Parse user intent
-        user_intent = self.action_reasoner.parse_user_intent(user_message)
+        # Parse user intent using LLM (understands ALL natural language)
+        user_intent = await self._llm_parse_user_intent(user_message)
 
         logger.info(f"🧠 User intent: {user_intent.get('type')} (confidence: {user_intent.get('confidence', 0):.2f})")
 
