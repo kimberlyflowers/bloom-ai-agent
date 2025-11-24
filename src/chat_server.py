@@ -999,6 +999,99 @@ Return ONLY valid JSON, no explanation."""
             logger.warning(f"⚠️ Popup check failed: {e}")
             return False
 
+    async def _is_browser_ready(self) -> bool:
+        """
+        Check if browser is in a ready state for interactions
+        """
+        if not self.browser or not self.browser.is_running:
+            logger.error("❌ Browser not running")
+            return False
+        
+        if not self.browser.page or self.browser.page.is_closed():
+            logger.error("❌ Browser page is closed")
+            return False
+        
+        try:
+            # Check if page is still responsive
+            await self.browser.page.evaluate("1")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Browser page not responsive: {e}")
+            return False
+
+    async def _wait_for_page_stability(self, timeout: int = 10000) -> bool:
+        """
+        Wait for page to become stable (network idle, DOM settled)
+        """
+        if not await self._is_browser_ready():
+            return False
+
+        try:
+            # Wait for network to be idle
+            await self.browser.page.wait_for_load_state('networkidle', timeout=timeout)
+            
+            # Additional short wait for DOM stability
+            await asyncio.sleep(1)
+            
+            return True
+        except Exception as e:
+            logger.warning(f"⚠️ Page stability wait timed out: {e}")
+            # Still proceed even if timeout - page might be stable enough
+            return True
+
+    async def _robust_click_execution(self, description: str, max_attempts: int = 3) -> bool:
+        """
+        Ultra-reliable clicking with multiple fallback strategies and retries
+        """
+        if not await self._is_browser_ready():
+            logger.error("❌ Browser not ready for clicking")
+            return False
+
+        for attempt in range(max_attempts):
+            try:
+                logger.info(f"🎯 Click attempt {attempt + 1}/{max_attempts} for: {description}")
+
+                # Wait for page stability before each attempt
+                await self._wait_for_page_stability(5000)
+
+                # Strategy 1: Smart click with visual analysis
+                result = await self.browser.smart_click(description)
+                if result and result.get('success'):
+                    logger.info(f"✅ Smart click succeeded on attempt {attempt + 1}")
+                    return True
+
+                # Strategy 2: Basic click by description
+                result = await self.browser.advanced.click_by_description(description)
+                if result and result.get('success'):
+                    logger.info(f"✅ Basic click succeeded on attempt {attempt + 1}")
+                    return True
+
+                # Strategy 3: Accessibility-focused click
+                result = await self.browser.advanced.accessibility_click()
+                if result and result.get('success'):
+                    logger.info(f"✅ Accessibility click succeeded on attempt {attempt + 1}")
+                    return True
+
+                # Strategy 4: Universal cookie detector (for accept/consent buttons)
+                result = await self.browser.advanced.universal_cookie_detector()
+                if result and result.get('success'):
+                    logger.info(f"✅ Universal detector succeeded on attempt {attempt + 1}")
+                    return True
+
+                # Wait before retry
+                if attempt < max_attempts - 1:
+                    wait_time = 2 * (attempt + 1)  # Exponential backoff: 2, 4, 6 seconds
+                    logger.info(f"⏳ Waiting {wait_time}s before retry...")
+                    await asyncio.sleep(wait_time)
+
+            except Exception as e:
+                logger.warning(f"⚠️ Click attempt {attempt + 1} failed: {e}")
+                if attempt < max_attempts - 1:
+                    await asyncio.sleep(2)
+
+        logger.error(f"❌ All {max_attempts} click attempts failed for: {description}")
+        return False
+
     async def _parse_user_intent_and_plan(self, user_message: str) -> Optional[dict]:
         """
         Parse user intent and create action plan using vision-guided reasoning
@@ -1142,16 +1235,22 @@ Return ONLY valid JSON, no explanation."""
                 if action_type == 'navigate':
                     target = step.get('target')
                     self.action_steps.append(f"Navigate to {target}")
+                    
+                    # Wait for browser readiness
+                    if not await self._is_browser_ready():
+                        overall_success = False
+                        continue
+                    
                     result = await self.browser.navigate(target)
                     success = result.get('success', False) if isinstance(result, dict) else False
 
                     if success:
                         self.action_steps.append(f"✅ Successfully navigated to {target}")
 
-                        # AUTONOMOUS POPUP HANDLING - automatically dismiss cookies/popups after navigation
-                        # Wait for page to settle
-                        await asyncio.sleep(1.5)
+                        # Wait for page to stabilize after navigation
+                        await self._wait_for_page_stability()
 
+                        # AUTONOMOUS POPUP HANDLING - automatically dismiss cookies/popups after navigation
                         logger.info("🔍 Checking for popups/cookies automatically...")
                         self.action_steps.append("Checking for popups/cookies...")
 
@@ -1164,18 +1263,9 @@ Return ONLY valid JSON, no explanation."""
                             self.action_steps.append(f"✅ Auto-dismissed popup: '{button_text}'")
                             logger.info(f"✅ Auto-dismissed popup: '{button_text}'")
                         else:
-                            # Try accessibility click as fallback
-                            accessibility_result = await self.browser.advanced.accessibility_click()
-                            accessibility_success = accessibility_result.get('success', False) if isinstance(accessibility_result, dict) else False
-
-                            if accessibility_success:
-                                button_text = accessibility_result.get('button_text', 'unknown')
-                                self.action_steps.append(f"✅ Auto-dismissed via accessibility: '{button_text}'")
-                                logger.info(f"✅ Auto-dismissed via accessibility: '{button_text}'")
-                            else:
-                                # No popup detected or couldn't dismiss - this is fine, not all sites have popups
-                                logger.info("ℹ️  No popup detected or already dismissed")
-                                self.action_steps.append("ℹ️  Page is clean (no popups)")
+                            # No popup detected or couldn't dismiss - this is fine, not all sites have popups
+                            logger.info("ℹ️  No popup detected or already dismissed")
+                            self.action_steps.append("ℹ️  Page is clean (no popups)")
                     else:
                         overall_success = False
                         self.action_steps.append(f"❌ Navigation failed")
@@ -1183,6 +1273,11 @@ Return ONLY valid JSON, no explanation."""
                 elif action_type == 'search':
                     query = step.get('query')
                     self.action_steps.append(f"Search for '{query}'")
+
+                    # Wait for browser readiness
+                    if not await self._is_browser_ready():
+                        overall_success = False
+                        continue
 
                     # UNIVERSAL CONTEXT-AWARE SEARCH
                     # Always check current page for search box first, regardless of URL
@@ -1296,10 +1391,10 @@ Return ONLY valid JSON, no explanation."""
                     if success:
                         self.action_steps.append(f"✅ Successfully searched for '{query}'")
 
-                        # AUTONOMOUS POPUP HANDLING - automatically dismiss cookies/popups after search
-                        # Wait for page to settle
-                        await asyncio.sleep(1.5)
+                        # Wait for page to stabilize after search
+                        await self._wait_for_page_stability()
 
+                        # AUTONOMOUS POPUP HANDLING - automatically dismiss cookies/popups after search
                         logger.info("🔍 Checking for popups/cookies automatically...")
                         self.action_steps.append("Checking for popups/cookies...")
 
@@ -1312,18 +1407,9 @@ Return ONLY valid JSON, no explanation."""
                             self.action_steps.append(f"✅ Auto-dismissed popup: '{button_text}'")
                             logger.info(f"✅ Auto-dismissed popup: '{button_text}'")
                         else:
-                            # Try accessibility click as fallback
-                            accessibility_result = await self.browser.advanced.accessibility_click()
-                            accessibility_success = accessibility_result.get('success', False) if isinstance(accessibility_result, dict) else False
-
-                            if accessibility_success:
-                                button_text = accessibility_result.get('button_text', 'unknown')
-                                self.action_steps.append(f"✅ Auto-dismissed via accessibility: '{button_text}'")
-                                logger.info(f"✅ Auto-dismissed via accessibility: '{button_text}'")
-                            else:
-                                # No popup detected or couldn't dismiss - this is fine
-                                logger.info("ℹ️  No popup detected or already dismissed")
-                                self.action_steps.append("ℹ️  Page is clean (no popups)")
+                            # No popup detected or couldn't dismiss - this is fine
+                            logger.info("ℹ️  No popup detected or already dismissed")
+                            self.action_steps.append("ℹ️  Page is clean (no popups)")
                     else:
                         overall_success = False
                         self.action_steps.append(f"❌ Search failed")
@@ -1331,6 +1417,11 @@ Return ONLY valid JSON, no explanation."""
                 elif action_type == 'dismiss_popup':
                     method = step.get('method', 'accessibility_first')
                     self.action_steps.append("Dismiss popup/cookie dialog")
+
+                    # Wait for browser readiness
+                    if not await self._is_browser_ready():
+                        overall_success = False
+                        continue
 
                     # Try accessibility first (most human-like)
                     result = await self.browser.advanced.accessibility_click()
@@ -1354,13 +1445,12 @@ Return ONLY valid JSON, no explanation."""
                     description = step.get('description', 'element')
                     self.action_steps.append(f"Click: {description}")
 
-                    # Use ImprovedClicking system (8 strategies) instead of basic click_by_description
-                    result = await self.browser.smart_click(description)
-                    success = result.get('success', False) if isinstance(result, dict) else False
+                    # Use ULTRA-RELIABLE clicking with retries and multiple strategies
+                    success = await self._robust_click_execution(description, max_attempts=3)
 
                     if success:
                         self.action_steps.append(f"✅ Clicked '{description}'")
-                        logger.info(f"✅ Successfully clicked '{description}' using improved clicking")
+                        logger.info(f"✅ Successfully clicked '{description}' using robust clicking")
                     else:
                         overall_success = False
                         self.action_steps.append(f"❌ Click failed for '{description}'")
@@ -1387,6 +1477,7 @@ Return ONLY valid JSON, no explanation."""
                 overall_success = False
                 self.action_steps.append(f"❌ Error: {str(e)}")
 
+        logger.info(f"✅ Action plan completed: {overall_success}")
         return overall_success
 
     async def _execute_browser_commands(self, response_text: str) -> Optional[bool]:
@@ -1496,9 +1587,8 @@ Return ONLY valid JSON, no explanation."""
                 logger.info(f"🎯 Attempting to click: {click_description}")
                 self.action_steps.append(f"Click '{click_description}'")
 
-                # Use advanced browser control for precise clicking
-                result = await self.browser.advanced.click_by_description(click_description)
-                success = result.get('success', False) if isinstance(result, dict) else False
+                # Use ULTRA-RELIABLE clicking with retries
+                success = await self._robust_click_execution(click_description, max_attempts=3)
 
                 if success:
                     self.action_steps.append(f"Successfully clicked '{click_description}'")
@@ -1520,8 +1610,8 @@ Return ONLY valid JSON, no explanation."""
                 logger.info(f"🎯 Attempting to click button: {click_description}")
                 self.action_steps.append(f"Click button: '{click_description}'")
 
-                result = await self.browser.advanced.click_by_description(click_description)
-                success = result.get('success', False) if isinstance(result, dict) else False
+                # Use ULTRA-RELIABLE clicking with retries
+                success = await self._robust_click_execution(click_description, max_attempts=3)
 
                 if success:
                     self.action_steps.append(f"Successfully clicked button '{click_description}'")
