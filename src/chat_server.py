@@ -1231,11 +1231,13 @@ Important:
                     description = step.get('description', 'element')
                     self.action_steps.append(f"Click: {description}")
 
-                    result = await self.browser.advanced.click_by_description(description)
+                    # Use ImprovedClicking system (8 strategies) instead of basic click_by_description
+                    result = await self.browser.smart_click(description)
                     success = result.get('success', False) if isinstance(result, dict) else False
 
                     if success:
                         self.action_steps.append(f"✅ Clicked '{description}'")
+                        logger.info(f"✅ Successfully clicked '{description}' using improved clicking")
                     else:
                         overall_success = False
                         self.action_steps.append(f"❌ Click failed for '{description}'")

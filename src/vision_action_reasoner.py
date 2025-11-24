@@ -160,7 +160,9 @@ class VisionActionReasoner:
                     }
 
         # Click/interaction intent
-        if any(word in text_lower for word in ['click', 'select', 'choose', 'press', 'tap']):
+        # Recognize many ways users say "click" - hit, push, touch, select, etc.
+        if any(word in text_lower for word in ['click', 'select', 'choose', 'press', 'tap',
+                                                'hit', 'push', 'touch', 'activate', 'use']):
             # Extract what to click
             target = self._extract_click_target(user_message)
             return {
