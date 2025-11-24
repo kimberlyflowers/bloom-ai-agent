@@ -59,7 +59,7 @@ class UniversalElementLocator:
             # Call Claude with vision to analyze page and locate element
             response = await asyncio.to_thread(
                 self.anthropic.messages.create,
-                model="claude-3-5-sonnet-20241022",  # Latest working model with vision
+                model="claude-3-opus-20240229",  # Proven stable with vision
                 max_tokens=1000,
                 temperature=0,  # Deterministic for element location
                 messages=[{
@@ -188,7 +188,7 @@ If element cannot be found:
 
             response = await asyncio.to_thread(
                 self.anthropic.messages.create,
-                model="claude-3-5-sonnet-20241022",  # Latest working model with vision
+                model="claude-3-opus-20240229",
                 max_tokens=1500,
                 temperature=0,
                 messages=[{
@@ -261,7 +261,7 @@ Return JSON array:
 
             response = await asyncio.to_thread(
                 self.anthropic.messages.create,
-                model="claude-3-5-sonnet-20241022",  # Latest working model with vision
+                model="claude-3-opus-20240229",
                 max_tokens=500,
                 temperature=0,
                 messages=[{

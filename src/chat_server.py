@@ -295,36 +295,29 @@ Important:
 
     async def _should_click_text(self, text: str) -> bool:
         """
-        🚨 HARD BLOCK on observation text - Enhanced validation
+        NEW METHOD - Validate if text is a valid click target
         Prevents clicking on Sarah's observation/description text
 
         Returns:
             bool: True if valid click target, False if descriptive text
         """
         if not text or len(text.strip()) < 2:
+            logger.warning(f"🛑 Blocked empty/too short click target: '{text}'")
             return False
 
         text_lower = text.strip().lower()
 
-        # 🚨 HARD BLOCK PATTERNS - Sarah's observations (ENHANCED)
-        hard_block_patterns = [
+        # Block Sarah's observation/description phrases
+        invalid_patterns = [
             # Sarah's first-person observations
-            "m back on", "i can see", "perfect!", "now let me", "looking at",
-            "the homepage", "search bar", "let me search", "i notice",
-            "it looks like", "oh interesting", "that's totally fine",
-            "i see we've", "landed on", "instead of staying", "✨", "🎯",
-            "i'm back", "homepage with", "in the left sidebar", "is already",
-            "perfect! i", "looking at the", "i can see the", "now i can see",
-            "observing", "watching", "notice that", "appears to be",
-
-            # Additional first-person phrases
             "i'm about to click", "i am about to click", "i'll click", "let me click",
-            "i see", "i notice", "looking for", "now let me",
-            "oh interesting", "that's totally fine",
+            "i see", "i notice", "i can see", "observing", "looking at", "looking for",
+            "now i can see", "looking at the", "i can see the", "now let me",
+            "let me search", "oh interesting", "that's totally fine", "i see we've",
 
             # Sentence fragments (incomplete sentences starting mid-word)
-            "m about to", "t changed yet", "s changed",
-            "search bar at the top", "instead of staying",
+            "m back on", "m about to", "t changed yet", "s changed", "perfect!",
+            "the homepage", "search bar at the top", "landed on", "instead of staying",
 
             # Navigation descriptions
             "click on", "navigate to", "search for", "type in", "enter in",
@@ -334,24 +327,27 @@ Important:
             "here", "there", "that's", "it's", "this is", "at the top", "in the"
         ]
 
-        for pattern in hard_block_patterns:
+        # Check for invalid patterns
+        for pattern in invalid_patterns:
             if pattern in text_lower:
-                logger.warning(f"🚫 HARD BLOCKED: '{text}' (contains '{pattern}')")
+                logger.warning(f"🛑 BLOCKED INVALID CLICK TARGET: '{text}' (contains '{pattern}')")
                 return False
 
-        # Block sentence fragments (starts mid-word)
+        # Block if it looks like a sentence fragment (starts with lowercase + short word)
         words = text.split()
         if len(words) > 0:
             first_word = words[0]
+            # Sentence fragment check: starts with lowercase single letter or short word
             if len(first_word) <= 2 and first_word[0].islower():
-                logger.warning(f"🚫 BLOCKED SENTENCE FRAGMENT: '{text}'")
+                logger.warning(f"🛑 BLOCKED SENTENCE FRAGMENT: '{text}' (starts with '{first_word}')")
                 return False
 
-        # Block long descriptive text
-        if len(words) > 6:
-            logger.warning(f"🚫 BLOCKED LONG TEXT: '{text}' ({len(words)} words)")
+        # Block if text is too long (likely a sentence/description, not a UI element)
+        if len(words) > 8:
+            logger.warning(f"🛑 BLOCKED LONG TEXT: '{text}' ({len(words)} words - likely observation)")
             return False
 
+        # Valid click target
         return True
 
     async def _stream_immediate_response(self, message: str):
@@ -1483,151 +1479,110 @@ Return ONLY valid JSON, no explanation."""
             logger.error(f"❌ Universal search error: {e}")
             return False
 
-    async def _direct_dom_click(self, description: str) -> bool:
-        """
-        🆕 DIRECT DOM CLICK - NO AI, NO MODELS, JUST FAST SELECTORS
-        Bypasses broken Universal Element Locator with direct DOM queries
-        """
-        if not self.browser or not self.browser.page:
-            return False
-
-        try:
-            logger.info(f"🎯 DIRECT DOM CLICK for: '{description}'")
-            desc_lower = description.lower()
-
-            # YouTube-specific direct selectors (FAST & RELIABLE)
-            youtube_map = {
-                'home': [
-                    '[title="Home"]',
-                    '[aria-label="Home"]',
-                    'a#endpoint[title*="Home"]',
-                    'ytd-guide-entry-renderer:has-text("Home")',
-                    'tp-yt-paper-item:has-text("Home")'
-                ],
-                'search': [
-                    'input#search',
-                    '[name="search_query"]',
-                    '[aria-label*="Search" i]',
-                    'input[type="text"][placeholder*="Search"]'
-                ],
-                'trending': [
-                    '[title="Trending"]',
-                    '[aria-label="Trending"]',
-                    'a[href*="/feed/trending"]'
-                ],
-                'subscriptions': [
-                    '[title="Subscriptions"]',
-                    '[aria-label="Subscriptions"]'
-                ],
-                'library': [
-                    '[title="Library"]',
-                    '[aria-label="Library"]'
-                ]
-            }
-
-            # Try YouTube-specific mappings first
-            for key, selectors in youtube_map.items():
-                if key in desc_lower:
-                    for selector in selectors:
-                        try:
-                            element = await self.browser.page.query_selector(selector)
-                            if element and await element.is_visible():
-                                await element.click()
-                                logger.info(f"✅ DIRECT CLICK SUCCESS: '{key}' via {selector}")
-                                return True
-                        except Exception as e:
-                            continue
-
-            # Generic button/link search by text
-            try:
-                # Try exact text match
-                element = await self.browser.page.get_by_text(description, exact=True).first
-                if element:
-                    await element.click()
-                    logger.info(f"✅ DIRECT CLICK SUCCESS via exact text")
-                    return True
-            except:
-                pass
-
-            # Try partial text match
-            try:
-                element = await self.browser.page.get_by_text(description).first
-                if element:
-                    await element.click()
-                    logger.info(f"✅ DIRECT CLICK SUCCESS via partial text")
-                    return True
-            except:
-                pass
-
-            logger.warning(f"⚠️  Direct DOM click couldn't find: '{description}'")
-            return False
-
-        except Exception as e:
-            logger.error(f"❌ Direct DOM click error: {e}")
-            return False
-
     async def _universal_click(self, description: str, websocket: Optional[WebSocketServerProtocol] = None) -> bool:
         """
-        🆕 IMMEDIATE FALLBACK SYSTEM - BYPASSES BROKEN AI MODEL
-        Fast sequential fallback: Direct DOM (2s) → Improved (10s) → Advanced (8s)
-        Total max: 20s instead of 30+s
+        Universal click with PARALLEL EXECUTION and REAL-TIME STREAMING
+        Tries multiple strategies SIMULTANEOUSLY (no more 36.5s timeout cascade)
+        Provides immediate feedback to user
         """
         try:
-            logger.info(f"🎯 SMART CLICK: '{description}'")
+            logger.info(f"🎯 UNIVERSAL CLICK (PARALLEL): Looking for '{description}' on ANY site/language...")
 
-            # 🚨 STRATEGY 1: DIRECT DOM (FAST - NO AI)
-            try:
-                logger.info("   1️⃣ Trying direct DOM selectors...")
-                direct_success = await asyncio.wait_for(
-                    self._direct_dom_click(description),
-                    timeout=2.0
+            # REAL-TIME STREAMING: Immediate acknowledgment
+            if websocket:
+                streamer = RealtimeResponseStreamer(websocket, self.send_message)
+                await streamer.stream_immediate_acknowledgment(f"click {description}")
+
+            # Capture current page screenshot
+            screenshot_data = await self._capture_screen_context()
+            if not screenshot_data:
+                logger.error("❌ Could not capture screenshot")
+                return False
+
+            # Get page context
+            page_url = self.browser.page.url if self.browser and self.browser.page else ""
+            page_text = await self.browser.page.inner_text('body') if self.browser and self.browser.page else ""
+
+            # STRATEGY 1: Universal Element Locator (LLM vision-based)
+            async def try_universal_locator():
+                locator_result = await self.universal_locator.locate_element(
+                    user_intent=f"click {description}",
+                    page_screenshot=screenshot_data,
+                    page_url=page_url,
+                    page_text=page_text[:1000]
                 )
-                if direct_success:
-                    logger.info(f"✅ DIRECT DOM SUCCESS: Clicked '{description}' in <2s")
-                    return True
-            except asyncio.TimeoutError:
-                logger.warning("   ⏰ Direct DOM timeout (2s)")
-            except Exception as e:
-                logger.warning(f"   ❌ Direct DOM failed: {e}")
 
-            # 🚨 STRATEGY 2: IMPROVED CLICKER (MEDIUM)
-            try:
-                logger.info("   2️⃣ Trying improved clicker...")
+                if locator_result.get('success'):
+                    interactor = UniversalInteractor(self.browser.page)
+                    clicked = await interactor.click_element(locator_result)
+                    return {'success': clicked, 'method': 'universal_locator'}
+                return {'success': False}
+
+            # STRATEGY 2: Improved Clicker (8 strategies)
+            async def try_improved_clicker():
                 if self.browser.improved_clicker:
-                    result = await asyncio.wait_for(
-                        self.browser.improved_clicker.click_element(
-                            self.browser.page,
-                            description,
-                            timeout=8000
-                        ),
-                        timeout=10.0
+                    result = await self.browser.improved_clicker.click_element(
+                        self.browser.page,
+                        description,
+                        timeout=8000
                     )
-                    if result.get('success', False):
-                        logger.info(f"✅ IMPROVED CLICKER SUCCESS: Clicked '{description}'")
-                        return True
-            except asyncio.TimeoutError:
-                logger.warning("   ⏰ Improved clicker timeout (10s)")
-            except Exception as e:
-                logger.warning(f"   ❌ Improved clicker failed: {e}")
+                    return {'success': result.get('success', False), 'method': 'improved_clicker'}
+                return {'success': False}
 
-            # 🚨 STRATEGY 3: ADVANCED CONTROL (FAST FALLBACK)
-            try:
-                logger.info("   3️⃣ Trying advanced control...")
-                result = await asyncio.wait_for(
-                    self.browser.advanced.click_by_description(description),
-                    timeout=8.0
-                )
-                if result.get('success', False):
-                    logger.info(f"✅ ADVANCED CONTROL SUCCESS: Clicked '{description}'")
-                    return True
-            except asyncio.TimeoutError:
-                logger.warning("   ⏰ Advanced control timeout (8s)")
-            except Exception as e:
-                logger.warning(f"   ❌ Advanced control failed: {e}")
+            # STRATEGY 3: Advanced Browser Control
+            async def try_advanced_control():
+                result = await self.browser.advanced.click_by_description(description)
+                return {'success': result.get('success', False), 'method': 'advanced_control'}
 
-            # ❌ ALL METHODS FAILED
-            logger.error(f"❌ ALL CLICK METHODS FAILED for: '{description}'")
-            return False
+            # PARALLEL EXECUTION: Try all strategies simultaneously
+            strategies = [
+                {
+                    'name': 'universal_locator',
+                    'func': try_universal_locator,
+                    'args': ()
+                },
+                {
+                    'name': 'improved_clicker',
+                    'func': try_improved_clicker,
+                    'args': ()
+                },
+                {
+                    'name': 'advanced_control',
+                    'func': try_advanced_control,
+                    'args': ()
+                }
+            ]
+
+            # Execute in parallel - first success wins!
+            parallel_result = await self.parallel_executor.execute_parallel(
+                strategies,
+                description=f"click {description}"
+            )
+
+            if parallel_result.get('success'):
+                logger.info(f"✅ PARALLEL CLICK SUCCESS: '{parallel_result['strategy']}' won in {parallel_result['time_taken']:.2f}s")
+
+                # REAL-TIME STREAMING: Success update
+                if websocket:
+                    await streamer.stream_action_result(
+                        True,
+                        f"Clicked {description}",
+                        f"using {parallel_result['strategy']}"
+                    )
+
+                return True
+            else:
+                logger.warning(f"❌ All parallel strategies failed for '{description}'")
+
+                # REAL-TIME STREAMING: Failure update
+                if websocket:
+                    await streamer.stream_action_result(
+                        False,
+                        f"Couldn't click {description}",
+                        f"tried {parallel_result.get('strategies_completed', 0)} strategies"
+                    )
+
+                return False
 
         except Exception as e:
             logger.error(f"❌ Universal click error: {e}")
@@ -1676,24 +1631,14 @@ Return ONLY valid JSON, no explanation."""
                 if action_type == 'navigate':
                     target = step.get('target')
                     self.action_steps.append(f"Navigate to {target}")
-
+                    
                     # Wait for browser readiness
                     if not await self._is_browser_ready():
                         overall_success = False
                         continue
-
-                    # ⏰ DRAMATIC TIMEOUT REDUCTION: 8s max for navigation
-                    try:
-                        result = await asyncio.wait_for(
-                            self.browser.navigate(target),
-                            timeout=8.0
-                        )
-                        success = result.get('success', False) if isinstance(result, dict) else False
-                    except asyncio.TimeoutError:
-                        logger.error(f"⏰ NAVIGATE TIMEOUT: '{target}' took >8s - CANCELLING ALL ACTIONS")
-                        await self._stream_immediate_response(f"⏰ Navigation taking too long, cancelling...")
-                        self.action_steps.append(f"⏰ Navigation timed out: '{target}'")
-                        return False  # STOP ENTIRE ACTION PLAN IMMEDIATELY
+                    
+                    result = await self.browser.navigate(target)
+                    success = result.get('success', False) if isinstance(result, dict) else False
 
                     if success:
                         self.action_steps.append(f"✅ Successfully navigated to {target}")
@@ -1730,17 +1675,17 @@ Return ONLY valid JSON, no explanation."""
                         overall_success = False
                         continue
 
-                    # ⏰ DRAMATIC TIMEOUT REDUCTION: 10s max (was 30s)
+                    # ⏰ NEW: Search timeout (20s max - reduced from 30s)
                     try:
                         # 🌍 UNIVERSAL ELEMENT LOCATOR - Works on ANY site, ANY language
                         # Uses LLM vision to find search box semantically
                         # NO hardcoded selectors, NO language assumptions
                         success = await asyncio.wait_for(
                             self._universal_search(query),
-                            timeout=10.0
+                            timeout=20.0
                         )
                     except asyncio.TimeoutError:
-                        logger.error(f"⏰ SEARCH TIMEOUT: '{query}' took >10s - CANCELLING ALL ACTIONS")
+                        logger.error(f"⏰ SEARCH TIMEOUT: '{query}' took >20s - CANCELLING ALL ACTIONS")
                         await self._stream_immediate_response(f"⏰ Search taking too long, cancelling...")
                         self.action_steps.append(f"⏰ Search timed out: '{query}'")
                         return False  # 🆕 STOP ENTIRE ACTION PLAN IMMEDIATELY
@@ -1821,14 +1766,14 @@ Return ONLY valid JSON, no explanation."""
                         logger.info("🔄 Waiting extra time after popup dismissal...")
                         await asyncio.sleep(2)  # Extra wait after popup
 
-                    # ⏰ DRAMATIC TIMEOUT REDUCTION: 12s max (was 30s)
+                    # ⏰ NEW: Click timeout (15s max - reduced from 30s)
                     try:
                         # 🌍 UNIVERSAL ELEMENT LOCATOR - Works on ANY site, ANY language
                         # Uses LLM vision to find element semantically
                         # NO hardcoded selectors, NO language assumptions
                         success = await asyncio.wait_for(
                             self._universal_click(description),
-                            timeout=12.0
+                            timeout=15.0
                         )
 
                         if success:
@@ -1839,7 +1784,7 @@ Return ONLY valid JSON, no explanation."""
                             self.action_steps.append(f"❌ Click failed for '{description}'")
 
                     except asyncio.TimeoutError:
-                        logger.error(f"⏰ CLICK TIMEOUT: '{description}' took >12s - CANCELLING ALL ACTIONS")
+                        logger.error(f"⏰ CLICK TIMEOUT: '{description}' took >15s - CANCELLING ALL ACTIONS")
                         await self._stream_immediate_response(f"⏰ Click taking too long, cancelling...")
                         self.action_steps.append(f"⏰ Click timed out: '{description}'")
                         return False  # 🆕 STOP ENTIRE ACTION PLAN IMMEDIATELY
