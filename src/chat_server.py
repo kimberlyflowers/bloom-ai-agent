@@ -71,6 +71,9 @@ class SarahChatServer:
         self.current_action_task = None
         self.action_cancelled = False
 
+        # Track current message handling task (for immediate interruption)
+        self.current_message_task = None
+
         # Sarah's system prompt (her personality and context)
         self.system_prompt = self._build_system_prompt()
 
@@ -350,7 +353,19 @@ Important:
 
             # Listen for messages
             async for message in websocket:
-                await self.handle_message(websocket, message)
+                # IMMEDIATE INTERRUPTION: Cancel previous message handling if still running
+                if self.current_message_task and not self.current_message_task.done():
+                    logger.info("⚡ New message arrived - cancelling previous message handling")
+                    self.current_message_task.cancel()
+                    try:
+                        await self.current_message_task
+                    except asyncio.CancelledError:
+                        pass
+
+                # Spawn message handling as background task - enables immediate interruption
+                self.current_message_task = asyncio.create_task(
+                    self.handle_message(websocket, message)
+                )
 
         except websockets.exceptions.ConnectionClosed:
             logger.info(f"💬 Chat client disconnected: {client_id}")
@@ -685,6 +700,20 @@ Important:
                 # Keep-alive ping
                 await self.send_message(websocket, {'type': 'pong'})
 
+        except asyncio.CancelledError:
+            # Message handling was interrupted by new user input
+            logger.info("⚡ Message handling cancelled - user sent new message")
+            # Clean up any running action task
+            if self.current_action_task and not self.current_action_task.done():
+                self.action_cancelled = True
+                self.current_action_task.cancel()
+                try:
+                    await self.current_action_task
+                except asyncio.CancelledError:
+                    pass
+                self.current_action_task = None
+            # Re-raise to properly terminate the task
+            raise
         except json.JSONDecodeError:
             logger.error(f"Invalid JSON received: {message}")
         except Exception as e:
