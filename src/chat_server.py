@@ -902,12 +902,15 @@ Important:
 
 User message: "{user_message}"
 
+**IMPORTANT CONTEXT:** This is Sarah Rodriguez (the AI agent) speaking about HER OWN actions.
+When Sarah says "I'm going to click X" or "Let me click Y" - that means SHE wants to perform the action.
+
 Possible action types:
-- navigate: User wants to go to a URL/website
-- search: User wants to search for something
-- click: User wants to click an element
-- type: User wants to type text
-- observe: User wants to know what's on screen
+- navigate: User OR Sarah wants to go to a URL/website
+- search: User OR Sarah wants to search for something
+- click: User OR Sarah wants to click an element
+- type: User OR Sarah wants to type text
+- observe: User OR Sarah wants to know what's on screen
 - acknowledgment: Just saying ok/thanks/cool
 - unknown: Can't determine intent
 
@@ -922,6 +925,8 @@ Examples:
 "go to youtube" → {{"type": "navigate", "target": "youtube", "confidence": 0.95}}
 "hit the home button" → {{"type": "click", "target": "home button", "confidence": 0.9}}
 "search for cats" → {{"type": "search", "query": "cats", "confidence": 0.95}}
+"I'm going to click the search bar" → {{"type": "click", "target": "search bar", "confidence": 0.95}}
+"Let me click that button" → {{"type": "click", "target": "button", "confidence": 0.9}}
 "ok cool" → {{"type": "acknowledgment", "confidence": 0.95}}
 
 Return ONLY valid JSON, no explanation."""
