@@ -20,6 +20,8 @@ from src.vision_action_reasoner import VisionActionReasoner
 from src.autonomous_learning_engine import AutonomousLearningEngine, LearningStatus
 from src.foundation.universal_element_locator import UniversalElementLocator
 from src.foundation.universal_interactor import UniversalInteractor
+from src.foundation.parallel_execution_engine import ParallelExecutionEngine
+from src.foundation.realtime_response_streamer import RealtimeResponseStreamer
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +68,9 @@ class SarahChatServer:
 
         # Initialize Universal Element Locator - LANGUAGE & LAYOUT AGNOSTIC
         self.universal_locator = UniversalElementLocator(anthropic_api_key)
+
+        # Initialize Parallel Execution Engine - NO MORE SEQUENTIAL TIMEOUTS
+        self.parallel_executor = ParallelExecutionEngine(max_total_timeout=10.0)
 
         # Track current activity for skill extraction
         self.current_action = None
@@ -1380,13 +1385,19 @@ Return ONLY valid JSON, no explanation."""
             logger.error(f"❌ Universal search error: {e}")
             return False
 
-    async def _universal_click(self, description: str) -> bool:
+    async def _universal_click(self, description: str, websocket: Optional[WebSocketServerProtocol] = None) -> bool:
         """
-        Universal click using LLM Element Locator - works on ANY site, ANY language
-        NO hardcoded selectors - uses vision + semantic understanding
+        Universal click with PARALLEL EXECUTION and REAL-TIME STREAMING
+        Tries multiple strategies SIMULTANEOUSLY (no more 36.5s timeout cascade)
+        Provides immediate feedback to user
         """
         try:
-            logger.info(f"🎯 UNIVERSAL CLICK: Looking for '{description}' on ANY site/language...")
+            logger.info(f"🎯 UNIVERSAL CLICK (PARALLEL): Looking for '{description}' on ANY site/language...")
+
+            # REAL-TIME STREAMING: Immediate acknowledgment
+            if websocket:
+                streamer = RealtimeResponseStreamer(websocket, self.send_message)
+                await streamer.stream_immediate_acknowledgment(f"click {description}")
 
             # Capture current page screenshot
             screenshot_data = await self._capture_screen_context()
@@ -1398,35 +1409,86 @@ Return ONLY valid JSON, no explanation."""
             page_url = self.browser.page.url if self.browser and self.browser.page else ""
             page_text = await self.browser.page.inner_text('body') if self.browser and self.browser.page else ""
 
-            # Use Universal Element Locator to find element
-            locator_result = await self.universal_locator.locate_element(
-                user_intent=f"click {description}",
-                page_screenshot=screenshot_data,
-                page_url=page_url,
-                page_text=page_text[:1000]  # First 1000 chars for context
+            # STRATEGY 1: Universal Element Locator (LLM vision-based)
+            async def try_universal_locator():
+                locator_result = await self.universal_locator.locate_element(
+                    user_intent=f"click {description}",
+                    page_screenshot=screenshot_data,
+                    page_url=page_url,
+                    page_text=page_text[:1000]
+                )
+
+                if locator_result.get('success'):
+                    interactor = UniversalInteractor(self.browser.page)
+                    clicked = await interactor.click_element(locator_result)
+                    return {'success': clicked, 'method': 'universal_locator'}
+                return {'success': False}
+
+            # STRATEGY 2: Improved Clicker (8 strategies)
+            async def try_improved_clicker():
+                if self.browser.improved_clicker:
+                    result = await self.browser.improved_clicker.click_element(
+                        self.browser.page,
+                        description,
+                        timeout=8000
+                    )
+                    return {'success': result.get('success', False), 'method': 'improved_clicker'}
+                return {'success': False}
+
+            # STRATEGY 3: Advanced Browser Control
+            async def try_advanced_control():
+                result = await self.browser.advanced.click_by_description(description)
+                return {'success': result.get('success', False), 'method': 'advanced_control'}
+
+            # PARALLEL EXECUTION: Try all strategies simultaneously
+            strategies = [
+                {
+                    'name': 'universal_locator',
+                    'func': try_universal_locator,
+                    'args': ()
+                },
+                {
+                    'name': 'improved_clicker',
+                    'func': try_improved_clicker,
+                    'args': ()
+                },
+                {
+                    'name': 'advanced_control',
+                    'func': try_advanced_control,
+                    'args': ()
+                }
+            ]
+
+            # Execute in parallel - first success wins!
+            parallel_result = await self.parallel_executor.execute_parallel(
+                strategies,
+                description=f"click {description}"
             )
 
-            if not locator_result.get('success'):
-                logger.warning(f"❌ Universal locator couldn't find element: {locator_result.get('reasoning')}")
-                # Fallback to existing universal_click
-                result = await self.browser.universal_click(description)
-                return result.get('success', False)
+            if parallel_result.get('success'):
+                logger.info(f"✅ PARALLEL CLICK SUCCESS: '{parallel_result['strategy']}' won in {parallel_result['time_taken']:.2f}s")
 
-            logger.info(f"✅ Universal locator found element: {locator_result.get('reasoning')}")
-            logger.info(f"   Strategy: {locator_result.get('strategy')}, Confidence: {locator_result.get('confidence')}")
+                # REAL-TIME STREAMING: Success update
+                if websocket:
+                    await streamer.stream_action_result(
+                        True,
+                        f"Clicked {description}",
+                        f"using {parallel_result['strategy']}"
+                    )
 
-            # Use Universal Interactor to click the element
-            interactor = UniversalInteractor(self.browser.page)
-            clicked = await interactor.click_element(locator_result)
-
-            if clicked:
-                logger.info(f"✅ UNIVERSAL CLICK SUCCESS: Clicked '{description}'")
                 return True
             else:
-                logger.error(f"❌ Universal click failed for '{description}'")
-                # Fallback to existing universal_click
-                result = await self.browser.universal_click(description)
-                return result.get('success', False)
+                logger.warning(f"❌ All parallel strategies failed for '{description}'")
+
+                # REAL-TIME STREAMING: Failure update
+                if websocket:
+                    await streamer.stream_action_result(
+                        False,
+                        f"Couldn't click {description}",
+                        f"tried {parallel_result.get('strategies_completed', 0)} strategies"
+                    )
+
+                return False
 
         except Exception as e:
             logger.error(f"❌ Universal click error: {e}")
