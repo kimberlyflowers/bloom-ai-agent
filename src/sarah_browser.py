@@ -27,10 +27,19 @@ try:
 except ImportError:
     IMPROVED_CLICKING_AVAILABLE = False
 
+# Sarah's UI navigation - mouse hover, smooth movement, YouTube controls
+try:
+    from src.sarah_ui_navigation import UINavigator, YouTubeNavigator
+    UI_NAVIGATION_AVAILABLE = True
+except ImportError:
+    UI_NAVIGATION_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 if not IMPROVED_CLICKING_AVAILABLE:
     logger.warning("⚠️  ImprovedClicking not available - using basic clicking only")
+if not UI_NAVIGATION_AVAILABLE:
+    logger.warning("⚠️  UI Navigation not available - hover/smooth movement disabled")
 
 
 class SarahBrowser:
@@ -73,6 +82,15 @@ class SarahBrowser:
             logger.info("✅ Sarah's improved clicking loaded - hands upgraded!")
         else:
             self.improved_clicker = None
+
+        # UI Navigation - mouse hover, smooth movement, YouTube controls
+        if UI_NAVIGATION_AVAILABLE:
+            self.ui_nav = UINavigator()
+            self.youtube_nav = YouTubeNavigator()
+            logger.info("✅ Sarah's UI navigation loaded - can hover, drag, smooth scroll!")
+        else:
+            self.ui_nav = None
+            self.youtube_nav = None
 
         # State
         self.is_running = False
@@ -361,6 +379,220 @@ class SarahBrowser:
                 return {'success': True, 'message': f'Pressed {key}'}
             except Exception as e:
                 return {'success': False, 'message': str(e)}
+
+    # ========== UI NAVIGATION METHODS ==========
+
+    async def hover(self, selector: str = None, x: int = None, y: int = None, smooth: bool = True) -> dict:
+        """
+        Hover over an element - perfect for YouTube thumbnails, buttons
+
+        Args:
+            selector: CSS selector to hover over
+            x, y: Coordinates to hover (if no selector)
+            smooth: Use smooth human-like mouse movement
+
+        Examples:
+            await sarah.hover("ytd-thumbnail")  # Hover video thumbnail
+            await sarah.hover(x=500, y=300)     # Hover at coordinates
+        """
+        if not self.page:
+            return {'success': False, 'message': 'Browser not running'}
+
+        if self.ui_nav:
+            return await self.ui_nav.hover(self.page, selector=selector, x=x, y=y, smooth=smooth)
+        else:
+            logger.warning("⚠️  UI Navigation not available")
+            return {'success': False, 'message': 'UI Navigation not loaded'}
+
+    async def double_click(self, selector: str = None, x: int = None, y: int = None) -> dict:
+        """
+        Double click an element (e.g., fullscreen video)
+
+        Examples:
+            await sarah.double_click("video")  # Double click video to fullscreen
+        """
+        if not self.page:
+            return {'success': False, 'message': 'Browser not running'}
+
+        if self.ui_nav:
+            return await self.ui_nav.double_click(self.page, selector=selector, x=x, y=y)
+        else:
+            try:
+                if selector:
+                    await self.page.dblclick(selector)
+                    return {'success': True}
+                return {'success': False, 'message': 'UI Navigation not loaded'}
+            except Exception as e:
+                return {'success': False, 'message': str(e)}
+
+    async def right_click(self, selector: str = None, x: int = None, y: int = None) -> dict:
+        """
+        Right click for context menu
+
+        Examples:
+            await sarah.right_click("video")  # Right click video
+        """
+        if not self.page:
+            return {'success': False, 'message': 'Browser not running'}
+
+        if self.ui_nav:
+            return await self.ui_nav.right_click(self.page, selector=selector, x=x, y=y)
+        else:
+            return {'success': False, 'message': 'UI Navigation not loaded'}
+
+    async def drag_and_drop(self, source_selector: str, target_selector: str) -> dict:
+        """
+        Drag element from source to target
+
+        Examples:
+            await sarah.drag_and_drop("#video1", "#playlist")
+        """
+        if not self.page:
+            return {'success': False, 'message': 'Browser not running'}
+
+        if self.ui_nav:
+            return await self.ui_nav.drag_and_drop(self.page, source_selector, target_selector)
+        else:
+            return {'success': False, 'message': 'UI Navigation not loaded'}
+
+    async def scroll_to_element(self, selector: str, smooth: bool = True) -> dict:
+        """
+        Scroll until element is visible
+
+        Examples:
+            await sarah.scroll_to_element("#video-title")
+        """
+        if not self.page:
+            return {'success': False, 'message': 'Browser not running'}
+
+        if self.ui_nav:
+            return await self.ui_nav.scroll_to_element(self.page, selector, smooth=smooth)
+        else:
+            try:
+                await self.page.locator(selector).first.scroll_into_view_if_needed()
+                return {'success': True}
+            except Exception as e:
+                return {'success': False, 'message': str(e)}
+
+    async def smooth_scroll(self, direction: str = 'down', pixels: int = 300, speed: float = 0.5) -> dict:
+        """
+        Smooth scrolling (more human-like)
+
+        Examples:
+            await sarah.smooth_scroll('down', pixels=500, speed=1.0)
+        """
+        if not self.page:
+            return {'success': False, 'message': 'Browser not running'}
+
+        if self.ui_nav:
+            return await self.ui_nav.scroll_smooth(self.page, direction=direction, pixels=pixels, speed=speed)
+        else:
+            return await self.scroll(direction=direction, amount=pixels)
+
+    async def wait_and_click(self, selector: str, timeout: int = 10000, hover_first: bool = True) -> dict:
+        """
+        Wait for element, optionally hover, then click (very human-like)
+
+        Examples:
+            await sarah.wait_and_click("ytd-thumbnail", hover_first=True)
+        """
+        if not self.page:
+            return {'success': False, 'message': 'Browser not running'}
+
+        if self.ui_nav:
+            return await self.ui_nav.wait_and_click(self.page, selector, timeout=timeout, hover_first=hover_first)
+        else:
+            try:
+                await self.page.wait_for_selector(selector, timeout=timeout)
+                await self.page.click(selector)
+                return {'success': True}
+            except Exception as e:
+                return {'success': False, 'message': str(e)}
+
+    async def keyboard_shortcut(self, keys: str) -> dict:
+        """
+        Press keyboard shortcut (YouTube controls, etc.)
+
+        Examples:
+            await sarah.keyboard_shortcut("k")  # YouTube play/pause
+            await sarah.keyboard_shortcut("f")  # YouTube fullscreen
+            await sarah.keyboard_shortcut("ArrowRight")  # Skip forward
+        """
+        if not self.page:
+            return {'success': False, 'message': 'Browser not running'}
+
+        if self.ui_nav:
+            return await self.ui_nav.keyboard_shortcut(self.page, keys)
+        else:
+            try:
+                await self.page.keyboard.press(keys)
+                return {'success': True}
+            except Exception as e:
+                return {'success': False, 'message': str(e)}
+
+    # ========== YOUTUBE-SPECIFIC NAVIGATION ==========
+
+    async def youtube_hover_video(self, video_index: int = 0) -> dict:
+        """Hover over YouTube video thumbnail"""
+        if not self.page:
+            return {'success': False, 'message': 'Browser not running'}
+
+        if self.youtube_nav:
+            return await self.youtube_nav.hover_video(self.page, video_index)
+        else:
+            return {'success': False, 'message': 'YouTube navigator not loaded'}
+
+    async def youtube_click_video(self, video_index: int = 0) -> dict:
+        """Click YouTube video (with hover first)"""
+        if not self.page:
+            return {'success': False, 'message': 'Browser not running'}
+
+        if self.youtube_nav:
+            return await self.youtube_nav.click_video(self.page, video_index)
+        else:
+            return {'success': False, 'message': 'YouTube navigator not loaded'}
+
+    async def youtube_play_pause(self) -> dict:
+        """Toggle YouTube video play/pause (k key)"""
+        if not self.page:
+            return {'success': False, 'message': 'Browser not running'}
+
+        if self.youtube_nav:
+            return await self.youtube_nav.play_pause(self.page)
+        else:
+            return await self.keyboard_shortcut("k")
+
+    async def youtube_fullscreen(self) -> dict:
+        """Toggle YouTube fullscreen (f key)"""
+        if not self.page:
+            return {'success': False, 'message': 'Browser not running'}
+
+        if self.youtube_nav:
+            return await self.youtube_nav.fullscreen(self.page)
+        else:
+            return await self.keyboard_shortcut("f")
+
+    async def youtube_skip_forward(self, seconds: int = 5) -> dict:
+        """Skip forward in YouTube video"""
+        if not self.page:
+            return {'success': False, 'message': 'Browser not running'}
+
+        if self.youtube_nav:
+            return await self.youtube_nav.skip_forward(self.page, seconds)
+        else:
+            key = "l" if seconds >= 10 else "ArrowRight"
+            return await self.keyboard_shortcut(key)
+
+    async def youtube_skip_back(self, seconds: int = 5) -> dict:
+        """Skip backward in YouTube video"""
+        if not self.page:
+            return {'success': False, 'message': 'Browser not running'}
+
+        if self.youtube_nav:
+            return await self.youtube_nav.skip_back(self.page, seconds)
+        else:
+            key = "j" if seconds >= 10 else "ArrowLeft"
+            return await self.keyboard_shortcut(key)
 
     async def screenshot(self, full_page: bool = False) -> Optional[bytes]:
         """Take a screenshot"""
