@@ -1500,12 +1500,9 @@ Return ONLY valid JSON, no explanation."""
                     return {'success': result.get('success', False), 'method': 'improved_clicker'}
                 return {'success': False}
 
-            # STRATEGY 3: Advanced Browser Control
-            async def try_advanced_control():
-                result = await self.browser.advanced.click_by_description(description)
-                return {'success': result.get('success', False), 'method': 'advanced_control'}
-
-            # PARALLEL EXECUTION: Try all strategies simultaneously
+            # PARALLEL EXECUTION: Use only smart strategies (removed advanced_control - causes false positives)
+            # universal_locator: Vision-based, language agnostic (smartest)
+            # improved_clicker: 8 strategies, proven working (fast + reliable)
             strategies = [
                 {
                     'name': 'universal_locator',
@@ -1515,11 +1512,6 @@ Return ONLY valid JSON, no explanation."""
                 {
                     'name': 'improved_clicker',
                     'func': try_improved_clicker,
-                    'args': ()
-                },
-                {
-                    'name': 'advanced_control',
-                    'func': try_advanced_control,
                     'args': ()
                 }
             ]
