@@ -1739,6 +1739,9 @@ Return ONLY valid JSON, no explanation."""
 
                     # ⏰ NEW: Click timeout (15s max - reduced from 30s)
                     try:
+                        # Capture BEFORE screenshot for verification
+                        screenshot_before = await self._capture_screen_context()
+
                         # 🌍 UNIVERSAL ELEMENT LOCATOR - Works on ANY site, ANY language
                         # Uses LLM vision to find element semantically
                         # NO hardcoded selectors, NO language assumptions
@@ -1748,8 +1751,32 @@ Return ONLY valid JSON, no explanation."""
                         )
 
                         if success:
-                            self.action_steps.append(f"✅ Clicked '{description}'")
-                            logger.info(f"✅ UNIVERSAL CLICK SUCCESS: Clicked '{description}'")
+                            # Wait for page to settle after click
+                            await asyncio.sleep(2)
+
+                            # Capture AFTER screenshot
+                            screenshot_after = await self._capture_screen_context()
+
+                            # 🔍 VERIFY: Did the click actually work?
+                            if screenshot_before and screenshot_after:
+                                verification = await self.universal_locator.verify_element_interaction(
+                                    user_intent=f"click {description}",
+                                    before_screenshot=screenshot_before,
+                                    after_screenshot=screenshot_after
+                                )
+
+                                if verification.get('success'):
+                                    self.action_steps.append(f"✅ Clicked '{description}' - Verified: {verification.get('reasoning', 'success')}")
+                                    logger.info(f"✅ VERIFIED CLICK SUCCESS: {verification.get('reasoning', 'success')}")
+                                else:
+                                    # Click executed but didn't have expected effect
+                                    overall_success = False
+                                    self.action_steps.append(f"⚠️ Click executed but verification failed: {verification.get('reasoning', 'unknown')}")
+                                    logger.warning(f"⚠️ CLICK VERIFICATION FAILED: {verification.get('reasoning', 'unknown')}")
+                            else:
+                                # No screenshots available for verification
+                                self.action_steps.append(f"✅ Clicked '{description}' (no verification)")
+                                logger.info(f"✅ UNIVERSAL CLICK SUCCESS: Clicked '{description}'")
                         else:
                             overall_success = False
                             self.action_steps.append(f"❌ Click failed for '{description}'")
