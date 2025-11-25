@@ -1,6 +1,7 @@
 """
 Sarah Rodriguez - AI Agent Employee
 Main entry point for Railway deployment
+Force redeploy: 2025-11-25
 """
 
 import os
