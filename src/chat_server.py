@@ -843,51 +843,22 @@ Important:
             # Extract response text
             sarah_response = response.content[0].text
 
-            action_success = False
-
-            # Execute any browser commands in her response
-            if self.browser and self.browser.is_running:
-                try:
-                    # Track what Sarah is about to do (for learning)
-                    self.current_action = sarah_response[:100]  # First 100 chars as description
-
-                    result = await self._execute_browser_commands(sarah_response)
-                    action_success = result if result is not None else False
-
-                    # After executing browser command, capture new screenshot for next turn
-                    await asyncio.sleep(2)  # Wait for page to load
-
-                    # Wrap screenshot capture in try-except (might fail if page is still loading)
-                    try:
-                        new_screenshot = await self._capture_screen_context()
-
-                        if new_screenshot:
-                            # Add visual feedback to conversation
-                            vision_msg = self._format_message_for_api(
-                                'user',
-                                '[System: Here is what you see on screen now after your action]',
-                                new_screenshot
-                            )
-                            self.conversation_history.append(vision_msg)
-
-                            # Track visual observations for learning
-                            self.visual_observations.append("Screenshot captured after action")
-                    except Exception as screenshot_error:
-                        logger.warning(f"⚠️ Screenshot capture failed (non-fatal): {screenshot_error}")
-                        # Continue even if screenshot fails - don't crash the whole response!
-
-                    # Analyze and learn from this interaction
-                    try:
-                        await self._analyze_and_learn(sarah_response, action_success)
-                    except Exception as learn_error:
-                        logger.warning(f"⚠️ Learning analysis failed (non-fatal): {learn_error}")
-                        # Continue even if learning fails
-
-                except Exception as browser_error:
-                    logger.error(f"❌ Browser command execution failed: {browser_error}")
-                    logger.exception(browser_error)
-                    # Don't crash - just mark action as failed and continue
-                    action_success = False
+            # 🚫 LEGACY BROWSER COMMAND EXECUTION DISABLED
+            # This legacy system tried to detect commands in Sarah's response text
+            # and caused her to click on her own observations (e.g., "m still on the same...")
+            # The NEW vision-guided action planning system (in handle_message) runs BEFORE
+            # Sarah responds, so we don't need this anymore.
+            #
+            # if self.browser and self.browser.is_running:
+            #     try:
+            #         self.current_action = sarah_response[:100]
+            #         result = await self._execute_browser_commands(sarah_response)
+            #         action_success = result if result is not None else False
+            #         ...
+            #     except Exception as browser_error:
+            #         ...
+            #
+            # This entire section has been disabled to prevent interference.
 
             return sarah_response
 
