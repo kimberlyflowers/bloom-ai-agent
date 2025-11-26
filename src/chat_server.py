@@ -22,6 +22,7 @@ from src.foundation.universal_element_locator import UniversalElementLocator
 from src.foundation.universal_interactor import UniversalInteractor
 from src.foundation.parallel_execution_engine import ParallelExecutionEngine
 from src.foundation.realtime_response_streamer import RealtimeResponseStreamer
+from src.capability_registry import CapabilityRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,10 @@ class SarahChatServer:
 
         # Initialize Parallel Execution Engine - NO MORE SEQUENTIAL TIMEOUTS
         self.parallel_executor = ParallelExecutionEngine(max_total_timeout=10.0)
+
+        # Initialize Capability Registry - AUTO-DISCOVERS ALL CAPABILITIES
+        # Will be initialized async in start_server()
+        self.capability_registry: Optional[CapabilityRegistry] = None
 
         # Track current activity for skill extraction
         self.current_action = None
@@ -408,6 +413,12 @@ Important:
     async def start_server(self):
         """Start WebSocket server"""
         logger.info(f"🗣️ Starting Sarah's chat server on port {self.port}...")
+
+        # Initialize Capability Registry - Auto-discover all capabilities
+        logger.info("🔍 Initializing Capability Registry...")
+        self.capability_registry = CapabilityRegistry()
+        await self.capability_registry.initialize()
+        self.capability_registry.print_summary()
 
         self.server = await websockets.serve(
             self.handle_client,
