@@ -69,7 +69,7 @@ class UniversalElementLocator:
                             'type': 'image',
                             'source': {
                                 'type': 'base64',
-                                'media_type': 'image/png',
+                                'media_type': 'image/jpeg',  # ✅ Fixed: Match actual format (JPEG from sarah_browser.py)
                                 'data': page_screenshot
                             }
                         },
@@ -198,7 +198,7 @@ If element cannot be found:
                             'type': 'image',
                             'source': {
                                 'type': 'base64',
-                                'media_type': 'image/png',
+                                'media_type': 'image/jpeg',  # ✅ Fixed: Match actual format (JPEG from sarah_browser.py)
                                 'data': page_screenshot
                             }
                         },
@@ -275,7 +275,7 @@ Return JSON array:
                             'type': 'image',
                             'source': {
                                 'type': 'base64',
-                                'media_type': 'image/png',
+                                'media_type': 'image/jpeg',  # ✅ Fixed: Match actual format (JPEG from sarah_browser.py)
                                 'data': before_screenshot
                             }
                         },
@@ -287,7 +287,7 @@ Return JSON array:
                             'type': 'image',
                             'source': {
                                 'type': 'base64',
-                                'media_type': 'image/png',
+                                'media_type': 'image/jpeg',  # ✅ Fixed: Match actual format (JPEG from sarah_browser.py)
                                 'data': after_screenshot
                             }
                         },
