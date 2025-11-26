@@ -319,7 +319,7 @@ class VisionActionReasoner:
         elif intent_type == 'click':
             goal = f"Click {target}"
             reasoning = f"User wants to click '{target}'. Page state: {page_analysis.state}"
-            
+
             # Check if we need to dismiss popups first
             if page_analysis.state == 'popup_visible':
                 steps.append({
@@ -327,15 +327,24 @@ class VisionActionReasoner:
                     'method': 'accessibility_first',
                     'description': 'Dismiss any popups before clicking'
                 })
-            
-            # ENHANCED: Find the best matching element type
-            element_type = self._determine_element_type(target, page_analysis)
-            
+
+            # ENHANCED: Create SPECIFIC description for clicking
+            # Instead of generic "video", make it specific: "first video thumbnail in search results"
+            specific_description = target
+
+            # Make description more specific based on page context
+            if page_analysis.page_type == 'video_site' and 'video' in target.lower():
+                if 'search' in page_analysis.observations or 'result' in ' '.join(page_analysis.observations).lower():
+                    # On search results page - specify WHICH video
+                    specific_description = f"first {target} thumbnail in search results"
+                else:
+                    # On main page - be more specific
+                    specific_description = f"{target} in main feed"
+
             steps.append({
                 'action': 'click_element',
                 'target': target,
-                'element_type': element_type,
-                'description': f'Click {target} ({element_type})'
+                'description': specific_description  # Use specific description, not generic
             })
 
         elif intent_type == 'input':
