@@ -23,6 +23,7 @@ from src.foundation.universal_interactor import UniversalInteractor
 from src.foundation.parallel_execution_engine import ParallelExecutionEngine
 from src.foundation.realtime_response_streamer import RealtimeResponseStreamer
 from src.capability_registry import CapabilityRegistry
+from src.intelligent_selector import IntelligentSelector
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,11 @@ class SarahChatServer:
         # Initialize Capability Registry - AUTO-DISCOVERS ALL CAPABILITIES
         # Will be initialized async in start_server()
         self.capability_registry: Optional[CapabilityRegistry] = None
+
+        # Initialize Intelligent Selector - DYNAMIC CAPABILITY ROUTING
+        # Replaces hardcoded routing with LLM-powered capability selection
+        # Will be initialized async in start_server()
+        self.intelligent_selector: Optional[IntelligentSelector] = None
 
         # Track current activity for skill extraction
         self.current_action = None
@@ -420,6 +426,14 @@ Important:
         await self.capability_registry.initialize()
         self.capability_registry.print_summary()
 
+        # Initialize Intelligent Selector - Dynamic capability routing
+        logger.info("🧠 Initializing Intelligent Selector...")
+        self.intelligent_selector = IntelligentSelector(
+            self.capability_registry,
+            self.anthropic_api_key
+        )
+        logger.info("✅ Intelligent Selector ready")
+
         self.server = await websockets.serve(
             self.handle_client,
             "0.0.0.0",
@@ -668,6 +682,35 @@ Important:
                                 })
 
                                 return
+
+                # 🧠 INTELLIGENT SELECTOR - Dynamic Capability Routing
+                # Currently in MONITORING mode - logs what it would select
+                # Will replace hardcoded routing once validated
+                if self.intelligent_selector:
+                    try:
+                        current_url = self.browser.page.url if self.browser and self.browser.page else "unknown"
+                        selection_result = await self.intelligent_selector.select_capability(
+                            content,
+                            context={
+                                'current_url': current_url,
+                                'previous_action': getattr(self, 'last_action', 'None')
+                            }
+                        )
+
+                        if selection_result.get('success'):
+                            selected_cap = selection_result['capability']
+                            logger.info(f"🧠 Intelligent Selector chose: {selected_cap.display_name} "
+                                       f"({selected_cap.category}) - "
+                                       f"Confidence: {selection_result['confidence']:.2f}")
+                            logger.info(f"   💡 Reasoning: {selection_result['reasoning'][:100]}")
+
+                            # Store selection for future use
+                            self._last_capability_selection = selection_result
+                        else:
+                            logger.info(f"🧠 Intelligent Selector: No capability matched - {selection_result.get('reasoning')}")
+
+                    except Exception as e:
+                        logger.warning(f"⚠️ Intelligent Selector error (non-blocking): {e}")
 
                 # FAST-PATH FOR CONVERSATIONAL MESSAGES
                 # Skip expensive LLM intent parsing + screenshots for simple chat
