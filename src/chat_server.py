@@ -353,10 +353,14 @@ Important:
                 logger.warning(f"🛑 BLOCKED SENTENCE FRAGMENT: '{text}' (starts with '{first_word}')")
                 return False
 
-        # Block if text is too long (likely a sentence/description, not a UI element)
-        if len(words) > 8:
-            logger.warning(f"🛑 BLOCKED LONG TEXT: '{text}' ({len(words)} words - likely observation)")
-            return False
+        # ✅ REMOVED overzealous word count check
+        # Video titles, article headlines, and detailed UI elements can be long!
+        # The pattern checks above already filter out observations like:
+        # - "I'm still on the same page..." (contains "i'm")
+        # - "Let me click on the search box" (contains "let me click")
+        # Valid detailed targets should pass through:
+        # - "Click video titled 'How We Find TikTok Shop Affiliates To Make Us $100k+' (video)"
+        # - "Article: The Complete Guide to Creator Economy Growth Strategies"
 
         # Valid click target
         return True
