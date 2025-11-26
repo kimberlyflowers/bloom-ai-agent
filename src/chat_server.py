@@ -290,13 +290,13 @@ Important:
             return None
 
         try:
-            # Take screenshot (full page for Universal Element Locator to see elements below fold)
-            screenshot_bytes = await self.browser.screenshot(full_page=True)
+            # Take screenshot
+            screenshot_bytes = await self.browser.screenshot(full_page=False)
 
             if screenshot_bytes:
                 # Encode to base64
                 screenshot_base64 = base64.b64encode(screenshot_bytes).decode('utf-8')
-                logger.info("📸 Captured full-page screenshot for Sarah's vision")
+                logger.info("📸 Captured screenshot for Sarah's vision")
                 return screenshot_base64
 
         except Exception as e:

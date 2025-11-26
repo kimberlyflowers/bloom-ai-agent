@@ -100,11 +100,10 @@ Locate the element the user wants to interact with using semantic understanding,
 
 1. **COORDINATES** (Most reliable for visual elements)
    - Use when element is clearly visible IN THIS SCREENSHOT
-   - Return coordinates as percentage of FULL PAGE (0-100%)
-   - ✅ This is a FULL-PAGE screenshot - you can see elements anywhere on the page!
-   - ✅ Elements below the fold are visible and clickable (we'll scroll to them automatically)
-   - Example: {{"x_percent": 85, "y_percent": 10}} for element near top
-   - Example: {{"x_percent": 50, "y_percent": 65}} for element in lower portion of page
+   - Return coordinates as percentage of VISIBLE VIEWPORT ONLY (0-100%)
+   - ⚠️ CRITICAL: If element is NOT visible in screenshot, DO NOT return coordinates!
+   - ⚠️ You can ONLY see what's in the viewport - no scrolling!
+   - Example: {{"x_percent": 85, "y_percent": 10}} for top-right visible element
 
 2. **ARIA_LABEL** (Best for accessibility-labeled elements)
    - Use when element has clear aria-label or aria-labelledby
@@ -132,16 +131,21 @@ Locate the element the user wants to interact with using semantic understanding,
 }}
 
 ⚠️ **IMPORTANT FOR COORDINATES:**
-- x_percent and y_percent should be 0-100% (percentage of FULL page height/width)
-- This is a FULL-PAGE screenshot - you can see and target elements anywhere!
-- If element is at 30% down the page, return y_percent: 30
-- If element is at 80% down the page, return y_percent: 80
-- We'll automatically scroll to bring the element into view before clicking
+- x_percent and y_percent MUST be 0-100% (visible viewport only!)
+- DO NOT extrapolate or guess coordinates for elements below the fold
+- This screenshot shows ONLY what's currently visible - you cannot see scrolled content
 
-If element cannot be found anywhere on the page:
+If element is NOT VISIBLE in screenshot (below fold, requires scrolling):
 {{
     "success": false,
-    "reasoning": "No search box visible anywhere on the page",
+    "reasoning": "Element is below the visible viewport - would need to scroll down first",
+    "confidence": 0.0
+}}
+
+If element cannot be found:
+{{
+    "success": false,
+    "reasoning": "No search box visible on current page",
     "confidence": 0.0
 }}
 
