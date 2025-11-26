@@ -56,7 +56,7 @@ class UniversalInteractor:
             return False
 
     async def _click_by_coordinates(self, target: Dict[str, Any]) -> bool:
-        """Click element at specific coordinates (percentage of viewport)"""
+        """Click element at specific coordinates (percentage of page - handles scrolling for elements below fold)"""
         try:
             x_percent = target.get('x_percent')
             y_percent = target.get('y_percent')
@@ -65,26 +65,38 @@ class UniversalInteractor:
                 logger.error("❌ Missing coordinates")
                 return False
 
-            # ✅ VALIDATE coordinates are within visible viewport (0-100%)
-            if not (0 <= x_percent <= 100) or not (0 <= y_percent <= 100):
-                logger.error(
-                    f"❌ INVALID COORDINATES: ({x_percent}%, {y_percent}%) - "
-                    f"Element is OUTSIDE visible viewport! "
-                    f"Coordinates must be 0-100% for visible elements only. "
-                    f"If element is below fold, you cannot click it without scrolling first."
-                )
+            # Check if coordinates are reasonable (basic sanity check)
+            if not (0 <= x_percent <= 100) or y_percent < 0:
+                logger.error(f"❌ INVALID COORDINATES: ({x_percent}%, {y_percent}%) - Out of bounds!")
                 return False
+
+            # 🔄 NEW: Detect if element requires scrolling (below fold)
+            if y_percent > 100:
+                logger.info(f"🔄 Element below fold at ({x_percent}%, {y_percent}%) - scrolling to bring into view")
+                scroll_success = await self._scroll_to_element(x_percent, y_percent)
+                if not scroll_success:
+                    logger.error("❌ Failed to scroll element into view")
+                    return False
+
+                # After scrolling, element should be in viewport - adjust coordinates to viewport-relative
+                # Assume element is now centered in viewport
+                x_percent_viewport = x_percent
+                y_percent_viewport = 50  # Center of viewport after scroll
+            else:
+                # Element already in viewport
+                x_percent_viewport = x_percent
+                y_percent_viewport = y_percent
 
             # Get viewport size
             viewport_size = self.page.viewport_size
             if not viewport_size:
                 viewport_size = {'width': 1920, 'height': 1080}  # Default
 
-            # Calculate pixel coordinates
-            x = int(viewport_size['width'] * x_percent / 100)
-            y = int(viewport_size['height'] * y_percent / 100)
+            # Calculate pixel coordinates (viewport-relative)
+            x = int(viewport_size['width'] * x_percent_viewport / 100)
+            y = int(viewport_size['height'] * y_percent_viewport / 100)
 
-            logger.info(f"🖱️  Clicking coordinates: ({x_percent}%, {y_percent}%) → ({x}px, {y}px) [viewport: {viewport_size['width']}x{viewport_size['height']}]")
+            logger.info(f"🖱️  Clicking coordinates: ({x_percent_viewport}%, {y_percent_viewport}%) → ({x}px, {y}px) [viewport: {viewport_size['width']}x{viewport_size['height']}]")
 
             # Click at coordinates
             await self.page.mouse.click(x, y)
@@ -94,6 +106,50 @@ class UniversalInteractor:
 
         except Exception as e:
             logger.error(f"❌ Coordinate click error: {e}")
+            return False
+
+    async def _scroll_to_element(self, x_percent: float, y_percent: float) -> bool:
+        """
+        Scroll page to bring element into visible viewport
+
+        Args:
+            x_percent: Horizontal position (0-100% of page width)
+            y_percent: Vertical position (0-100%+ of page height)
+
+        Returns:
+            bool: True if scroll succeeded
+        """
+        try:
+            # Calculate scroll position to center element in viewport
+            # If element is at 534% down the page, we need to scroll to show that area
+            # Strategy: Scroll to position where element will be at 50% of viewport (centered)
+
+            # y_percent is percentage of FULL page height
+            # To center element at y_percent in viewport, scroll to (y_percent - 50)% of page
+            target_scroll_percent = max(0, y_percent - 50)  # Don't scroll negative
+
+            # Get page height to calculate scroll position
+            page_height = await self.page.evaluate("document.body.scrollHeight")
+            viewport_height = await self.page.evaluate("window.innerHeight")
+
+            # Calculate scroll position in pixels
+            scroll_y = int(page_height * target_scroll_percent / 100)
+
+            # Ensure we don't scroll past the bottom
+            max_scroll = page_height - viewport_height
+            scroll_y = min(scroll_y, max_scroll)
+
+            logger.info(f"📜 Scrolling to Y: {scroll_y}px (target: {target_scroll_percent:.1f}% of page height {page_height}px)")
+
+            # Perform scroll
+            await self.page.evaluate(f"window.scrollTo(0, {scroll_y});")
+            await asyncio.sleep(0.8)  # Allow scroll animation and content to load
+
+            logger.info(f"✅ Scrolled successfully - element should now be visible")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Scroll failed: {e}")
             return False
 
     async def _click_by_aria_label(self, target: Dict[str, Any]) -> bool:
