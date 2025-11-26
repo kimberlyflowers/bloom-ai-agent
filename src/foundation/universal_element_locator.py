@@ -99,9 +99,11 @@ Locate the element the user wants to interact with using semantic understanding,
 **INTERACTION STRATEGIES (Choose the best one):**
 
 1. **COORDINATES** (Most reliable for visual elements)
-   - Use when element is clearly visible
-   - Return approximate coordinates (percentage of screen)
-   - Example: {{"x_percent": 85, "y_percent": 10}} for top-right element
+   - Use when element is clearly visible IN THIS SCREENSHOT
+   - Return coordinates as percentage of VISIBLE VIEWPORT ONLY (0-100%)
+   - ⚠️ CRITICAL: If element is NOT visible in screenshot, DO NOT return coordinates!
+   - ⚠️ You can ONLY see what's in the viewport - no scrolling!
+   - Example: {{"x_percent": 85, "y_percent": 10}} for top-right visible element
 
 2. **ARIA_LABEL** (Best for accessibility-labeled elements)
    - Use when element has clear aria-label or aria-labelledby
@@ -126,6 +128,18 @@ Locate the element the user wants to interact with using semantic understanding,
     "confidence": 0.95,
     "element_type": "button" | "input" | "link" | "icon" | "text",
     "language_detected": "en" | "nl" | "ja" | etc
+}}
+
+⚠️ **IMPORTANT FOR COORDINATES:**
+- x_percent and y_percent MUST be 0-100% (visible viewport only!)
+- DO NOT extrapolate or guess coordinates for elements below the fold
+- This screenshot shows ONLY what's currently visible - you cannot see scrolled content
+
+If element is NOT VISIBLE in screenshot (below fold, requires scrolling):
+{{
+    "success": false,
+    "reasoning": "Element is below the visible viewport - would need to scroll down first",
+    "confidence": 0.0
 }}
 
 If element cannot be found:

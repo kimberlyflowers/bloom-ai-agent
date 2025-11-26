@@ -65,6 +65,16 @@ class UniversalInteractor:
                 logger.error("❌ Missing coordinates")
                 return False
 
+            # ✅ VALIDATE coordinates are within visible viewport (0-100%)
+            if not (0 <= x_percent <= 100) or not (0 <= y_percent <= 100):
+                logger.error(
+                    f"❌ INVALID COORDINATES: ({x_percent}%, {y_percent}%) - "
+                    f"Element is OUTSIDE visible viewport! "
+                    f"Coordinates must be 0-100% for visible elements only. "
+                    f"If element is below fold, you cannot click it without scrolling first."
+                )
+                return False
+
             # Get viewport size
             viewport_size = self.page.viewport_size
             if not viewport_size:
@@ -74,7 +84,7 @@ class UniversalInteractor:
             x = int(viewport_size['width'] * x_percent / 100)
             y = int(viewport_size['height'] * y_percent / 100)
 
-            logger.info(f"🖱️  Clicking coordinates: ({x_percent}%, {y_percent}%) → ({x}px, {y}px)")
+            logger.info(f"🖱️  Clicking coordinates: ({x_percent}%, {y_percent}%) → ({x}px, {y}px) [viewport: {viewport_size['width']}x{viewport_size['height']}]")
 
             # Click at coordinates
             await self.page.mouse.click(x, y)
