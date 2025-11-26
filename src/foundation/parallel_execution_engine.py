@@ -104,10 +104,18 @@ class ParallelExecutionEngine:
             pending = set(tasks)
 
             while pending and not winner:
-                # Wait for next completion or timeout
+                # Calculate remaining time from total timeout (don't reset on each iteration!)
+                elapsed = (datetime.now() - start_time).total_seconds()
+                remaining_time = max(0, self.max_total_timeout - elapsed)
+
+                if remaining_time <= 0:
+                    logger.warning(f"⏰ TIMEOUT: No strategy succeeded within {self.max_total_timeout}s")
+                    break
+
+                # Wait for next completion with REMAINING time (not full timeout!)
                 done, pending = await asyncio.wait(
                     pending,
-                    timeout=self.max_total_timeout,
+                    timeout=remaining_time,  # ✅ FIX: Use remaining time, not full timeout!
                     return_when=asyncio.FIRST_COMPLETED
                 )
 
