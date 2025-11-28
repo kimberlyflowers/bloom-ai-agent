@@ -1696,20 +1696,79 @@ Return ONLY valid JSON, no explanation."""
                         overall_success = False
                         continue
 
-                    # ⏰ NEW: Search timeout (20s max - reduced from 30s)
+                    # UNIVERSAL CONTEXT-AWARE SEARCH
+                    # Always check current page for search box first, regardless of URL
+                    # Works on ANY site/application without hardcoded lists
+                    current_url = self.browser.page.url if self.browser and self.browser.page else ""
+                    logger.info(f"🔍 Checking current page for search box: {current_url}")
+
                     try:
-                        # 🌍 UNIVERSAL ELEMENT LOCATOR - Works on ANY site, ANY language
-                        # Uses LLM vision to find search box semantically
-                        # NO hardcoded selectors, NO language assumptions
-                        success = await asyncio.wait_for(
-                            self._universal_search(query),
-                            timeout=20.0
-                        )
-                    except asyncio.TimeoutError:
-                        logger.error(f"⏰ SEARCH TIMEOUT: '{query}' took >20s - CANCELLING ALL ACTIONS")
-                        await self._stream_immediate_response(f"⏰ Search taking too long, cancelling...")
-                        self.action_steps.append(f"⏰ Search timed out: '{query}'")
-                        return False  # 🆕 STOP ENTIRE ACTION PLAN IMMEDIATELY
+                        # Find visible search boxes on current page
+                        search_box_selectors = [
+                            'input[type="search"]',
+                            'input[name*="search" i]',
+                            'input[placeholder*="search" i]',
+                            'input[aria-label*="search" i]',
+                            'input[id*="search" i]',
+                            'input[class*="search" i]',
+                            # Generic text inputs (will check visibility and context)
+                            'input[type="text"]'
+                        ]
+
+                        search_box_found = False
+                        for selector in search_box_selectors:
+                            try:
+                                # Get all matching elements
+                                search_boxes = await self.browser.page.query_selector_all(selector)
+
+                                for search_box in search_boxes:
+                                    # Check if visible (not hidden)
+                                    is_visible = await search_box.is_visible()
+                                    if not is_visible:
+                                        continue
+
+                                    # Found a visible search box!
+                                    logger.info(f"🎯 Found search box on current page (selector: {selector})")
+                                    self.action_steps.append(f"Using search box on current page")
+
+                                    # Click the search box
+                                    await search_box.click()
+                                    await asyncio.sleep(0.3)
+
+                                    # Clear any existing text
+                                    await search_box.fill('')
+                                    await asyncio.sleep(0.2)
+
+                                    # Type the query
+                                    await search_box.fill(query)
+                                    await asyncio.sleep(0.5)
+
+                                    # Press Enter
+                                    await search_box.press('Enter')
+                                    await asyncio.sleep(2)  # Wait for results
+
+                                    search_box_found = True
+                                    self.action_steps.append(f"✅ Searched on current page for '{query}'")
+                                    logger.info(f"✅ Successfully searched on current page for '{query}'")
+                                    success = True
+                                    break
+
+                                if search_box_found:
+                                    break
+                            except Exception as e:
+                                continue
+
+                        if not search_box_found:
+                            # No search box on current page - use Google
+                            logger.info("ℹ️  No search box found on current page - using Google")
+                            self.action_steps.append("No search box on current page - using Google")
+                            result = await self.browser.search_google(query)
+                            success = result.get('success', False) if isinstance(result, dict) else False
+                    except Exception as e:
+                        logger.error(f"❌ Search box detection failed: {e}")
+                        self.action_steps.append(f"❌ Search failed - using Google instead")
+                        result = await self.browser.search_google(query)
+                        success = result.get('success', False) if isinstance(result, dict) else False
 
                     if success:
                         self.action_steps.append(f"✅ Successfully searched for '{query}'")
