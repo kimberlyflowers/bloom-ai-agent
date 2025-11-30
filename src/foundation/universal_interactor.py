@@ -86,9 +86,16 @@ class UniversalInteractor:
 
             logger.info(f"🖱️  Clicking coordinates: ({x_percent}%, {y_percent}%) → ({x}px, {y}px) [viewport: {viewport_size['width']}x{viewport_size['height']}]")
 
-            # Click at coordinates
-            await self.page.mouse.click(x, y)
-            await asyncio.sleep(0.5)
+            # Human-like click sequence (fixes YouTube hover-only issue)
+            # Move mouse to position first
+            await self.page.mouse.move(x, y)
+            await asyncio.sleep(0.15)  # Brief hover (human-like)
+
+            # Click with proper down/up sequence
+            await self.page.mouse.down()
+            await asyncio.sleep(0.05)  # Human click duration
+            await self.page.mouse.up()
+            await asyncio.sleep(0.5)  # Wait for page response
 
             return True
 
