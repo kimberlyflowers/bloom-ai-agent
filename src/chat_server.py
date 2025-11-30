@@ -1547,20 +1547,20 @@ Return ONLY valid JSON, no explanation."""
                     return {'success': clicked, 'method': 'universal_locator'}
                 return {'success': False}
 
-            # STRATEGY 2: Improved Clicker (8 strategies)
-            async def try_improved_clicker():
-                if self.browser.improved_clicker:
-                    result = await self.browser.improved_clicker.click_element(
+            # STRATEGY 2: Safe Clicker (8 strategies, filters voice/mic/camera)
+            async def try_safe_clicker():
+                if self.browser.safe_clicker:
+                    result = await self.browser.safe_clicker.click_element(
                         self.browser.page,
                         description,
                         timeout=8000
                     )
-                    return {'success': result.get('success', False), 'method': 'improved_clicker'}
+                    return {'success': result.get('success', False), 'method': 'safe_clicker'}
                 return {'success': False}
 
             # PARALLEL EXECUTION: Use only smart strategies (removed advanced_control - causes false positives)
             # universal_locator: Vision-based, language agnostic (smartest)
-            # improved_clicker: 8 strategies, proven working (fast + reliable)
+            # safe_clicker: 8 strategies, filters voice/mic/camera (prevents permission popups)
             strategies = [
                 {
                     'name': 'universal_locator',
@@ -1568,8 +1568,8 @@ Return ONLY valid JSON, no explanation."""
                     'args': ()
                 },
                 {
-                    'name': 'improved_clicker',
-                    'func': try_improved_clicker,
+                    'name': 'safe_clicker',
+                    'func': try_safe_clicker,
                     'args': ()
                 }
             ]

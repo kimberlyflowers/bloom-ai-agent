@@ -13,7 +13,7 @@ from src.advanced_browser_control import AdvancedBrowserController
 
 # Sarah's improved clicking system - GLOBAL FIX
 try:
-    from src.sarah_improved_clicking import ImprovedClicking
+    from src.sarah_improved_clicking import ImprovedClicking, SafeClicking
     IMPROVED_CLICKING_AVAILABLE = True
 except ImportError:
     IMPROVED_CLICKING_AVAILABLE = False
@@ -50,10 +50,12 @@ class SarahBrowser:
 
         # Improved clicking system - GLOBAL FIX
         if IMPROVED_CLICKING_AVAILABLE:
-            self.improved_clicker = ImprovedClicking()
-            logger.info("✅ Sarah's improved clicking loaded - GLOBAL FIX APPLIED!")
+            self.improved_clicker = ImprovedClicking()  # For captcha/popups ONLY
+            self.safe_clicker = SafeClicking()  # For regular page clicks (filters voice/mic)
+            logger.info("✅ Sarah's clicking loaded: ImprovedClicking (captcha) + SafeClicking (regular)")
         else:
             self.improved_clicker = None
+            self.safe_clicker = None
 
         # UI Navigation
         if UI_NAVIGATION_AVAILABLE:
@@ -220,14 +222,14 @@ class SarahBrowser:
         if not self.page:
             return {'success': False, 'message': 'Browser not running'}
 
-        if self.improved_clicker:
-            # Use improved clicking (8 strategies!)
-            result = await self.improved_clicker.click_element(self.page, description, timeout)
-            logger.info(f"🎯 GLOBAL CLICKING FIX: {description} -> {result.get('success', False)}")
+        if self.safe_clicker:
+            # Use SAFE clicking (filters voice/mic/camera) for regular page clicks
+            result = await self.safe_clicker.click_element(self.page, description, timeout)
+            logger.info(f"🎯 SAFE CLICK: {description} -> {result.get('success', False)}")
             return result
         else:
             # Fallback to basic click
-            logger.warning(f"⚠️  Improved clicking not available, using fallback for '{description}'")
+            logger.warning(f"⚠️  Safe clicking not available, using fallback for '{description}'")
             return await self.click(f"//*[contains(text(), '{description}')]")
 
     async def universal_click(self, description: str) -> dict:
