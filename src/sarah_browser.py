@@ -104,8 +104,7 @@ class SarahBrowser:
                     '--disable-web-security',
                     '--disable-features=IsolateOrigins,site-per-process',
                     '--allow-running-insecure-content',
-                    # ❌ REMOVED: --window-size conflicts with viewport config
-                    # Playwright's viewport parameter handles this correctly
+                    '--window-size=1920,1080',
                     '--disable-popup-blocking',
                     '--disable-prompt-on-repost'
                 ]
