@@ -14,6 +14,8 @@ import websockets
 from websockets.server import WebSocketServerProtocol
 from anthropic import Anthropic
 from datetime import datetime
+from PIL import Image
+import io
 from src.identity_persistence import MemoryType
 from src.visual_learning import get_learning_engine, UIPattern, Skill, ExperimentResult
 from src.vision_action_reasoner import VisionActionReasoner
@@ -294,9 +296,25 @@ Important:
             screenshot_bytes = await self.browser.screenshot(full_page=False)
 
             if screenshot_bytes:
+                # 🔍 DEBUG: Log actual screenshot dimensions being sent to Claude
+                try:
+                    img = Image.open(io.BytesIO(screenshot_bytes))
+                    logger.info(f"📸 Captured screenshot for Sarah's vision")
+                    logger.info(f"   📐 Screenshot dimensions: {img.width}x{img.height} pixels")
+                    logger.info(f"   📊 Image format: {img.format}, mode: {img.mode}")
+
+                    # Get actual viewport from page for comparison
+                    if self.browser and self.browser.page:
+                        viewport = self.browser.page.viewport_size
+                        if viewport:
+                            logger.info(f"   🖥️  Configured viewport: {viewport['width']}x{viewport['height']}")
+                            if img.width != viewport['width'] or img.height != viewport['height']:
+                                logger.warning(f"   ⚠️  MISMATCH: Screenshot {img.width}x{img.height} != Viewport {viewport['width']}x{viewport['height']}")
+                except Exception as debug_error:
+                    logger.warning(f"   ⚠️  Could not read screenshot dimensions: {debug_error}")
+
                 # Encode to base64
                 screenshot_base64 = base64.b64encode(screenshot_bytes).decode('utf-8')
-                logger.info("📸 Captured screenshot for Sarah's vision")
                 return screenshot_base64
 
         except Exception as e:
