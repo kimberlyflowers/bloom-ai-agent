@@ -104,7 +104,6 @@ class SarahBrowser:
                     '--disable-web-security',
                     '--disable-features=IsolateOrigins,site-per-process',
                     '--allow-running-insecure-content',
-                    '--window-size=1920,1080',
                     '--disable-popup-blocking',
                     '--disable-prompt-on-repost'
                 ]
