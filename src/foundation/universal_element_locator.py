@@ -172,6 +172,13 @@ If element cannot be found:
                 logger.info(f"✅ Element located: {result.get('strategy')} - {result.get('reasoning')[:100]}")
                 logger.info(f"   🎯 Confidence: {result.get('confidence', 0.0):.2f}")
                 logger.info(f"   🌍 Language: {result.get('language_detected', 'unknown')}")
+
+                # 🔍 DEBUG: Log coordinates that Claude Vision returned (helps debug 533% issue)
+                if result.get('strategy') == 'coordinates' and result.get('target'):
+                    target = result.get('target', {})
+                    x_pct = target.get('x_percent', 'N/A')
+                    y_pct = target.get('y_percent', 'N/A')
+                    logger.info(f"   📍 Coordinates returned by Claude Vision: ({x_pct}%, {y_pct}%)")
             else:
                 logger.warning(f"❌ Element not found: {result.get('reasoning')}")
 
