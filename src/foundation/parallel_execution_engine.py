@@ -311,3 +311,34 @@ class ParallelExecutionEngine:
             logger.info(f"⚠️  Low confidence ({confidence:.2f}) - trying all strategies in parallel")
             all_strategies = [primary_strategy] + fallback_strategies
             return await self.execute_parallel(all_strategies, description)
+
+    async def execute_parallel_with_priority(
+        self,
+        strategies: List[Dict[str, Any]],
+        description: str = "action",
+        priority_order: List[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Execute strategies in parallel but prioritize reliable methods first
+        
+        Args:
+            strategies: List of strategy dicts
+            description: Description of what we're trying to do
+            priority_order: List of strategy names in priority order
+                          Default: ['safe_clicker', 'universal_locator'] and others
+        """
+        if priority_order is None:
+            # Default priority: safe methods first, coordinates last
+            priority_order = ['safe_clicker', 'universal_locator']
+        
+        # Sort strategies by priority
+        def get_priority(strategy):
+            name = strategy.get('name', '')
+            if name in priority_order:
+                return priority_order.index(name)
+            return len(priority_order)  # Unknown strategies go last
+        
+        sorted_strategies = sorted(strategies, key=get_priority)
+        
+        logger.info(f"🎯 PRIORITIZED EXECUTION: Using priority order {priority_order}")
+        return await self.execute_parallel(sorted_strategies, description)
