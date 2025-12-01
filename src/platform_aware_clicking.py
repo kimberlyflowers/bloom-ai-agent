@@ -394,12 +394,30 @@ class IntelligentClickRouter:
 
     @staticmethod
     def _is_youtube_video_intent(url: str, description: str) -> bool:
-        """Check if this is a YouTube video click intent"""
+        """
+        Check if this is a YouTube video click intent (navigating TO a video)
+        NOT clicking elements WITHIN a video (like skip button, play button, etc.)
+        """
         is_youtube = 'youtube.com' in url
-        is_video_intent = any(word in description for word in [
-            'video', 'play', 'watch', 'thumbnail', 'tiktok', 'algorithm'
-        ])
-        return is_youtube and is_video_intent
+
+        # Exclude if clicking buttons/elements WITHIN a video
+        within_video_patterns = [
+            'skip', 'button', 'ad', 'play button', 'pause', 'settings',
+            'quality', 'speed', 'caption', 'fullscreen', 'volume'
+        ]
+        if any(pattern in description for pattern in within_video_patterns):
+            return False
+
+        # Only match if it's clearly clicking ON/AT a video (to navigate)
+        video_click_patterns = [
+            'first video', 'second video', 'third video', 'fourth video', 'fifth video',
+            'video 1', 'video 2', 'video 3', 'video 4', 'video 5',
+            'video titled', 'video about', 'click video', 'play video',
+            'watch video', 'thumbnail', 'click thumbnail'
+        ]
+        is_video_click = any(pattern in description for pattern in video_click_patterns)
+
+        return is_youtube and is_video_click
 
     @staticmethod
     def _is_search_intent(description: str) -> bool:
