@@ -26,6 +26,7 @@ from src.foundation.parallel_execution_engine import ParallelExecutionEngine
 from src.foundation.realtime_response_streamer import RealtimeResponseStreamer
 from src.capability_registry import CapabilityRegistry
 from src.intelligent_selector import IntelligentSelector
+from src.platform_aware_clicking import IntelligentClickRouter, YouTubeNavigator
 
 logger = logging.getLogger(__name__)
 
@@ -1528,93 +1529,82 @@ Return ONLY valid JSON, no explanation."""
 
     async def _universal_click(self, description: str, websocket: Optional[WebSocketServerProtocol] = None) -> bool:
         """
-        Universal click with PARALLEL EXECUTION and REAL-TIME STREAMING
-        Tries multiple strategies SIMULTANEOUSLY (no more 36.5s timeout cascade)
-        Provides immediate feedback to user
+        PLATFORM-AWARE INTELLIGENT CLICKING
+        Uses the right method for each platform:
+        - YouTube videos: Direct navigation (no more broken coordinate clicking!)
+        - Other sites: Reliable DOM-based clicking
         """
         try:
-            logger.info(f"🎯 UNIVERSAL CLICK (PARALLEL): Looking for '{description}' on ANY site/language...")
+            logger.info(f"🎯 INTELLIGENT CLICK: Looking for '{description}'...")
 
             # REAL-TIME STREAMING: Immediate acknowledgment
             if websocket:
                 streamer = RealtimeResponseStreamer(websocket, self.send_message)
                 await streamer.stream_immediate_acknowledgment(f"click {description}")
 
-            # Capture current page screenshot
-            screenshot_data = await self._capture_screen_context()
-            if not screenshot_data:
-                logger.error("❌ Could not capture screenshot")
-                return False
+            # Initialize intelligent click router
+            click_router = IntelligentClickRouter(self.browser.page)
 
-            # Get page context
-            page_url = self.browser.page.url if self.browser and self.browser.page else ""
-            page_text = await self.browser.page.inner_text('body') if self.browser and self.browser.page else ""
-
-            # STRATEGY 1: Universal Element Locator (LLM vision-based)
-            async def try_universal_locator():
-                locator_result = await self.universal_locator.locate_element(
-                    user_intent=f"click {description}",
-                    page_screenshot=screenshot_data,
-                    page_url=page_url,
-                    page_text=page_text[:1000]
-                )
-
-                if locator_result.get('success'):
-                    interactor = UniversalInteractor(self.browser.page)
-                    clicked = await interactor.click_element(locator_result)
-                    return {'success': clicked, 'method': 'universal_locator'}
-            return {'success': False}
-
-            # STRATEGY 2: Smart Click (reliable regular clicking)
-            async def try_smart_click():
-                if hasattr(self.browser, 'smart_click'):
-                    result = await self.browser.smart_click(description)
-                    return {'success': result.get('success', False), 'method': 'smart_click'}
-                return {'success': False}
-
-            # PARALLEL EXECUTION: Use priority-based execution
-            # smart_click first (reliable regular clicking), universal_locator last (fallback)
-            strategies = [
-                {
-                    'name': 'smart_click', 
-                    'func': try_smart_click,
-                    'args': ()
-                },
-                {
-                    'name': 'universal_locator',
-                    'func': try_universal_locator,
-                    'args': ()
-                }
-            ]
-
-            # Execute with priority - smart_click runs first!
-            parallel_result = await self.parallel_executor.execute_parallel_with_priority(
-                strategies,
-                description=f"click {description}",
-                priority_order=['smart_click', 'universal_locator']
+            # Route to the right clicking method based on platform and intent
+            result = await click_router.click(
+                description=description,
+                safe_clicker=self.browser.safe_clicker if self.browser else None,
+                universal_locator=self.universal_locator
             )
 
-            if parallel_result.get('success'):
-                logger.info(f"✅ PARALLEL CLICK SUCCESS: '{parallel_result['strategy']}' won in {parallel_result['time_taken']:.2f}s")
+            if result.get('success'):
+                method = result.get('method', result.get('router', 'unknown'))
+                logger.info(f"✅ INTELLIGENT CLICK SUCCESS: '{description}' using {method}")
 
                 # REAL-TIME STREAMING: Success update
                 if websocket:
                     await streamer.stream_action_result(
                         True,
                         f"Clicked {description}",
-                        f"using {parallel_result['strategy']}"
+                        f"using {method}"
                     )
 
                 return True
             else:
-                logger.warning(f"❌ All parallel strategies failed for '{description}'")
+                # If router failed, try vision-based locator as last resort
+                # (may have coordinate issues until viewport fix is tested)
+                logger.info(f"⚠️ Router failed, trying vision-based locator as last resort...")
+
+                # Capture current page screenshot
+                screenshot_data = await self._capture_screen_context()
+                if screenshot_data:
+                    page_url = self.browser.page.url if self.browser and self.browser.page else ""
+                    page_text = await self.browser.page.inner_text('body') if self.browser and self.browser.page else ""
+
+                    locator_result = await self.universal_locator.locate_element(
+                        user_intent=f"click {description}",
+                        page_screenshot=screenshot_data,
+                        page_url=page_url,
+                        page_text=page_text[:1000]
+                    )
+
+                    if locator_result.get('success'):
+                        interactor = UniversalInteractor(self.browser.page)
+                        clicked = await interactor.click_element(locator_result)
+
+                        if clicked:
+                            logger.info(f"✅ Vision-based locator succeeded")
+                            if websocket:
+                                await streamer.stream_action_result(
+                                    True,
+                                    f"Clicked {description}",
+                                    "using vision-based locator"
+                                )
+                            return True
+
+                logger.warning(f"❌ All strategies failed for '{description}'")
 
                 # REAL-TIME STREAMING: Failure update
                 if websocket:
                     await streamer.stream_action_result(
                         False,
                         f"Couldn't click {description}",
-                        f"tried {parallel_result.get('strategies_completed', 0)} strategies"
+                        "tried all available methods"
                     )
 
                 return False
