@@ -1576,26 +1576,26 @@ Return ONLY valid JSON, no explanation."""
                     return {'success': result.get('success', False), 'method': 'safe_clicker'}
                 return {'success': False}
 
-            # PARALLEL EXECUTION: Use only smart strategies (removed advanced_control - causes false positives)
-            # universal_locator: Vision-based, language agnostic (smartest)
-            # safe_clicker: 8 strategies, filters voice/mic/camera (prevents permission popups)
+            # PARALLEL EXECUTION: Use priority-based execution
+            # safe_clicker first (8 reliable strategies), universal_locator last (fallback)
             strategies = [
+                {
+                    'name': 'safe_clicker', 
+                    'func': try_safe_clicker,
+                    'args': ()
+                },
                 {
                     'name': 'universal_locator',
                     'func': try_universal_locator,
                     'args': ()
-                },
-                {
-                    'name': 'safe_clicker',
-                    'func': try_safe_clicker,
-                    'args': ()
                 }
             ]
 
-            # Execute in parallel - first success wins!
-            parallel_result = await self.parallel_executor.execute_parallel(
+            # Execute with priority - safe_clicker runs first!
+            parallel_result = await self.parallel_executor.execute_parallel_with_priority(
                 strategies,
-                description=f"click {description}"
+                description=f"click {description}",
+                priority_order=['safe_clicker', 'universal_locator']
             )
 
             if parallel_result.get('success'):
