@@ -671,7 +671,14 @@ Important:
 
                                         elif action_type == 'search':
                                             query = action.get('query')
-                                            await self.browser.search_google(query)
+                                            original_query = action.get('original_query', query)
+
+                                            # PLATFORM DETECTION: Check if user wants YouTube
+                                            if 'youtube' in original_query.lower():
+                                                logger.info(f"🎬 YouTube search detected")
+                                                await self.browser.search_youtube(query)
+                                            else:
+                                                await self.browser.search_google(query)
                                             await asyncio.sleep(2)
 
                                         elif action_type == 'click_element':
@@ -1693,6 +1700,28 @@ Return ONLY valid JSON, no explanation."""
 
                 elif action_type == 'search':
                     query = step.get('query')
+                    original_query = step.get('original_query', query)  # Get full user query if available
+
+                    # PLATFORM DETECTION: Check if user wants YouTube search
+                    search_on_youtube = 'youtube' in original_query.lower() if original_query else False
+
+                    if search_on_youtube:
+                        # User explicitly wants YouTube - go straight there!
+                        logger.info(f"🎬 YouTube search detected - navigating to YouTube")
+                        self.action_steps.append(f"Search YouTube for '{query}'")
+                        result = await self.browser.search_youtube(query)
+                        success = result.get('success', False) if isinstance(result, dict) else False
+
+                        if success:
+                            self.action_steps.append(f"✅ Successfully searched YouTube for '{query}'")
+                        else:
+                            overall_success = False
+                            self.action_steps.append(f"❌ YouTube search failed")
+
+                        # Continue to next step
+                        continue
+
+                    # Otherwise, proceed with context-aware search
                     self.action_steps.append(f"Search for '{query}'")
 
                     # Wait for browser readiness

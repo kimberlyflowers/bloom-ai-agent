@@ -382,6 +382,37 @@ class SarahBrowser:
                 'message': f'Search failed: {str(e)}'
             }
 
+    async def search_youtube(self, query: str) -> dict:
+        """Search on YouTube"""
+        try:
+            # Navigate directly to YouTube search
+            search_url = f"https://www.youtube.com/results?search_query={query.replace(' ', '+')}"
+            logger.info(f"🔍 Searching YouTube for: {query}")
+
+            result = await self.navigate(search_url)
+            if not result['success']:
+                return result
+
+            # Wait for search results to load
+            await asyncio.sleep(2)
+            await self.page.wait_for_selector('a#video-title', timeout=10000)
+
+            return {
+                'success': True,
+                'query': query,
+                'platform': 'youtube',
+                'message': f'Searched YouTube for "{query}"'
+            }
+
+        except Exception as e:
+            logger.error(f"YouTube search failed: {e}")
+            return {
+                'success': False,
+                'query': query,
+                'platform': 'youtube',
+                'message': f'YouTube search failed: {str(e)}'
+            }
+
     async def wait(self, seconds: float):
         """Wait for specified seconds"""
         await asyncio.sleep(seconds)
