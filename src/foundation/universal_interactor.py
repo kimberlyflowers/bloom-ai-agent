@@ -38,6 +38,9 @@ class UniversalInteractor:
         target = locator_result.get('target', {})
 
         try:
+            # Wait for page to stabilize (infinite scroll, dynamic content)
+            await self._wait_for_page_settle()
+
             if strategy == 'coordinates':
                 return await self._click_by_coordinates(target)
             elif strategy == 'aria_label':
@@ -54,6 +57,24 @@ class UniversalInteractor:
         except Exception as e:
             logger.error(f"❌ Click error: {e}")
             return False
+
+    async def _wait_for_page_settle(self, timeout=3):
+        """
+        Wait for page to stabilize after potential infinite scroll
+        """
+        try:
+            previous_height = await self.page.evaluate("document.body.scrollHeight")
+            await asyncio.sleep(1)  # Wait for potential infinite scroll
+            current_height = await self.page.evaluate("document.body.scrollHeight")
+            
+            if current_height != previous_height:
+                logger.info("Page height changed, waiting for stabilization...")
+                await asyncio.sleep(2)  # Additional wait for dynamic content
+                
+            return True
+        except Exception as e:
+            logger.warning(f"Could not check page stabilization: {e}")
+            return True
 
     async def _click_by_coordinates(self, target: Dict[str, Any]) -> bool:
         """Click element at specific coordinates (percentage of viewport)"""
