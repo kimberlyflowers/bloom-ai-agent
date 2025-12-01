@@ -1563,25 +1563,21 @@ Return ONLY valid JSON, no explanation."""
                     interactor = UniversalInteractor(self.browser.page)
                     clicked = await interactor.click_element(locator_result)
                     return {'success': clicked, 'method': 'universal_locator'}
-                return {'success': False}
+            return {'success': False}
 
-            # STRATEGY 2: Safe Clicker (8 strategies, filters voice/mic/camera)
-            async def try_safe_clicker():
-                if self.browser.safe_clicker:
-                    result = await self.browser.safe_clicker.click_element(
-                        self.browser.page,
-                        description,
-                        timeout=8000
-                    )
-                    return {'success': result.get('success', False), 'method': 'safe_clicker'}
+            # STRATEGY 2: Smart Click (reliable regular clicking)
+            async def try_smart_click():
+                if hasattr(self.browser, 'smart_click'):
+                    result = await self.browser.smart_click(description)
+                    return {'success': result.get('success', False), 'method': 'smart_click'}
                 return {'success': False}
 
             # PARALLEL EXECUTION: Use priority-based execution
-            # safe_clicker first (8 reliable strategies), universal_locator last (fallback)
+            # smart_click first (reliable regular clicking), universal_locator last (fallback)
             strategies = [
                 {
-                    'name': 'safe_clicker', 
-                    'func': try_safe_clicker,
+                    'name': 'smart_click', 
+                    'func': try_smart_click,
                     'args': ()
                 },
                 {
@@ -1591,11 +1587,11 @@ Return ONLY valid JSON, no explanation."""
                 }
             ]
 
-            # Execute with priority - safe_clicker runs first!
+            # Execute with priority - smart_click runs first!
             parallel_result = await self.parallel_executor.execute_parallel_with_priority(
                 strategies,
                 description=f"click {description}",
-                priority_order=['safe_clicker', 'universal_locator']
+                priority_order=['smart_click', 'universal_locator']
             )
 
             if parallel_result.get('success'):
