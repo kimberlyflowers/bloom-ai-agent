@@ -22,174 +22,6 @@ class YouTubeNavigator:
     """
 
     @staticmethod
-    async def skip_ad_if_present(page: Page) -> Dict:
-        """
-        Automatically skip YouTube ads (human behavior!)
-
-        Detects if an ad is playing and clicks "Skip Ad" as soon as available.
-        Waits out unskippable ads gracefully.
-
-        Args:
-            page: Playwright page object
-
-        Returns:
-            dict with status and actions taken
-        """
-        try:
-            logger.info("🎬 Checking for YouTube ads...")
-
-            # Wait a moment for page to load
-            await asyncio.sleep(1)
-
-            # DETECTION: Check if an ad is playing
-            ad_indicators = [
-                '.ytp-ad-player-overlay',  # Ad overlay
-                '.ytp-ad-text',            # "Ad" text in player
-                '.video-ads.ytp-ad-module', # Ad container
-                '.ytp-ad-preview-container' # Ad preview
-            ]
-
-            ad_detected = False
-            for indicator in ad_indicators:
-                ad_element = await page.query_selector(indicator)
-                if ad_element:
-                    # Check if it's visible
-                    is_visible = await ad_element.is_visible()
-                    if is_visible:
-                        ad_detected = True
-                        logger.info(f"📺 Ad detected via: {indicator}")
-                        break
-
-            if not ad_detected:
-                logger.info("✅ No ad detected - video playing")
-                return {
-                    'success': True,
-                    'ad_detected': False,
-                    'message': 'No ad present, video is playing'
-                }
-
-            # AD DETECTED - Try to skip it
-            logger.info("⏳ Ad is playing - waiting for skip button...")
-
-            # Skip button selectors (YouTube uses different ones)
-            skip_button_selectors = [
-                '.ytp-ad-skip-button',
-                '.ytp-skip-ad-button',
-                'button.ytp-ad-skip-button-modern',
-                '.ytp-ad-skip-button-container button',
-                'button[class*="skip"]'
-            ]
-
-            # Wait up to 6 seconds for skip button to appear
-            skip_button_found = False
-            skip_button = None
-            skip_selector_used = None
-
-            for attempt in range(12):  # 12 attempts × 0.5s = 6 seconds
-                for selector in skip_button_selectors:
-                    skip_button = await page.query_selector(selector)
-                    if skip_button:
-                        # Check if visible and enabled
-                        is_visible = await skip_button.is_visible()
-                        is_enabled = await skip_button.is_enabled()
-
-                        if is_visible and is_enabled:
-                            skip_button_found = True
-                            skip_selector_used = selector
-                            logger.info(f"✅ Skip button found: {selector}")
-                            break
-
-                if skip_button_found:
-                    break
-
-                # Wait 0.5 seconds before next check
-                await asyncio.sleep(0.5)
-
-            if skip_button_found and skip_button:
-                # CLICK SKIP BUTTON IMMEDIATELY (human behavior!)
-                logger.info("🖱️ Clicking 'Skip Ad' button NOW...")
-                await skip_button.click()
-
-                # Wait for ad to disappear
-                await asyncio.sleep(1)
-
-                # Verify ad is gone
-                ad_still_present = False
-                for indicator in ad_indicators:
-                    ad_element = await page.query_selector(indicator)
-                    if ad_element:
-                        is_visible = await ad_element.is_visible()
-                        if is_visible:
-                            ad_still_present = True
-                            break
-
-                if not ad_still_present:
-                    logger.info("✅ Ad skipped successfully! Video is now playing")
-                    return {
-                        'success': True,
-                        'ad_detected': True,
-                        'ad_skipped': True,
-                        'message': 'Ad skipped successfully',
-                        'skip_button_selector': skip_selector_used
-                    }
-                else:
-                    logger.warning("⚠️ Skip button clicked but ad still present (possibly second ad)")
-                    return {
-                        'success': True,
-                        'ad_detected': True,
-                        'ad_skipped': 'partial',
-                        'message': 'Skip button clicked, but another ad may be playing'
-                    }
-
-            else:
-                # No skip button found after 6 seconds - unskippable ad
-                logger.info("⏰ No skip button found - This is an UNSKIPPABLE ad")
-                logger.info("⏳ Waiting for ad to finish (max 20 seconds)...")
-
-                # Wait for ad to finish (check every 2 seconds, max 20 seconds)
-                for wait_attempt in range(10):  # 10 × 2s = 20 seconds max
-                    await asyncio.sleep(2)
-
-                    # Check if ad is still playing
-                    ad_still_playing = False
-                    for indicator in ad_indicators:
-                        ad_element = await page.query_selector(indicator)
-                        if ad_element:
-                            is_visible = await ad_element.is_visible()
-                            if is_visible:
-                                ad_still_playing = True
-                                break
-
-                    if not ad_still_playing:
-                        logger.info(f"✅ Unskippable ad finished after ~{(wait_attempt + 1) * 2} seconds")
-                        return {
-                            'success': True,
-                            'ad_detected': True,
-                            'ad_skipped': False,
-                            'ad_type': 'unskippable',
-                            'wait_time': (wait_attempt + 1) * 2,
-                            'message': 'Waited for unskippable ad to finish'
-                        }
-
-                # Ad still playing after 20 seconds - give up and return
-                logger.warning("⚠️ Ad still playing after 20 seconds - continuing anyway")
-                return {
-                    'success': True,
-                    'ad_detected': True,
-                    'ad_skipped': False,
-                    'ad_type': 'long_unskippable',
-                    'message': 'Ad still playing after 20s timeout'
-                }
-
-        except Exception as e:
-            logger.error(f"❌ Ad skip error: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'message': f'Ad skip failed: {e}'
-            }
-
-    @staticmethod
     async def navigate_to_video(page: Page, description: str) -> Dict:
         """
         Extract video title from description and navigate directly
@@ -233,15 +65,11 @@ class YouTubeNavigator:
                             logger.info(f"✅ Navigating directly to video: {video_url}")
                             await page.goto(video_url, wait_until='networkidle', timeout=30000)
 
-                            # AUTOMATICALLY SKIP ADS (human behavior!)
-                            ad_result = await YouTubeNavigator.skip_ad_if_present(page)
-
                             return {
                                 'success': True,
                                 'method': 'youtube_direct_navigation',
                                 'message': f'Navigated to video #{video_index + 1}',
-                                'url': video_url,
-                                'ad_handling': ad_result
+                                'url': video_url
                             }
 
                 # STRATEGY 2: Search YouTube directly if we couldn't find videos
@@ -264,15 +92,11 @@ class YouTubeNavigator:
                             logger.info(f"✅ Found video, navigating to: {video_url}")
                             await page.goto(video_url, wait_until='networkidle', timeout=30000)
 
-                            # AUTOMATICALLY SKIP ADS (human behavior!)
-                            ad_result = await YouTubeNavigator.skip_ad_if_present(page)
-
                             return {
                                 'success': True,
                                 'method': 'youtube_search_navigation',
                                 'message': f'Searched and navigated to: {video_title}',
-                                'url': video_url,
-                                'ad_handling': ad_result
+                                'url': video_url
                             }
 
             return {
