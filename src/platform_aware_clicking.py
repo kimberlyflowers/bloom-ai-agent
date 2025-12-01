@@ -329,13 +329,24 @@ class YouTubeNavigator:
 
         "click TikTok Algorithm video" -> "TikTok Algorithm"
         "play video about python" -> "python"
+        "7 easy TikTok Settings you NEED to turn on NOW by Mike Yanda" -> "7 easy TikTok Settings you NEED to turn on NOW Mike Yanda"
         """
-        # Remove common action words
-        clean_desc = description.lower()
-        for word in ['click', 'play', 'open', 'watch', 'video', 'the', 'a', 'first', 'second', 'third']:
-            clean_desc = clean_desc.replace(word, ' ')
+        # Remove common action words using WORD BOUNDARIES (don't mangle words!)
+        clean_desc = description
 
-        clean_desc = ' '.join(clean_desc.split())  # Remove extra spaces
+        # Remove action words at word boundaries only
+        action_words = ['click', 'play', 'open', 'watch', 'video', 'the', 'first', 'second', 'third', 'titled', 'called', 'named', 'about']
+        for word in action_words:
+            # Use \b for word boundaries - only removes complete words, not letters within words
+            clean_desc = re.sub(r'\b' + word + r'\b', ' ', clean_desc, flags=re.IGNORECASE)
+
+        # Remove formatting characters only (keep actual content)
+        clean_desc = re.sub(r'[*"\'()]', '', clean_desc)  # Remove **, quotes, parentheses
+        clean_desc = re.sub(r'\s+by\s+', ' ', clean_desc, flags=re.IGNORECASE)  # Remove "by Author"
+
+        # Clean up extra spaces
+        clean_desc = ' '.join(clean_desc.split()).strip()
+
         return clean_desc if clean_desc else None
 
 
