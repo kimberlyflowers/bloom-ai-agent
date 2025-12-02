@@ -2,8 +2,16 @@
 AUTONOMOUS EXECUTOR - Sarah's Brain 🧠
 
 Transforms Sarah from puppet to autonomous agent.
+
+TWO LEARNING MODES:
+1. Strategy Learning: "Go watch 5 TikTok strategy videos" → Learns CONCEPTS
+2. UI Tutorial Learning: "Learn how to use CapCut" → Learns to OPERATE tools
+
 User says: "Go watch 5 TikTok strategy videos"
 Sarah: Plans, executes, reports - no hand-holding needed.
+
+User says: "Learn how to edit videos in CapCut"
+Sarah: Watches tutorial, follows along, saves workflow for future use.
 """
 
 import asyncio
@@ -16,6 +24,8 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 import anthropic
 import os
+from src.video_tutorial_sync import VideoTutorialLearner, TutorialLearningDetector
+from src.learned_workflows import WorkflowManager
 
 logger = logging.getLogger(__name__)
 
@@ -622,14 +632,24 @@ class AutonomousExecutor:
     """
 
     def __init__(self, api_key: str, sarah_browser, websocket_send_callback):
+        self.api_key = api_key
         self.planner = TaskPlanner(api_key)
         self.vision = VisualDecisionMaker(api_key)
         self.reporter = ProgressReporter(websocket_send_callback)
         self.browser = sarah_browser
+        self.tutorial_learner = VideoTutorialLearner(
+            anthropic_api_key=api_key,
+            browser=sarah_browser,
+            progress_callback=lambda msg: asyncio.create_task(self.reporter.report(msg, 'info'))
+        )
 
     async def execute_mission(self, user_goal: str) -> Dict[str, Any]:
         """
         Execute a complete autonomous mission
+
+        Routes to appropriate learning mode:
+        - UI Tutorial Learning: "Learn how to use CapCut"
+        - Strategy Learning: "Go watch 5 TikTok videos"
 
         Args:
             user_goal: High-level goal from user
@@ -640,6 +660,133 @@ class AutonomousExecutor:
         logger.info(f"🎯 AUTONOMOUS MISSION: {user_goal}")
 
         await self.reporter.report(f"Mission received: {user_goal}", 'info')
+
+        # 🧠 DUAL LEARNING MODE ROUTER
+        # Check if this is UI tutorial learning vs strategy learning
+        if TutorialLearningDetector.is_ui_tutorial_request(user_goal):
+            logger.info("📚 Routing to UI TUTORIAL LEARNING mode")
+            return await self._execute_ui_tutorial_learning(user_goal)
+        else:
+            logger.info("📊 Routing to STRATEGY LEARNING mode")
+            return await self._execute_strategy_learning(user_goal)
+
+    async def _execute_ui_tutorial_learning(self, user_goal: str) -> Dict[str, Any]:
+        """
+        Execute UI tutorial learning mode
+
+        User wants Sarah to learn HOW TO OPERATE a tool.
+        Example: "Learn how to use CapCut"
+        """
+        await self.reporter.report("🎓 UI Tutorial Learning Mode activated", 'info')
+
+        # Extract tool name
+        tool_name = TutorialLearningDetector.extract_tool_name(user_goal)
+
+        if not tool_name:
+            tool_name = "Unknown Tool"
+
+        await self.reporter.report(f"Learning to operate: {tool_name}", 'info')
+
+        # Find tutorial on YouTube
+        search_query = f"{tool_name} tutorial for beginners"
+        await self.reporter.report(f"Searching for: {search_query}", 'info')
+
+        try:
+            # Navigate to YouTube and search
+            await self.browser.navigate("https://youtube.com")
+            await asyncio.sleep(2)
+
+            # Dismiss cookie banner if present
+            try:
+                await self.browser.dismiss_cookie_banner()
+                await asyncio.sleep(1)
+            except:
+                pass
+
+            # Search for tutorial
+            await self.browser.search_youtube(search_query)
+            await asyncio.sleep(3)
+
+            # Get screenshot of search results
+            screenshot = await self.browser.take_screenshot()
+
+            # Use vision to select best tutorial video
+            buffered = BytesIO()
+            screenshot.save(buffered, format="PNG")
+            screenshot_base64 = base64.b64encode(buffered.getvalue()).decode()
+
+            selection = await self.vision.analyze_and_select(
+                screenshot_base64=screenshot_base64,
+                task='select_videos',
+                count=1,
+                criteria=f"Best tutorial for learning {tool_name} (beginner-friendly, high views)"
+            )
+
+            if selection.get('selections') and len(selection['selections']) > 0:
+                video_title = selection['selections'][0].get('title', 'tutorial')
+                await self.reporter.report(f"Selected tutorial: {video_title}", 'success')
+
+                # Click the first video
+                await self.browser.universal_click("click first video")
+                await asyncio.sleep(5)
+
+                # Get video URL
+                video_url = self.browser.page.url if self.browser.page else ""
+
+                # Learn from this tutorial
+                workflow_name = f"{tool_name.lower().replace(' ', '_')}_workflow"
+                description = f"How to use {tool_name}"
+
+                workflow = await self.tutorial_learner.learn_from_tutorial(
+                    video_url=video_url,
+                    workflow_name=workflow_name,
+                    tool_name=tool_name,
+                    description=description
+                )
+
+                if workflow:
+                    return {
+                        'success': True,
+                        'mission': user_goal,
+                        'learning_mode': 'ui_tutorial',
+                        'tool': tool_name,
+                        'workflow_name': workflow_name,
+                        'steps_learned': len(workflow.steps),
+                        'completed_steps': len(workflow.steps),
+                        'failed_steps': 0,
+                        'message': f"✅ Learned {len(workflow.steps)} steps for using {tool_name}!"
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'mission': user_goal,
+                        'learning_mode': 'ui_tutorial',
+                        'error': 'Failed to learn workflow from tutorial'
+                    }
+            else:
+                return {
+                    'success': False,
+                    'mission': user_goal,
+                    'learning_mode': 'ui_tutorial',
+                    'error': 'Could not find suitable tutorial'
+                }
+
+        except Exception as e:
+            logger.error(f"❌ UI tutorial learning failed: {e}")
+            return {
+                'success': False,
+                'mission': user_goal,
+                'learning_mode': 'ui_tutorial',
+                'error': str(e)
+            }
+
+    async def _execute_strategy_learning(self, user_goal: str) -> Dict[str, Any]:
+        """
+        Execute strategy learning mode (original autonomous executor)
+
+        User wants Sarah to learn ABOUT something.
+        Example: "Go watch 5 TikTok strategy videos"
+        """
         await self.reporter.report("Creating execution plan...", 'info')
 
         # Step 1: Create the plan
@@ -671,6 +818,7 @@ class AutonomousExecutor:
 
         # Include collected information
         results['mission'] = user_goal
+        results['learning_mode'] = 'strategy'
         results['plan_steps'] = len(plan)
 
         return results
@@ -680,13 +828,18 @@ class AutonomousExecutor:
         """
         Detect if user is requesting autonomous execution
 
+        Includes both:
+        - Strategy learning: "Go watch 5 videos"
+        - UI tutorial learning: "Learn how to use CapCut"
+
         Args:
             user_message: User's message
 
         Returns:
             True if this should trigger autonomous mode
         """
-        autonomous_patterns = [
+        # Strategy learning patterns
+        strategy_patterns = [
             r'\bgo\s+watch\b',
             r'\bwatch\s+\d+',
             r'\bresearch\b.*\btopic\b',
@@ -697,9 +850,25 @@ class AutonomousExecutor:
             r'\bget\s+me\s+\d+',
         ]
 
+        # UI tutorial learning patterns
+        ui_tutorial_patterns = [
+            r'\blearn\s+how\s+to\s+use\b',
+            r'\bwatch.*tutorial.*learn\b',
+            r'\bshow\s+me\s+how\s+to\b',
+            r'\bteach\s+yourself.*to\s+use\b',
+            r'\bfigure\s+out\s+how\s+to\b',
+            r'\blearn\s+to\s+operate\b',
+        ]
+
         message_lower = user_message.lower()
 
-        for pattern in autonomous_patterns:
+        # Check strategy patterns
+        for pattern in strategy_patterns:
+            if re.search(pattern, message_lower):
+                return True
+
+        # Check UI tutorial patterns
+        for pattern in ui_tutorial_patterns:
             if re.search(pattern, message_lower):
                 return True
 
