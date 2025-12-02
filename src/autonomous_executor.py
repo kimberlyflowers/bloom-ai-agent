@@ -10,6 +10,8 @@ import asyncio
 import json
 import logging
 import re
+import base64
+from io import BytesIO
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 import anthropic
@@ -439,8 +441,15 @@ class ExecutionLoop:
 
         logger.info(f"👁️ Analyzing: {task} (selecting {count})")
 
-        # Take screenshot
-        screenshot_base64 = await self.browser.get_screenshot_base64()
+        # Take screenshot (returns PIL Image)
+        screenshot_pil = await self.browser.take_screenshot()
+
+        # Convert PIL Image to base64 for Claude Vision API
+        buffered = BytesIO()
+        screenshot_pil.save(buffered, format="PNG")
+        screenshot_base64 = base64.b64encode(buffered.getvalue()).decode()
+
+        logger.info(f"📸 Screenshot captured and converted to base64")
 
         # Analyze with vision
         analysis = await self.vision.analyze_and_select(
@@ -464,6 +473,24 @@ class ExecutionLoop:
         description = params.get('description', '')
 
         logger.info(f"🖱️ Clicking: {description}")
+
+        # 🍪 BUG FIX: Dismiss cookie banners on YouTube before clicking
+        try:
+            current_url = self.browser.page.url if self.browser.page else ""
+            if 'youtube.com' in current_url:
+                logger.info("🍪 Checking for YouTube cookie banner...")
+
+                # Try to dismiss cookie banner if it exists
+                cookie_dismissed = await self.browser.dismiss_cookie_banner()
+
+                if cookie_dismissed:
+                    logger.info("✅ Cookie banner dismissed")
+                    await self.progress("Dismissed cookie banner")
+                    # Small delay for banner to disappear
+                    await asyncio.sleep(1)
+        except Exception as e:
+            # Don't fail the whole click if cookie dismissal fails
+            logger.warning(f"Cookie banner dismissal failed (non-critical): {e}")
 
         # Check if description references a selection (e.g., "first selected video")
         if 'selected' in description.lower() and hasattr(self, 'current_selections'):
