@@ -9,6 +9,7 @@ playwright>=1.40.0              # Browser automation for Gmail, TikTok, etc.
 websockets>=12.0                # Live screen streaming
 pillow>=10.0.0                  # Screenshot capturing
 pyvirtualdisplay>=3.0           # Virtual display for headless browser
+youtube-transcript-api>=0.6.0   # Tutorial learning - extract video transcripts
 
 # Platform integrations
 praw>=7.7.0                    # Reddit
