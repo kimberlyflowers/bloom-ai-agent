@@ -701,42 +701,132 @@ class AutonomousExecutor:
 
     async def _execute_ui_tutorial_learning(self, user_goal: str) -> Dict[str, Any]:
         """
-        Execute UI tutorial learning mode
+        REAL IMPLEMENTATION: Learn UI workflows from tutorials
 
-        User wants Sarah to learn HOW TO OPERATE a tool.
-        Example: "Learn how to use CapCut"
+        Examples:
+            "Learn how to create videos in HeyGen"
+            "Learn how to design graphics in Canva"
+            "Learn how to edit videos in CapCut"
         """
         await self.reporter.report("🎓 UI Tutorial Learning Mode activated", 'info')
 
-        # Extract tool name
-        tool_name = self._extract_tool_name(user_goal)
+        try:
+            # 1. Parse the user's goal to extract skill name and tool
+            skill_patterns = [
+                r"learn (?:how to )?(.+?)(?:\s+in\s+|\s+using\s+|\s+with\s+)(\w+)",  # "learn X in Y"
+                r"learn (?:how to )?use\s+(\w+)",  # "learn how to use Y"
+                r"learn\s+(\w+)",  # "learn Y"
+            ]
 
-        if not tool_name:
-            tool_name = "Unknown Tool"
+            skill_name = None
+            tool_name = None
 
-        await self.reporter.report(f"Learning to operate: {tool_name}", 'info')
+            for pattern in skill_patterns:
+                match = re.search(pattern, user_goal, re.IGNORECASE)
+                if match:
+                    if len(match.groups()) == 2:
+                        skill_name = match.group(1).strip()
+                        tool_name = match.group(2).strip()
+                    else:
+                        tool_name = match.group(1).strip()
+                        skill_name = f"use {tool_name}"
+                    break
 
-        # For now, using existing video_tutorial_learning.py framework
-        # TODO: Add real YouTube integration with transcript extraction
-        await self.reporter.report("Using existing SkillLearner framework", 'info')
+            if not tool_name:
+                return {
+                    "status": "error",
+                    "message": "Could not understand which tool to learn. Please specify like: 'learn how to create videos in HeyGen'"
+                }
 
-        # Simulated learning (existing system has simulated implementations)
-        skill = self.skill_learner.learn_from_video(
-            agent_id="sarah_001",
-            video_url=f"https://youtube.com/placeholder",  # TODO: Find real video
-            skill_name=f"Use {tool_name}",
-            category=SkillCategory.VIDEO_CREATION
-        )
+            logger.info(f"🎯 Skill: {skill_name}")
+            logger.info(f"🛠️  Tool: {tool_name}")
+            await self.reporter.report(f"🛠️  Learning: {skill_name}", 'info')
 
-        return {
-            'success': True,
-            'mission': user_goal,
-            'learning_mode': 'ui_tutorial',
-            'tool': tool_name,
-            'skill_id': skill.skill_id,
-            'steps_learned': len(skill.steps),
-            'message': f"✅ Learned {len(skill.steps)} steps for using {tool_name}! (Framework ready, real implementation pending)"
-        }
+            # 2. Determine category based on tool name
+            category_mapping = {
+                "heygen": SkillCategory.VIDEO_CREATION,
+                "arcade": SkillCategory.VIDEO_CREATION,
+                "capcut": SkillCategory.VIDEO_CREATION,
+                "canva": SkillCategory.GRAPHIC_DESIGN,
+                "figma": SkillCategory.GRAPHIC_DESIGN,
+                "photoshop": SkillCategory.GRAPHIC_DESIGN,
+                "tiktok": SkillCategory.PLATFORM_MASTERY,
+                "instagram": SkillCategory.PLATFORM_MASTERY,
+                "youtube": SkillCategory.PLATFORM_MASTERY,
+            }
+
+            category = category_mapping.get(tool_name.lower(), SkillCategory.CONTENT_CREATION)
+
+            # 3. Search YouTube for a tutorial
+            await self.reporter.report("🔍 Searching for tutorial...", 'info')
+            search_query = f"{tool_name} tutorial {skill_name} 2024 complete guide"
+
+            await self.browser.navigate("https://www.youtube.com")
+            await asyncio.sleep(2)
+
+            # Dismiss cookie banner if present
+            await self.browser.dismiss_cookie_banner()
+
+            # Search for tutorial
+            await self.browser.search_youtube(search_query)
+            await asyncio.sleep(3)
+
+            # Click first video result
+            await self.reporter.report("📺 Selecting tutorial (first result)...", 'info')
+            first_video = await self.browser.page.query_selector("ytd-video-renderer:first-of-type a#video-title")
+            if first_video:
+                await first_video.click()
+                await asyncio.sleep(3)
+            else:
+                return {
+                    "status": "error",
+                    "message": f"Could not find tutorial for: {search_query}"
+                }
+
+            # Get the video URL
+            video_url = self.browser.page.url
+            logger.info(f"📺 Tutorial URL: {video_url}")
+            await self.reporter.report(f"📺 Found tutorial", 'success')
+
+            # 4. Learn from the video using REAL implementation
+            await self.reporter.report("🎓 Starting learning process...", 'info')
+
+            # Initialize UIElementFinder for Vision
+            ui_finder = UIElementFinder(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+            # Call the REAL learn_from_video implementation
+            learned_skill = await self.skill_learner.learn_from_video(
+                agent_id="sarah",
+                video_url=video_url,
+                skill_name=skill_name,
+                category=category,
+                browser=self.browser,
+                ui_finder=ui_finder
+            )
+
+            # 5. Report results
+            await self.reporter.report("🎉 Learning complete!", 'success')
+
+            return {
+                "status": "success",
+                "skill_learned": learned_skill.skill_name,
+                "skill_id": learned_skill.skill_id,
+                "success_rate": f"{learned_skill.success_rate:.1%}",
+                "steps_learned": len(learned_skill.tutorial_steps),
+                "successful_steps": len([s for s in learned_skill.tutorial_steps if s.success]),
+                "video_url": video_url,
+                "message": f"✅ Successfully learned '{skill_name}'! I can now execute this workflow autonomously. Workflow saved as: {learned_skill.skill_id}"
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Tutorial learning failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+
+            return {
+                "status": "error",
+                "message": f"Failed to learn from tutorial: {str(e)}"
+            }
 
     async def _execute_strategy_learning(self, user_goal: str) -> Dict[str, Any]:
         """
