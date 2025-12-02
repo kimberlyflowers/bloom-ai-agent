@@ -24,8 +24,9 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 import anthropic
 import os
-from src.video_tutorial_sync import VideoTutorialLearner, TutorialLearningDetector
-from src.learned_workflows import WorkflowManager
+# Temporarily commented out to prevent crash - need to decide merge strategy
+# from src.video_tutorial_sync import VideoTutorialLearner, TutorialLearningDetector
+# from src.learned_workflows import WorkflowManager
 
 logger = logging.getLogger(__name__)
 
@@ -637,11 +638,12 @@ class AutonomousExecutor:
         self.vision = VisualDecisionMaker(api_key)
         self.reporter = ProgressReporter(websocket_send_callback)
         self.browser = sarah_browser
-        self.tutorial_learner = VideoTutorialLearner(
-            anthropic_api_key=api_key,
-            browser=sarah_browser,
-            progress_callback=lambda msg: asyncio.create_task(self.reporter.report(msg, 'info'))
-        )
+        # Temporarily disabled - deciding merge strategy
+        # self.tutorial_learner = VideoTutorialLearner(
+        #     anthropic_api_key=api_key,
+        #     browser=sarah_browser,
+        #     progress_callback=lambda msg: asyncio.create_task(self.reporter.report(msg, 'info'))
+        # )
 
     async def execute_mission(self, user_goal: str) -> Dict[str, Any]:
         """
@@ -661,14 +663,15 @@ class AutonomousExecutor:
 
         await self.reporter.report(f"Mission received: {user_goal}", 'info')
 
-        # 🧠 DUAL LEARNING MODE ROUTER
+        # 🧠 DUAL LEARNING MODE ROUTER (Temporarily disabled)
+        # TODO: Re-enable after merging with existing video_tutorial_learning.py
         # Check if this is UI tutorial learning vs strategy learning
-        if TutorialLearningDetector.is_ui_tutorial_request(user_goal):
-            logger.info("📚 Routing to UI TUTORIAL LEARNING mode")
-            return await self._execute_ui_tutorial_learning(user_goal)
-        else:
-            logger.info("📊 Routing to STRATEGY LEARNING mode")
-            return await self._execute_strategy_learning(user_goal)
+        # if TutorialLearningDetector.is_ui_tutorial_request(user_goal):
+        #     logger.info("📚 Routing to UI TUTORIAL LEARNING mode")
+        #     return await self._execute_ui_tutorial_learning(user_goal)
+        # else:
+        logger.info("📊 Routing to STRATEGY LEARNING mode")
+        return await self._execute_strategy_learning(user_goal)
 
     async def _execute_ui_tutorial_learning(self, user_goal: str) -> Dict[str, Any]:
         """
