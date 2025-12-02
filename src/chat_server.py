@@ -7,6 +7,7 @@ Fixes the Intent vs Execution Gap once and for all
 import asyncio
 import json
 import logging
+import os
 from typing import Set, Optional, List, Dict, Any
 import re
 import base64
@@ -20,6 +21,7 @@ from src.identity_persistence import MemoryType
 from src.visual_learning import get_learning_engine, UIPattern, Skill, ExperimentResult
 from src.vision_action_reasoner import VisionActionReasoner
 from src.autonomous_learning_engine import AutonomousLearningEngine, LearningStatus
+from src.autonomous_executor import AutonomousExecutor
 from src.foundation.universal_element_locator import UniversalElementLocator
 from src.foundation.universal_interactor import UniversalInteractor
 from src.foundation.parallel_execution_engine import ParallelExecutionEngine
@@ -549,8 +551,92 @@ Important:
                 # 🚀 NEW: Immediate acknowledgment (eliminates silent waiting)
                 await self._stream_immediate_response("Got it! Let me work on that...")
 
-                # AUTONOMOUS LEARNING DETECTION - Check if user is asking about Sarah's autonomous goals
+                # 🧠 AUTONOMOUS EXECUTOR DETECTION - Check if user wants autonomous mission execution
                 content_lower = content.lower()
+
+                if AutonomousExecutor.is_autonomous_request(content):
+                    logger.info(f"🎯 AUTONOMOUS MISSION DETECTED: {content}")
+
+                    # Create autonomous executor with websocket callback
+                    async def send_progress(msg):
+                        """Send progress updates to user"""
+                        if isinstance(msg, dict):
+                            await self.send_message(websocket, {
+                                'type': 'sarah_message',
+                                'message': msg.get('message', str(msg))
+                            })
+                        else:
+                            await self.send_message(websocket, {
+                                'type': 'sarah_message',
+                                'message': str(msg)
+                            })
+
+                    # Initialize autonomous executor
+                    autonomous_executor = AutonomousExecutor(
+                        api_key=os.getenv('ANTHROPIC_API_KEY'),
+                        sarah_browser=self.browser,
+                        websocket_send_callback=send_progress
+                    )
+
+                    # Execute the autonomous mission
+                    try:
+                        result = await autonomous_executor.execute_mission(content)
+
+                        # Add to conversation history
+                        user_msg = self._format_message_for_api('user', content, None)
+                        self.conversation_history.append(user_msg)
+
+                        # Report final results
+                        if result['success']:
+                            final_message = f"✅ Mission completed!\n\n"
+                            final_message += f"Steps completed: {result['completed_steps']}/{result['plan_steps']}\n"
+
+                            if result['collected_info']:
+                                final_message += f"\nInformation gathered:\n"
+                                for info in result['collected_info']:
+                                    if isinstance(info, dict):
+                                        final_message += f"• {info.get('type', 'Info')}: {info.get('note', str(info))}\n"
+                        else:
+                            final_message = f"⚠️ Mission had some issues.\n\n"
+                            final_message += f"Completed: {result['completed_steps']}/{result['plan_steps']} steps\n"
+                            final_message += f"Errors: {len(result['errors'])}\n"
+                            if result['errors']:
+                                final_message += "\nIssues encountered:\n"
+                                for error in result['errors'][:3]:  # Show first 3 errors
+                                    final_message += f"• {error}\n"
+
+                        self.conversation_history.append({
+                            'role': 'assistant',
+                            'content': final_message
+                        })
+
+                        self._save_message_to_memory('user', content)
+                        self._save_message_to_memory('assistant', final_message)
+
+                        await self.send_message(websocket, {
+                            'type': 'sarah_message',
+                            'message': final_message
+                        })
+
+                        return  # Done with autonomous mission
+
+                    except Exception as e:
+                        logger.error(f"❌ Autonomous mission failed: {e}")
+                        error_message = f"Sorry, I encountered an error during the autonomous mission: {str(e)}"
+
+                        self.conversation_history.append({
+                            'role': 'assistant',
+                            'content': error_message
+                        })
+
+                        await self.send_message(websocket, {
+                            'type': 'sarah_message',
+                            'message': error_message
+                        })
+
+                        return
+
+                # AUTONOMOUS LEARNING DETECTION - Check if user is asking about Sarah's autonomous goals
                 autonomous_triggers = [
                     'what do you want to learn',
                     'what do you want to do',
