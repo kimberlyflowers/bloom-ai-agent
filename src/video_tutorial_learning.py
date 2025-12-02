@@ -30,6 +30,10 @@ from pathlib import Path
 import json
 import base64
 import time
+import asyncio
+import os
+import re
+import logging
 
 
 # ============================================================================
@@ -169,8 +173,200 @@ class VideoTutorialAnalyzer:
 
     def __init__(self):
         self.frame_interval = 2.0  # Analyze every 2 seconds
+        self.logger = logging.getLogger(__name__)
 
-    def analyze_tutorial(
+    async def get_transcript_with_timestamps(self, video_url: str) -> List[Dict[str, Any]]:
+        """
+        Extract real YouTube transcript with timestamps
+
+        Returns:
+            List of transcript entries: [
+                {"text": "First, click the create button", "start": 1.5, "duration": 2.0},
+                {"text": "Then type your video title", "start": 3.5, "duration": 2.5},
+                ...
+            ]
+        """
+        try:
+            from youtube_transcript_api import YouTubeTranscriptApi
+        except ImportError:
+            self.logger.error("❌ youtube-transcript-api not installed. Install with: pip install youtube-transcript-api")
+            raise ImportError("youtube-transcript-api required. Install with: pip install youtube-transcript-api")
+
+        self.logger.info(f"📝 Extracting transcript from: {video_url}")
+
+        # Extract video ID from various YouTube URL formats
+        video_id = None
+        patterns = [
+            r'(?:v=|\/)([0-9A-Za-z_-]{11}).*',      # Standard watch URL
+            r'(?:embed\/)([0-9A-Za-z_-]{11})',      # Embed URL
+            r'(?:shorts\/)([0-9A-Za-z_-]{11})',     # Shorts URL
+            r'^([0-9A-Za-z_-]{11})$'                # Just the ID
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, video_url)
+            if match:
+                video_id = match.group(1)
+                break
+
+        if not video_id:
+            self.logger.error(f"❌ Could not extract video ID from: {video_url}")
+            raise ValueError(f"Invalid YouTube URL: {video_url}")
+
+        self.logger.info(f"📹 Video ID: {video_id}")
+
+        # Get transcript using youtube-transcript-api
+        try:
+            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+            self.logger.info(f"✅ Extracted {len(transcript_list)} transcript segments")
+            return transcript_list
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to get transcript: {e}")
+            # Try with generated subtitles if manual ones fail
+            try:
+                transcript_list = YouTubeTranscriptApi.get_transcript(
+                    video_id,
+                    languages=['en']
+                )
+                self.logger.info(f"✅ Extracted {len(transcript_list)} transcript segments (auto-generated)")
+                return transcript_list
+            except Exception as e2:
+                self.logger.error(f"❌ Auto-generated subtitles also failed: {e2}")
+                raise ValueError(f"Could not extract transcript: {e2}")
+
+    async def parse_transcript_into_actions(self, transcript: List[Dict], skill_name: str) -> List[TutorialStep]:
+        """
+        Use Claude API to parse transcript into actionable UI steps
+
+        Args:
+            transcript: List of transcript segments with timestamps
+            skill_name: Name of skill being learned
+
+        Returns:
+            List of TutorialStep objects ready for execution
+        """
+        try:
+            from anthropic import AsyncAnthropic
+        except ImportError:
+            self.logger.error("❌ anthropic not installed. Install with: pip install anthropic")
+            raise ImportError("anthropic required. Install with: pip install anthropic")
+
+        self.logger.info(f"🤖 Parsing transcript into actionable steps...")
+
+        # Combine transcript into readable text with timestamps
+        full_transcript = "\n".join([
+            f"[{entry['start']:.1f}s] {entry['text']}"
+            for entry in transcript[:100]  # Limit to first 100 segments to avoid token limits
+        ])
+
+        # Create Claude API client
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            self.logger.error("❌ ANTHROPIC_API_KEY environment variable not set")
+            raise ValueError("ANTHROPIC_API_KEY required")
+
+        client = AsyncAnthropic(api_key=api_key)
+
+        # Prompt Claude to extract actionable steps
+        prompt = f"""You are analyzing a tutorial video transcript to extract actionable UI steps.
+
+Tutorial Title: {skill_name}
+
+Transcript with timestamps:
+{full_transcript}
+
+Your task: Extract ONLY the actionable UI steps from this transcript. Ignore introductions, explanations, and commentary.
+
+For each actionable step, identify:
+1. **action_type**: One of: CLICK, TYPE, SELECT, WAIT, NAVIGATE, VERIFY, UPLOAD, EXTRACT
+2. **description**: Brief description of what to do
+3. **target_element**: What UI element to interact with (e.g., "Create button", "search box", "upload icon")
+4. **input_value**: If TYPE action, what text to type (otherwise null)
+5. **expected_result**: What should happen after this step
+6. **timestamp**: When in video this step occurs
+
+IMPORTANT RULES:
+- Only include steps that involve UI interaction
+- Skip steps like "Now let me explain..." or "As you can see..."
+- Be specific about target elements (not just "button" but "blue Create button in top right")
+- Use exact action types from the list above (all caps)
+- Order steps sequentially
+
+Return ONLY a valid JSON array of steps, no other text:
+
+[
+  {{
+    "step_number": 1,
+    "action_type": "CLICK",
+    "description": "Click the Create button to start new project",
+    "target_element": "Create button in top right corner",
+    "input_value": null,
+    "expected_result": "New project dialog opens",
+    "timestamp": 15.5
+  }},
+  ...
+]
+"""
+
+        try:
+            response = await client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=4000,
+                temperature=0.2,  # Low temperature for more deterministic parsing
+                messages=[{
+                    "role": "user",
+                    "content": prompt
+                }]
+            )
+
+            # Extract JSON from response
+            response_text = response.content[0].text.strip()
+
+            # Remove markdown code blocks if present
+            if response_text.startswith("```"):
+                response_text = response_text.split("```")[1]
+                if response_text.startswith("json"):
+                    response_text = response_text[4:]
+                response_text = response_text.strip()
+
+            # Parse JSON
+            steps_data = json.loads(response_text)
+
+            self.logger.info(f"✅ Parsed {len(steps_data)} actionable steps from transcript")
+
+            # Convert to TutorialStep objects
+            tutorial_steps = []
+            for step_data in steps_data:
+                # Map action_type string to StepType enum
+                action_type_str = step_data["action_type"].upper()
+                try:
+                    action_type = StepType[action_type_str]
+                except KeyError:
+                    self.logger.warning(f"⚠️  Unknown action type '{action_type_str}', defaulting to CLICK")
+                    action_type = StepType.CLICK
+
+                tutorial_steps.append(TutorialStep(
+                    step_number=step_data["step_number"],
+                    action_type=action_type,
+                    description=step_data["description"],
+                    target=step_data.get("target_element"),
+                    input_value=step_data.get("input_value"),
+                    expected_result=step_data.get("expected_result"),
+                    timing_notes=f"Occurs at {step_data.get('timestamp', 0)}s in video"
+                ))
+
+            return tutorial_steps
+
+        except json.JSONDecodeError as e:
+            self.logger.error(f"❌ Failed to parse Claude's response as JSON: {e}")
+            self.logger.error(f"Response was: {response_text[:500]}")
+            raise
+        except Exception as e:
+            self.logger.error(f"❌ Failed to parse transcript: {e}")
+            raise
+
+    async def analyze_tutorial(
         self,
         video_url: str,
         skill_name: str,
