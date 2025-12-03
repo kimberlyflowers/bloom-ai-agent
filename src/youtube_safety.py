@@ -1,167 +1,235 @@
 """
-YouTube Safety System - Prevents detection and bans
-Rate limits, human-like behavior, and anti-detection measures
+YouTube Safety Guard - Protects Railway IP from bot detection
+
+Key principle: YouTube detects PATTERNS, not just volume.
+- Perfect timing (always 5.0s) = Bot detected
+- Human variance (1-8s random) = Looks natural
 """
 
-import asyncio
 import time
+import random
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass
-from enum import Enum
-import logging
+from typing import Tuple
+import json
+from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
-
-class YouTubeSafetyLevel(Enum):
-    """Safety levels for different risk scenarios"""
-    MAXIMUM = "maximum"      # No YouTube access at all
-    HIGH = "high"            # Extreme rate limiting (1/hour)
-    MEDIUM = "medium"        # Moderate rate limiting (3/hour)
-    LOW = "low"              # Minimal rate limiting (10/hour)
-    TESTING = "testing"      # Development/testing (no limits)
-
-
-@dataclass
-class YouTubeActionRecord:
-    """Record of a YouTube action for rate limiting"""
-    timestamp: datetime
-    action_type: str  # "watch", "search", "click", "navigate"
-    video_id: Optional[str] = None
-    duration_seconds: Optional[float] = None
-    success: bool = True
-
+class YouTubeSafetyLevel:
+    """Safety levels for YouTube access"""
+    TESTING = "testing"        # 5 actions/hour for initial tests
+    LOW = "low"               # 15 actions/hour - cautious
+    MEDIUM = "medium"         # 30 actions/hour - normal human
+    HIGH = "high"             # 50 actions/hour - active human
+    MAXIMUM = "maximum"       # 100 actions/hour - power user (risky)
 
 class YouTubeSafetyGuard:
     """
-    Main safety guard that prevents YouTube detection
-    Implements rate limiting, human-like behavior, and detection avoidance
+    Protects Railway IP from YouTube bot detection using human-like timing patterns.
+
+    Key principle: YouTube detects PATTERNS, not just volume.
+    - Perfect timing (always 5.0s) = Bot detected
+    - Human variance (1-8s random) = Looks natural
     """
-    
-    # SAFETY CONSTANTS - DO NOT CHANGE THESE LIGHTLY!
-    MAX_ACTIONS_PER_HOUR = 3          # Maximum YouTube actions per hour
-    MIN_TIME_BETWEEN_ACTIONS = 300    # Minimum 5 minutes between actions
-    MAX_WATCH_TIME_PER_SESSION = 1800 # Maximum 30 minutes per session
-    MAX_SESSIONS_PER_DAY = 2          # Max 2 YouTube sessions per day
-    COOLING_PERIOD_HOURS = 24         # 24-hour cooling if detection suspected
-    
-    def __init__(self, safety_level: YouTubeSafetyLevel = YouTubeSafetyLevel.MEDIUM):
-        self.safety_level = safety_level
-        self.action_history: List[YouTubeActionRecord] = []
-        self.session_start: Optional[datetime] = None
-        self.detection_warnings: int = 0
-        self.last_detection: Optional[datetime] = None
-        
-        # Adjust limits based on safety level
-        self._adjust_limits_by_safety()
-        
-        logger.info(f"YouTube Safety Guard initialized at {safety_level.value} level")
-        logger.info(f"Rate limits: {self.MAX_ACTIONS_PER_HOUR}/hour, "
-                   f"{self.MIN_TIME_BETWEEN_ACTIONS}s between actions")
-    
-    def _adjust_limits_by_safety(self):
-        """Adjust safety limits based on safety level"""
-        if self.safety_level == YouTubeSafetyLevel.MAXIMUM:
-            self.MAX_ACTIONS_PER_HOUR = 0
-            self.MIN_TIME_BETWEEN_ACTIONS = 999999
-        elif self.safety_level == YouTubeSafetyLevel.HIGH:
-            self.MAX_ACTIONS_PER_HOUR = 1
-            self.MIN_TIME_BETWEEN_ACTIONS = 3600
-        elif self.safety_level == YouTubeSafetyLevel.MEDIUM:
-            self.MAX_ACTIONS_PER_HOUR = 3
-            self.MIN_TIME_BETWEEN_ACTIONS = 300
-        elif self.safety_level == YouTubeSafetyLevel.LOW:
-            self.MAX_ACTIONS_PER_HOUR = 10
-            self.MIN_TIME_BETWEEN_ACTIONS = 60
-        elif self.safety_level == YouTubeSafetyLevel.TESTING:
-            self.MAX_ACTIONS_PER_HOUR = 999
-            self.MIN_TIME_BETWEEN_ACTIONS = 1
-    
-    async def can_perform_action(self, action_type: str) -> Tuple[bool, str]:
-        """
-        Check if an action is allowed based on rate limits and safety rules
-        Returns: (allowed: bool, reason: str)
-        """
-        # Check if completely blocked
-        if self.safety_level == YouTubeSafetyLevel.MAXIMUM:
-            return False, "YouTube access completely blocked"
-        
-        # Check cooling period
-        if self.last_detection:
-            hours_since = (datetime.now() - self.last_detection).total_seconds() / 3600
-            if hours_since < self.COOLING_PERIOD_HOURS:
-                return False, f"In cooling period ({hours_since:.1f}/{self.COOLING_PERIOD_HOURS} hours)"
-        
-        # Check daily session limit
-        if self._daily_session_limit_reached():
-            return False, f"Daily session limit reached ({self.MAX_SESSIONS_PER_DAY}/day)"
-        
-        # Check hourly action limit
-        recent_actions = self._get_recent_actions(hours=1)
-        if len(recent_actions) >= self.MAX_ACTIONS_PER_HOUR:
-            return False, f"Hourly action limit reached ({len(recent_actions)}/{self.MAX_ACTIONS_PER_HOUR})"
-        
-        # Check minimum time between actions
-        if self.action_history:
-            last_action = self.action_history[-1]
-            time_since_last = (datetime.now() - last_action.timestamp).total_seconds()
-            if time_since_last < self.MIN_TIME_BETWEEN_ACTIONS:
-                wait_time = self.MIN_TIME_BETWEEN_ACTIONS - time_since_last
-                return False, f"Waiting {wait_time:.0f}s between actions"
-        
-        return True, "Action allowed"
-    
-    def _get_recent_actions(self, hours: float = 1) -> List[YouTubeActionRecord]:
-        """Get actions within the last N hours"""
-        cutoff = datetime.now() - timedelta(hours=hours)
-        return [action for action in self.action_history if action.timestamp > cutoff]
-    
-    def _daily_session_limit_reached(self) -> bool:
-        """Check if daily session limit has been reached"""
-        today = datetime.now().date()
-        today_sessions = 0
-        
-        for action in self.action_history:
-            if action.timestamp.date() == today and action.action_type == "watch":
-                today_sessions += 1
-        
-        return today_sessions >= self.MAX_SESSIONS_PER_DAY
-    
-    def record_action(self, action_type: str, video_id: Optional[str] = None, 
-                     duration_seconds: Optional[float] = None, success: bool = True):
-        """Record a YouTube action"""
-        record = YouTubeActionRecord(
-            timestamp=datetime.now(),
-            action_type=action_type,
-            video_id=video_id,
-            duration_seconds=duration_seconds,
-            success=success
-        )
-        self.action_history.append(record)
-        
-        if action_type == "watch" and not self.session_start:
-            self.session_start = datetime.now()
-        
-        logger.info(f"Recorded YouTube action: {action_type}")
-    
-    def record_detection_warning(self):
-        """Record a detection warning from YouTube"""
-        self.detection_warnings += 1
-        self.last_detection = datetime.now()
-        
-        if self.detection_warnings >= 3:
-            logger.warning("Multiple detection warnings - Switching to MAXIMUM safety")
-            self.safety_level = YouTubeSafetyLevel.MAXIMUM
-            self._adjust_limits_by_safety()
-    
-    def get_status(self) -> Dict[str, any]:
-        """Get current safety status"""
-        recent_actions = self._get_recent_actions(hours=1)
-        
-        return {
-            "safety_level": self.safety_level.value,
-            "recent_actions_1h": len(recent_actions),
-            "max_actions_per_hour": self.MAX_ACTIONS_PER_HOUR,
-            "detection_warnings": self.detection_warnings
+
+    def __init__(self, level: str = YouTubeSafetyLevel.MEDIUM):
+        self.level = level
+        self.data_file = Path("data/youtube_safety_log.json")
+        self.data_file.parent.mkdir(exist_ok=True)
+
+        # Human-like limits based on safety level
+        self.limits = {
+            YouTubeSafetyLevel.TESTING: {
+                "max_per_hour": 5,
+                "max_per_day": 20,
+                "min_delay": 60,      # 1 minute
+                "max_delay": 300      # 5 minutes
+            },
+            YouTubeSafetyLevel.LOW: {
+                "max_per_hour": 15,
+                "max_per_day": 60,
+                "min_delay": 30,      # 30 seconds
+                "max_delay": 180      # 3 minutes
+            },
+            YouTubeSafetyLevel.MEDIUM: {
+                "max_per_hour": 30,
+                "max_per_day": 150,
+                "min_delay": 15,      # 15 seconds
+                "max_delay": 120      # 2 minutes
+            },
+            YouTubeSafetyLevel.HIGH: {
+                "max_per_hour": 50,
+                "max_per_day": 300,
+                "min_delay": 10,      # 10 seconds
+                "max_delay": 90       # 90 seconds
+            },
+            YouTubeSafetyLevel.MAXIMUM: {
+                "max_per_hour": 100,
+                "max_per_day": 600,
+                "min_delay": 5,       # 5 seconds
+                "max_delay": 60       # 1 minute
+            }
         }
+
+        self.current_limits = self.limits[self.level]
+        self._load_or_create_log()
+
+    def _load_or_create_log(self):
+        """Load existing log or create new one"""
+        if self.data_file.exists():
+            with open(self.data_file, 'r') as f:
+                self.log = json.load(f)
+        else:
+            self.log = {
+                "actions": [],
+                "total_actions": 0,
+                "last_action": None,
+                "ip_status": "clean",
+                "created_at": datetime.now().isoformat()
+            }
+            self._save_log()
+
+    def _save_log(self):
+        """Save log to disk"""
+        with open(self.data_file, 'w') as f:
+            json.dump(self.log, f, indent=2)
+
+    def _get_human_delay(self) -> float:
+        """
+        Generate human-like random delay.
+
+        Mimics real human behavior:
+        - Most delays are short (quick actions)
+        - Occasional longer delays (reading, thinking)
+        - Never perfectly consistent
+        """
+        min_delay = self.current_limits["min_delay"]
+        max_delay = self.current_limits["max_delay"]
+
+        # 70% of time: Short delay (min to mid-range)
+        # 20% of time: Medium delay (mid to high range)
+        # 10% of time: Long delay (thinking pause)
+
+        rand = random.random()
+
+        if rand < 0.7:
+            # Quick action
+            delay = random.uniform(min_delay, (min_delay + max_delay) / 2)
+        elif rand < 0.9:
+            # Normal action
+            delay = random.uniform((min_delay + max_delay) / 2, max_delay)
+        else:
+            # Thinking pause (up to 2x max delay)
+            delay = random.uniform(max_delay, max_delay * 2)
+
+        # Add micro-variance (humans never click at exact intervals)
+        delay += random.uniform(-2, 2)
+
+        return max(min_delay, delay)  # Never go below minimum
+
+    def can_access_youtube(self) -> Tuple[bool, str]:
+        """
+        Check if YouTube access is allowed based on current rate limits.
+
+        Returns:
+            (allowed: bool, reason: str)
+        """
+        now = datetime.now()
+
+        # Clean old actions (older than 24 hours)
+        self._clean_old_actions()
+
+        # Check hourly limit
+        hour_ago = now - timedelta(hours=1)
+        recent_actions = [
+            a for a in self.log["actions"]
+            if datetime.fromisoformat(a["timestamp"]) > hour_ago
+        ]
+
+        if len(recent_actions) >= self.current_limits["max_per_hour"]:
+            next_available = min([
+                datetime.fromisoformat(a["timestamp"]) + timedelta(hours=1)
+                for a in recent_actions
+            ])
+            wait_minutes = int((next_available - now).total_seconds() / 60)
+            return False, f"Hourly limit reached ({len(recent_actions)}/{self.current_limits['max_per_hour']}). Wait {wait_minutes} minutes."
+
+        # Check daily limit
+        day_ago = now - timedelta(days=1)
+        daily_actions = [
+            a for a in self.log["actions"]
+            if datetime.fromisoformat(a["timestamp"]) > day_ago
+        ]
+
+        if len(daily_actions) >= self.current_limits["max_per_day"]:
+            return False, f"Daily limit reached ({len(daily_actions)}/{self.current_limits['max_per_day']}). Try tomorrow."
+
+        # Check minimum time between actions
+        if self.log["last_action"]:
+            last_action_time = datetime.fromisoformat(self.log["last_action"])
+            time_since_last = (now - last_action_time).total_seconds()
+
+            required_delay = self._get_human_delay()
+
+            if time_since_last < self.current_limits["min_delay"]:
+                wait_seconds = int(self.current_limits["min_delay"] - time_since_last)
+                return False, f"Too soon after last action. Wait {wait_seconds} seconds (human-like timing)."
+
+        return True, f"✅ Access allowed ({len(recent_actions)}/{self.current_limits['max_per_hour']} this hour)"
+
+    def record_action(self, action_type: str = "tutorial_learning"):
+        """Record a YouTube action"""
+        now = datetime.now()
+
+        self.log["actions"].append({
+            "timestamp": now.isoformat(),
+            "type": action_type
+        })
+        self.log["total_actions"] += 1
+        self.log["last_action"] = now.isoformat()
+
+        self._save_log()
+
+    def _clean_old_actions(self):
+        """Remove actions older than 24 hours"""
+        cutoff = datetime.now() - timedelta(days=1)
+        self.log["actions"] = [
+            a for a in self.log["actions"]
+            if datetime.fromisoformat(a["timestamp"]) > cutoff
+        ]
+        self._save_log()
+
+    def get_status(self) -> dict:
+        """Get current safety status"""
+        now = datetime.now()
+        hour_ago = now - timedelta(hours=1)
+        day_ago = now - timedelta(days=1)
+
+        recent_hourly = len([
+            a for a in self.log["actions"]
+            if datetime.fromisoformat(a["timestamp"]) > hour_ago
+        ])
+
+        recent_daily = len([
+            a for a in self.log["actions"]
+            if datetime.fromisoformat(a["timestamp"]) > day_ago
+        ])
+
+        return {
+            "level": self.level,
+            "hourly_usage": f"{recent_hourly}/{self.current_limits['max_per_hour']}",
+            "daily_usage": f"{recent_daily}/{self.current_limits['max_per_day']}",
+            "total_actions": self.log["total_actions"],
+            "last_action": self.log["last_action"],
+            "ip_status": self.log["ip_status"]
+        }
+
+    def wait_for_next_action(self) -> float:
+        """
+        Calculate and return human-like delay before next action.
+
+        Returns:
+            Delay in seconds
+        """
+        return self._get_human_delay()
+
+# Global instance - default to MEDIUM safety
+youtube_safety = YouTubeSafetyGuard(level=YouTubeSafetyLevel.MEDIUM)
