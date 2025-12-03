@@ -371,39 +371,34 @@ Return ONLY a valid JSON array of steps, no other text:
         video_url: str,
         skill_name: str,
         category: SkillCategory
-    ) -> Tuple[List[TutorialStep], Dict[str, Any]]:
+    ) -> List[TutorialStep]:
         """
-        Analyze a video tutorial and extract steps
+        REAL IMPLEMENTATION: Analyze YouTube tutorial and extract steps
 
-        This is where the MAGIC happens - Claude Vision watches the video!
+        Uses real YouTube transcript extraction and Claude API parsing!
         """
-        print(f"\n🎓 LEARNING: {skill_name}")
-        print(f"   Source: {video_url}")
-        print(f"   Category: {category.value}")
+        self.logger.info(f"🎥 Analyzing tutorial: {skill_name}")
+        self.logger.info(f"   URL: {video_url}")
+        self.logger.info(f"   Category: {category.value}")
 
-        # In production, this would:
-        # 1. Use Playwright to open YouTube video
-        # 2. Extract frames at regular intervals
-        # 3. Send each frame to Claude Vision API
-        # 4. Ask: "What step is being performed here?"
-        # 5. Identify UI elements, actions, expected results
-        # 6. Build step-by-step workflow
+        try:
+            # 1. Extract real transcript from YouTube
+            self.logger.info("📝 Step 1: Extracting YouTube transcript...")
+            transcript = await self.get_transcript_with_timestamps(video_url)
 
-        # For this demo, let's simulate the analysis
-        steps = self._simulate_video_analysis(skill_name, category)
+            if not transcript:
+                raise ValueError("No transcript available for this video")
 
-        metadata = {
-            "video_title": "How to create UGC ads with Arcade.dev",
-            "video_creator": "SaaSGrowth",
-            "duration_minutes": 8.5,
-            "required_tools": ["Arcade.dev", "Browser", "Microphone (optional)"]
-        }
+            # 2. Parse transcript into actionable steps using Claude
+            self.logger.info("🤖 Step 2: Parsing transcript into actions...")
+            tutorial_steps = await self.parse_transcript_into_actions(transcript, skill_name)
 
-        print(f"\n✅ Analysis complete!")
-        print(f"   Extracted {len(steps)} steps")
-        print(f"   Required tools: {', '.join(metadata['required_tools'])}")
+            self.logger.info(f"✅ Analysis complete: {len(tutorial_steps)} steps identified")
+            return tutorial_steps
 
-        return steps, metadata
+        except Exception as e:
+            self.logger.error(f"❌ Tutorial analysis failed: {e}")
+            raise
 
     def _simulate_video_analysis(
         self,
@@ -835,60 +830,121 @@ class SkillLearner:
             else:
                 return (False, str(e))
 
-    def learn_from_video(
+    async def learn_from_video(
         self,
         agent_id: str,
         video_url: str,
         skill_name: str,
-        category: SkillCategory
+        category: SkillCategory,
+        browser,
+        ui_finder
     ) -> LearnedSkill:
         """
-        Agent learns a new skill by watching a tutorial!
+        REAL IMPLEMENTATION: Learn a skill by watching and following a YouTube tutorial
 
-        This is INCREDIBLE - agents teaching themselves!
+        Args:
+            agent_id: ID of the agent learning (e.g., "sarah")
+            video_url: YouTube URL of the tutorial
+            skill_name: Name to give this skill
+            category: Category of skill (VIDEO_CREATION, GRAPHIC_DESIGN, etc.)
+            browser: SarahBrowser instance for interaction
+            ui_finder: UIElementFinder instance for Vision
+
+        Returns:
+            LearnedSkill object with all learned steps
         """
-        print(f"\n{'='*80}")
-        print(f"🎓 AGENT LEARNING NEW SKILL")
-        print(f"{'='*80}")
-        print(f"\n   Agent: {agent_id}")
-        print(f"   Skill: {skill_name}")
-        print(f"   Source: {video_url}")
+        import time
+        from datetime import datetime
 
-        # Step 1: Analyze the video tutorial
-        print("\n📹 Step 1: Analyzing tutorial video...")
-        steps, metadata = self.analyzer.analyze_tutorial(video_url, skill_name, category)
+        self.logger.info(f"🎓 Learning '{skill_name}' from tutorial...")
+        self.logger.info(f"📺 Video: {video_url}")
 
-        # Step 2: Follow along and record workflow
-        print("\n🎯 Step 2: Following along with tutorial...")
-        workflow_results = self._follow_tutorial_steps(agent_id, steps)
+        try:
+            # 1. Analyze the tutorial video (extract transcript + parse into steps)
+            self.logger.info(f"📋 Step 1: Analyzing tutorial...")
+            tutorial_steps = await self.analyzer.analyze_tutorial(
+                video_url=video_url,
+                skill_name=skill_name,
+                category=category
+            )
 
-        # Step 3: Create learned skill
-        import secrets
-        skill_id = f"skill_{secrets.token_urlsafe(8)}"
+            if not tutorial_steps:
+                raise ValueError("No actionable steps found in tutorial")
 
-        skill = LearnedSkill(
-            skill_id=skill_id,
-            skill_name=skill_name,
-            category=category,
-            learned_by=agent_id,
-            source_video_url=video_url,
-            video_title=metadata["video_title"],
-            video_creator=metadata["video_creator"],
-            steps=steps,
-            required_tools=metadata["required_tools"],
-            success_rate=1.0,  # First execution successful!
-            times_executed=1
-        )
+            self.logger.info(f"✅ Found {len(tutorial_steps)} steps to learn")
 
-        # Save skill
-        self.learned_skills[skill_id] = skill
+            # 2. Prepare for execution
+            self.logger.info(f"📋 Step 2: Preparing to execute steps...")
 
-        print(f"\n✅ SKILL LEARNED SUCCESSFULLY!")
-        print(f"   Skill ID: {skill_id}")
-        print(f"   Steps mastered: {len(steps)}")
-        print(f"   Can now execute this skill anytime!")
+            # 3. Execute each step with retry logic
+            successful_steps = []
+            failed_steps = []
 
-        return skill
+            for i, step in enumerate(tutorial_steps, 1):
+                self.logger.info(f"\n{'='*60}")
+                self.logger.info(f"📍 Step {i}/{len(tutorial_steps)}: {step.description}")
+                self.logger.info(f"{'='*60}")
+
+                # Execute with retry logic
+                success, error_msg = await self.execute_tutorial_step_with_retry(
+                    step=step,
+                    browser=browser,
+                    ui_finder=ui_finder
+                )
+
+                if success:
+                    successful_steps.append(step)
+                    self.logger.info(f"✅ Step {i} completed successfully")
+                else:
+                    failed_steps.append(step)
+                    self.logger.error(f"❌ Step {i} failed: {error_msg}")
+                    self.logger.info(f"⚠️  Continuing with remaining steps...")
+
+                # Small delay between steps
+                await asyncio.sleep(0.5)
+
+            # 4. Calculate success rate
+            success_rate = len(successful_steps) / len(tutorial_steps) if tutorial_steps else 0
+
+            self.logger.info(f"\n{'='*60}")
+            self.logger.info(f"📊 LEARNING SUMMARY")
+            self.logger.info(f"{'='*60}")
+            self.logger.info(f"✅ Successful steps: {len(successful_steps)}/{len(tutorial_steps)}")
+            self.logger.info(f"❌ Failed steps: {len(failed_steps)}/{len(tutorial_steps)}")
+            self.logger.info(f"📈 Success rate: {success_rate:.1%}")
+
+            # 5. Create LearnedSkill object
+            import secrets
+            skill_id = f"{skill_name.lower().replace(' ', '_')}_{int(time.time())}"
+
+            learned_skill = LearnedSkill(
+                skill_id=skill_id,
+                skill_name=skill_name,
+                category=category,
+                learned_by=agent_id,
+                source_video_url=video_url,
+                video_title=f"Tutorial: {skill_name}",  # Will be improved with metadata later
+                video_creator="YouTube",
+                steps=tutorial_steps,
+                required_tools=["Browser", "Claude Vision"],
+                success_rate=success_rate,
+                times_executed=1,
+                last_used_date=datetime.utcnow()
+            )
+
+            # 6. Save to memory (in-memory for now, file-based later)
+            self.learned_skills[skill_id] = learned_skill
+
+            self.logger.info(f"\n🎉 Successfully learned '{skill_name}'!")
+            self.logger.info(f"💾 Saved workflow for future use")
+
+            return learned_skill
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to learn from video: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            raise
 
     def _follow_tutorial_steps(
         self,
