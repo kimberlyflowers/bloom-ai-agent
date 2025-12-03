@@ -61,4 +61,4 @@ class UIElementFinder:
         
         # Validate model name is reasonable
         if not self.model.startswith("claude"):
-            self.logger.warning(f"Model name '{self.model}' may not be
+            self.logger.warning(f"Model name '{self.model}' may not be a valid Claude model")
