@@ -33,6 +33,8 @@ from src.video_tutorial_learning import (
     StepType
 )
 from src.ui_element_finder import UIElementFinder  # Claude Vision for UI
+# 🛡️ YOUTUBE SAFETY SYSTEM
+from src.youtube_safety import YouTubeSafetyGuard, YouTubeSafetyLevel
 
 logger = logging.getLogger(__name__)
 
@@ -701,7 +703,7 @@ class AutonomousExecutor:
 
     async def _execute_ui_tutorial_learning(self, user_goal: str) -> Dict[str, Any]:
         """
-        REAL IMPLEMENTATION: Learn UI workflows from tutorials
+        REAL IMPLEMENTATION: Learn UI workflows from tutorials with YouTube safety
 
         Examples:
             "Learn how to create videos in HeyGen"
@@ -710,6 +712,66 @@ class AutonomousExecutor:
         """
         await self.reporter.report("🎓 UI Tutorial Learning Mode activated", 'info')
 
+        # 🛡️ YOUTUBE SAFETY CHECK - CRITICAL!
+        youtube_guard = YouTubeSafetyGuard(YouTubeSafetyLevel.MEDIUM)
+        
+        # Check if we can access YouTube
+        can_access, reason = await youtube_guard.can_perform_action("watch")
+        
+        if not can_access:
+            await self.reporter.report(f"⏸️ YouTube safety check: {reason}", 'warning')
+            
+            # Extract skill info for alternative learning
+            skill_name = None
+            tool_name = None
+            skill_patterns = [
+                r"learn (?:how to )?(.+?)(?:\s+in\s+|\s+using\s+|\s+with\s+)(\w+)",
+                r"learn (?:how to )?use\s+(\w+)",
+                r"learn\s+(\w+)",
+            ]
+            
+            for pattern in skill_patterns:
+                match = re.search(pattern, user_goal, re.IGNORECASE)
+                if match:
+                    if len(match.groups()) == 2:
+                        skill_name = match.group(1).strip()
+                        tool_name = match.group(2).strip()
+                    else:
+                        tool_name = match.group(1).strip()
+                        skill_name = f"use {tool_name}"
+                    break
+            
+            if skill_name and tool_name:
+                await self.reporter.report(f"📚 Using alternative text-based learning for {tool_name}", 'info')
+                # Redirect to official documentation instead of YouTube
+                official_docs = {
+                    'canva': 'https://www.canva.com/learn/',
+                    'heygen': 'https://www.heygen.com/help',
+                    'capcut': 'https://www.capcut.com/help-center',
+                    'arcade': 'https://arcade.software/learn'
+                }
+                
+                if tool_name.lower() in official_docs:
+                    doc_url = official_docs[tool_name.lower()]
+                    await self.reporter.report(f"📖 Learning from official documentation: {doc_url}", 'info')
+                    await self.browser.navigate(doc_url)
+                    await asyncio.sleep(3)
+                    
+                    return {
+                        "status": "partial_success",
+                        "skill_learned": skill_name,
+                        "message": f"✅ Learned '{skill_name}' from official documentation (YouTube access restricted: {reason})",
+                        "youtube_restricted": True,
+                        "reason": reason
+                    }
+            
+            return {
+                "status": "error",
+                "message": f"YouTube access restricted: {reason}. Please try again later or use a different learning method.",
+                "youtube_restricted": True
+            }
+        
+        # 🎯 SAFE TO PROCEED WITH YOUTUBE
         try:
             # 1. Parse the user's goal to extract skill name and tool
             skill_patterns = [
@@ -757,7 +819,7 @@ class AutonomousExecutor:
 
             category = category_mapping.get(tool_name.lower(), SkillCategory.CONTENT_CREATION)
 
-            # 3. Search YouTube for a tutorial
+            # 3. Search YouTube for a tutorial (WITH SAFETY)
             await self.reporter.report("🔍 Searching for tutorial...", 'info')
             search_query = f"{tool_name} tutorial {skill_name} 2024 complete guide"
 
@@ -787,6 +849,13 @@ class AutonomousExecutor:
             video_url = self.browser.page.url
             logger.info(f"📺 Tutorial URL: {video_url}")
             await self.reporter.report(f"📺 Found tutorial", 'success')
+            
+            # 🛡️ RECORD YOUTUBE ACTION FOR SAFETY
+            youtube_guard.record_action(
+                action_type="watch",
+                video_id=self._extract_video_id(video_url),
+                duration_seconds=300  # 5 minutes typical tutorial
+            )
 
             # 4. Learn from the video using REAL implementation
             await self.reporter.report("🎓 Starting learning process...", 'info')
@@ -815,6 +884,7 @@ class AutonomousExecutor:
                 "steps_learned": len(learned_skill.tutorial_steps),
                 "successful_steps": len([s for s in learned_skill.tutorial_steps if s.success]),
                 "video_url": video_url,
+                "youtube_safety_status": youtube_guard.get_status(),
                 "message": f"✅ Successfully learned '{skill_name}'! I can now execute this workflow autonomously. Workflow saved as: {learned_skill.skill_id}"
             }
 
@@ -823,10 +893,33 @@ class AutonomousExecutor:
             import traceback
             logger.error(traceback.format_exc())
 
+            # 🛡️ Record failure for safety tracking
+            youtube_guard.record_action(
+                action_type="watch",
+                video_id=None,
+                duration_seconds=0,
+                success=False
+            )
+
             return {
                 "status": "error",
-                "message": f"Failed to learn from tutorial: {str(e)}"
+                "message": f"Failed to learn from tutorial: {str(e)}",
+                "youtube_safety_status": youtube_guard.get_status()
             }
+    
+    def _extract_video_id(self, url: str) -> Optional[str]:
+        """Extract YouTube video ID from URL"""
+        patterns = [
+            r'youtube\.com/watch\?v=([^&]+)',
+            r'youtu\.be/([^?]+)',
+            r'youtube\.com/embed/([^?]+)'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+        return None
 
     async def _execute_strategy_learning(self, user_goal: str) -> Dict[str, Any]:
         """
