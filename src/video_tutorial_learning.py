@@ -946,6 +946,190 @@ class SkillLearner:
             self.logger.error(traceback.format_exc())
             raise
 
+    async def save_skill(self, skill: LearnedSkill):
+        """Save a learned skill to disk"""
+        try:
+            skill_file = SKILLS_DIR / f"{skill.skill_id}.json"
+
+            # Convert to dict
+            skill_data = {
+                "skill_id": skill.skill_id,
+                "skill_name": skill.skill_name,
+                "category": skill.category.value,
+                "learned_by": skill.learned_by,
+                "source_video_url": skill.source_video_url,
+                "video_title": skill.video_title,
+                "video_creator": skill.video_creator,
+                "steps": [
+                    {
+                        "step_number": s.step_number,
+                        "description": s.description,
+                        "action_type": s.action_type.value,
+                        "target": s.target,
+                        "input_value": s.input_value,
+                        "expected_result": s.expected_result,
+                        "timing_notes": s.timing_notes
+                    }
+                    for s in skill.steps
+                ],
+                "required_tools": skill.required_tools,
+                "success_rate": skill.success_rate,
+                "times_executed": skill.times_executed,
+                "last_used_date": skill.last_used_date.isoformat() if skill.last_used_date else None
+            }
+
+            # Save to file
+            with open(skill_file, 'w') as f:
+                json.dump(skill_data, f, indent=2)
+
+            self.logger.info(f"💾 Saved skill to: {skill_file}")
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to save skill: {e}")
+
+    async def load_skill(self, skill_id: str) -> Optional[LearnedSkill]:
+        """Load a learned skill from disk"""
+        try:
+            skill_file = SKILLS_DIR / f"{skill_id}.json"
+
+            if not skill_file.exists():
+                self.logger.warning(f"⚠️  Skill file not found: {skill_file}")
+                return None
+
+            with open(skill_file, 'r') as f:
+                skill_data = json.load(f)
+
+            # Convert back to LearnedSkill
+            from datetime import datetime
+
+            steps = [
+                TutorialStep(
+                    step_number=s["step_number"],
+                    description=s["description"],
+                    action_type=StepType[s["action_type"].upper()],
+                    target=s.get("target"),
+                    input_value=s.get("input_value"),
+                    expected_result=s.get("expected_result"),
+                    timing_notes=s.get("timing_notes")
+                )
+                for s in skill_data["steps"]
+            ]
+
+            skill = LearnedSkill(
+                skill_id=skill_data["skill_id"],
+                skill_name=skill_data["skill_name"],
+                category=SkillCategory[skill_data["category"].upper()],
+                learned_by=skill_data["learned_by"],
+                source_video_url=skill_data["source_video_url"],
+                video_title=skill_data["video_title"],
+                video_creator=skill_data["video_creator"],
+                steps=steps,
+                required_tools=skill_data["required_tools"],
+                success_rate=skill_data["success_rate"],
+                times_executed=skill_data["times_executed"],
+                last_used_date=datetime.fromisoformat(skill_data["last_used_date"]) if skill_data.get("last_used_date") else None
+            )
+
+            self.logger.info(f"✅ Loaded skill: {skill.skill_name}")
+            return skill
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to load skill: {e}")
+            return None
+
+    async def execute_learned_skill(
+        self,
+        skill_id: str,
+        browser,
+        ui_finder,
+        custom_inputs: Optional[Dict[str, str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Execute a previously learned skill (replay the workflow)
+
+        Args:
+            skill_id: ID of the learned skill to execute
+            browser: SarahBrowser instance
+            ui_finder: UIElementFinder instance
+            custom_inputs: Optional dict of custom values (e.g., {"video_title": "My Video"})
+
+        Returns:
+            Dict with execution results
+        """
+        from datetime import datetime
+
+        self.logger.info(f"▶️  Executing learned skill: {skill_id}")
+
+        # 1. Load the skill
+        skill = await self.load_skill(skill_id)
+        if not skill:
+            # Try in-memory
+            skill = self.learned_skills.get(skill_id)
+            if not skill:
+                raise ValueError(f"Skill not found: {skill_id}")
+
+        self.logger.info(f"📋 Loaded skill: {skill.skill_name}")
+        self.logger.info(f"📊 Original success rate: {skill.success_rate:.1%}")
+        self.logger.info(f"🔄 Times practiced: {skill.times_executed}")
+
+        # 2. Execute each step
+        successful_steps = 0
+        failed_steps = 0
+
+        for i, step in enumerate(skill.steps, 1):
+            self.logger.info(f"\n📍 Step {i}/{len(skill.steps)}: {step.description}")
+
+            # Replace input values with custom inputs if provided
+            if custom_inputs and step.input_value:
+                for key, value in custom_inputs.items():
+                    if key.lower() in step.description.lower():
+                        step.input_value = value
+                        self.logger.info(f"📝 Using custom input: {value}")
+
+            # Execute with retry
+            success, error_msg = await self.execute_tutorial_step_with_retry(
+                step=step,
+                browser=browser,
+                ui_finder=ui_finder
+            )
+
+            if success:
+                successful_steps += 1
+                self.logger.info(f"✅ Step {i} completed")
+            else:
+                failed_steps += 1
+                self.logger.error(f"❌ Step {i} failed: {error_msg}")
+
+                if "not found" in error_msg.lower():
+                    self.logger.warning(f"⚠️  UI may have changed since learning")
+
+            await asyncio.sleep(0.5)
+
+        # 3. Update skill stats
+        skill.times_executed += 1
+        skill.last_used_date = datetime.utcnow()
+        await self.save_skill(skill)
+
+        # 4. Return results
+        execution_success_rate = successful_steps / len(skill.steps) if skill.steps else 0
+
+        self.logger.info(f"\n{'='*60}")
+        self.logger.info(f"📊 EXECUTION SUMMARY")
+        self.logger.info(f"{'='*60}")
+        self.logger.info(f"✅ Successful: {successful_steps}/{len(skill.steps)}")
+        self.logger.info(f"❌ Failed: {failed_steps}/{len(skill.steps)}")
+        self.logger.info(f"📈 Success rate: {execution_success_rate:.1%}")
+
+        return {
+            "status": "success" if execution_success_rate > 0.5 else "partial",
+            "skill_name": skill.skill_name,
+            "successful_steps": successful_steps,
+            "failed_steps": failed_steps,
+            "total_steps": len(skill.steps),
+            "success_rate": execution_success_rate,
+            "message": f"Executed '{skill.skill_name}' with {execution_success_rate:.1%} success rate"
+        }
+
     def _follow_tutorial_steps(
         self,
         agent_id: str,
