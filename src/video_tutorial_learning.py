@@ -85,6 +85,7 @@ WORKFLOWS_DIR.mkdir(parents=True, exist_ok=True)
 
 class SkillCategory(Enum):
     """Categories of learnable skills"""
+    GENERAL = "general"
     VIDEO_CREATION = "video_creation"
     GRAPHIC_DESIGN = "graphic_design"
     PLATFORM_MASTERY = "platform_mastery"
