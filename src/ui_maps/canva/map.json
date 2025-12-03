@@ -1,0 +1,342 @@
+{
+  "app": "Canva",
+  "last_updated": "2025-12-03",
+  "description": "UI element locations and selectors for Canva navigation",
+
+  "interaction_patterns": {
+    "full_page_navigation": ["home", "templates", "brand_kit", "design_school", "projects", "settings"],
+    "right_sidebar": ["resize", "download", "share", "comments"],
+    "left_sidebar_tools": ["design", "elements", "text", "brand", "uploads", "tools"],
+    "center_modal": ["create_menu", "invite_people"],
+    "note": "Full page navigation changes URL. Sidebars and modals overlay without page navigation."
+  },
+
+  "main_navigation": {
+    "home": {
+      "description": "Return to Canva home page",
+      "visual_cue": "Purple 'Canva' logo wordmark, top left corner",
+      "selector": "a[href='/']",
+      "backup_selector": ".logo",
+      "location": "top-left",
+      "interaction_type": "navigation"
+    },
+    "create_button": {
+      "description": "Main create button to start new design",
+      "visual_cue": "Purple circular button with white '+' icon, top of left sidebar",
+      "selector": "[data-e2e='create-button']",
+      "backup_text": "Create",
+      "location": "left-sidebar-top",
+      "opens": "create_menu",
+      "interaction_type": "modal"
+    },
+    "home_nav": {
+      "description": "Home navigation icon",
+      "visual_cue": "Home icon, left sidebar, second item",
+      "selector": "a[href='/'][title='Home']",
+      "location": "left-sidebar",
+      "interaction_type": "navigation"
+    },
+    "templates": {
+      "description": "Browse templates library",
+      "visual_cue": "Rectangle grid icon, left sidebar, third item",
+      "selector": "a[href='/templates']",
+      "location": "left-sidebar",
+      "interaction_type": "navigation"
+    },
+    "brand": {
+      "description": "Access Brand Kit",
+      "visual_cue": "Smiley face icon, left sidebar",
+      "selector": "a[href='/brand']",
+      "location": "left-sidebar",
+      "interaction_type": "navigation"
+    },
+    "projects": {
+      "description": "View your projects",
+      "visual_cue": "Folder icon, left sidebar",
+      "selector": "a[href='/projects']",
+      "location": "left-sidebar",
+      "interaction_type": "navigation"
+    },
+    "canva_ai": {
+      "description": "Access Canva AI features",
+      "visual_cue": "Sparkle icon with 'Canva AI' text, left sidebar",
+      "selector": "a[href*='ai']",
+      "location": "left-sidebar",
+      "interaction_type": "navigation"
+    }
+  },
+
+  "create_menu": {
+    "search": {
+      "description": "Search for design type",
+      "visual_cue": "Search bar at top of create menu dialog",
+      "placeholder": "What would you like to create?",
+      "selector": "input[placeholder*='What would you like to create']",
+      "interaction_type": "inline"
+    },
+    "social_media": {
+      "description": "Social media design category",
+      "visual_cue": "Pink icon with social media symbol, second option in left menu",
+      "selector": "[data-e2e='social-media-category']",
+      "backup_text": "Social media",
+      "interaction_type": "inline"
+    },
+    "presentations": {
+      "description": "Presentation design category",
+      "visual_cue": "Orange icon, first option in left menu",
+      "selector": "[data-e2e='presentations-category']",
+      "backup_text": "Presentations",
+      "interaction_type": "inline"
+    },
+    "videos": {
+      "description": "Video design category",
+      "visual_cue": "Purple play icon",
+      "selector": "[data-e2e='videos-category']",
+      "backup_text": "Videos",
+      "interaction_type": "inline"
+    },
+    "docs": {
+      "description": "Document design category",
+      "visual_cue": "Teal document icon",
+      "selector": "[data-e2e='docs-category']",
+      "backup_text": "Docs",
+      "interaction_type": "inline"
+    },
+    "instagram_post": {
+      "description": "Create Instagram post (1080x1080)",
+      "visual_cue": "Square format preview, Instagram icon",
+      "search_term": "Instagram Post",
+      "dimensions": "1080 x 1080",
+      "interaction_type": "inline"
+    },
+    "tiktok_video": {
+      "description": "Create TikTok video (1080x1920)",
+      "visual_cue": "Vertical video format",
+      "search_term": "TikTok Video",
+      "dimensions": "1080 x 1920",
+      "interaction_type": "inline"
+    }
+  },
+
+  "editor_interface": {
+    "left_sidebar": {
+      "design": {
+        "description": "Design tab - main editing tools",
+        "visual_cue": "Square grid icon, top of left sidebar in editor",
+        "selector": "[data-e2e='design-tab']",
+        "location": "editor-left-sidebar",
+        "interaction_type": "sidebar"
+      },
+      "elements": {
+        "description": "Elements library (shapes, stickers, graphics)",
+        "visual_cue": "Four dots icon",
+        "selector": "[data-e2e='elements-tab']",
+        "location": "editor-left-sidebar",
+        "interaction_type": "sidebar"
+      },
+      "text": {
+        "description": "Text tools and fonts",
+        "visual_cue": "Letter 'T' icon",
+        "selector": "[data-e2e='text-tab']",
+        "location": "editor-left-sidebar",
+        "interaction_type": "sidebar"
+      },
+      "brand": {
+        "description": "Brand kit assets in editor",
+        "visual_cue": "Smiley face icon",
+        "selector": "[data-e2e='brand-tab']",
+        "location": "editor-left-sidebar",
+        "interaction_type": "sidebar"
+      },
+      "uploads": {
+        "description": "Upload your own files",
+        "visual_cue": "Upload cloud icon",
+        "selector": "[data-e2e='uploads-tab']",
+        "location": "editor-left-sidebar",
+        "interaction_type": "sidebar"
+      },
+      "tools": {
+        "description": "Additional tools (Magic Media, etc)",
+        "visual_cue": "Wrench or tools icon",
+        "selector": "[data-e2e='tools-tab']",
+        "location": "editor-left-sidebar",
+        "interaction_type": "sidebar"
+      }
+    },
+    "top_toolbar": {
+      "file": {
+        "description": "File menu (save, duplicate, version history)",
+        "visual_cue": "File button, top left of editor",
+        "selector": "button:has-text('File')",
+        "location": "editor-top-toolbar",
+        "interaction_type": "modal"
+      },
+      "resize": {
+        "description": "Resize current design dimensions",
+        "visual_cue": "Resize button in top toolbar",
+        "selector": "button:has-text('Resize')",
+        "location": "editor-top-toolbar",
+        "interaction_type": "sidebar",
+        "opens_sidebar": "right",
+        "note": "Does NOT navigate - opens right sidebar panel"
+      },
+      "editing": {
+        "description": "Editing tools dropdown",
+        "visual_cue": "Editing dropdown with arrow",
+        "selector": "button:has-text('Editing')",
+        "location": "editor-top-toolbar",
+        "interaction_type": "modal"
+      },
+      "share": {
+        "description": "Share design with others or publish",
+        "visual_cue": "Purple Share button, top right",
+        "selector": "button:has-text('Share')",
+        "location": "editor-top-right",
+        "interaction_type": "sidebar",
+        "opens_sidebar": "right",
+        "note": "Does NOT navigate - opens right sidebar panel"
+      }
+    },
+    "right_sidebar_actions": {
+      "download": {
+        "description": "Download/export design in various formats",
+        "visual_cue": "Download icon, often in share menu or standalone",
+        "selector": "[data-e2e='download-button']",
+        "backup_text": "Download",
+        "location": "editor-top-right-area",
+        "interaction_type": "sidebar",
+        "opens_sidebar": "right",
+        "note": "Does NOT navigate - opens right sidebar panel with export options"
+      }
+    }
+  },
+
+  "design_school": {
+    "search": {
+      "description": "Search Design School courses and tutorials",
+      "visual_cue": "Search bar with placeholder 'what do you want to learn?'",
+      "selector": "input[placeholder*='what do you want to learn']",
+      "location": "top-center",
+      "interaction_type": "inline"
+    },
+    "tabs": {
+      "new_in_canva": {
+        "description": "Latest Canva features and tutorials",
+        "visual_cue": "Tab labeled 'New in Canva'",
+        "selector": "[data-e2e='new-in-canva-tab']",
+        "interaction_type": "inline"
+      },
+      "get_started": {
+        "description": "Beginner tutorials",
+        "visual_cue": "Tab labeled 'Get started'",
+        "selector": "[data-e2e='get-started-tab']",
+        "interaction_type": "inline"
+      },
+      "certified_courses": {
+        "description": "Official certification courses",
+        "visual_cue": "Tab labeled 'Certified courses'",
+        "selector": "[data-e2e='certified-courses-tab']",
+        "interaction_type": "inline"
+      }
+    }
+  },
+
+  "brand_kit": {
+    "upload_guidelines": {
+      "description": "Upload brand guidelines PDF",
+      "visual_cue": "Purple button in top right 'Upload guidelines'",
+      "selector": "button:has-text('Upload guidelines')",
+      "location": "top-banner",
+      "interaction_type": "modal"
+    },
+    "logos_section": {
+      "description": "Brand logos storage and management",
+      "visual_cue": "First card showing uploaded brand logos",
+      "selector": "[data-e2e='brand-logos']",
+      "interaction_type": "inline"
+    },
+    "colors_section": {
+      "description": "Brand color palette",
+      "visual_cue": "Card showing color swatches",
+      "selector": "[data-e2e='brand-colors']",
+      "interaction_type": "inline"
+    },
+    "fonts_section": {
+      "description": "Brand typography",
+      "visual_cue": "Card showing font samples",
+      "selector": "[data-e2e='brand-fonts']",
+      "interaction_type": "inline"
+    }
+  },
+
+  "common_workflows": {
+    "create_instagram_post": {
+      "steps": [
+        "Click create button (purple + in left sidebar)",
+        "Type 'Instagram Post' in search or select Social Media category",
+        "Click Instagram Post option (1080x1080)",
+        "Wait for editor to load"
+      ],
+      "estimated_time": "2-3 seconds with UI map",
+      "interaction_types": ["modal", "inline", "navigation"]
+    },
+    "export_design": {
+      "steps": [
+        "In editor, click Share or Download button (top right)",
+        "Wait for right sidebar to open (no page navigation)",
+        "Select file type (PNG, JPG, PDF, etc)",
+        "Adjust quality settings if needed",
+        "Click Download button"
+      ],
+      "estimated_time": "3-5 seconds with UI map",
+      "interaction_types": ["sidebar", "inline"],
+      "note": "No page navigation - sidebar overlay only"
+    },
+    "resize_design": {
+      "steps": [
+        "In editor, click Resize button (top toolbar)",
+        "Wait for right sidebar to open (no page navigation)",
+        "Select new dimensions or enter custom size",
+        "Click 'Copy & resize' or 'Resize this design'"
+      ],
+      "estimated_time": "2-4 seconds with UI map",
+      "interaction_types": ["sidebar", "inline"],
+      "note": "No page navigation - sidebar overlay only"
+    },
+    "access_brand_kit": {
+      "steps": [
+        "Click Brand icon (smiley face, left sidebar)",
+        "Wait for Brand Kit page to load",
+        "View brand assets (logos, colors, fonts)"
+      ],
+      "estimated_time": "2-3 seconds with UI map",
+      "interaction_types": ["navigation"]
+    },
+    "learn_from_design_school": {
+      "steps": [
+        "Click Design School from left sidebar or navigation",
+        "Search for topic or browse tabs",
+        "Click course card to start learning",
+        "Follow video or article tutorial"
+      ],
+      "estimated_time": "5-8 seconds to find content",
+      "interaction_types": ["navigation", "inline"]
+    }
+  },
+
+  "visual_patterns": {
+    "purple_theme": "Canva's primary brand color (#7D2AE8 or similar) used for main CTAs and active states",
+    "left_sidebar_navigation": "Always present vertical navigation with icon+text or icon-only",
+    "editor_three_panel": "Left panel (tools), center (canvas), right panel (properties/actions)",
+    "modals_centered": "Create menu and major dialogs appear centered with backdrop",
+    "sidebars_slide": "Right/left sidebars slide in without page reload - important for interaction_type detection",
+    "icon_consistency": "Consistent iconography - home=house, templates=grid, brand=smiley, etc"
+  },
+
+  "speed_optimization": {
+    "use_selectors_first": true,
+    "fallback_to_vision": true,
+    "estimated_speedup": "10-15x faster than pure vision",
+    "interaction_type_awareness": "Critical - don't wait for navigation on sidebar/modal interactions"
+  }
+}

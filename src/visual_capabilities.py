@@ -21,6 +21,26 @@ import base64
 import json
 import os
 
+# TODO: Integrate UI maps for faster navigation
+# from src.ui_maps.ui_map_loader import ui_map_loader
+#
+# When clicking elements, check ui_map_loader.has_map(app_name) first
+# Use ui_map_loader.get_interaction_type() to determine wait strategy:
+#   - 'navigation': wait_for_load_state("networkidle")
+#   - 'sidebar': wait_for_selector("[panel-selector]") - NO navigation wait!
+#   - 'modal': wait_for_selector("[modal-selector]")
+#   - 'inline': asyncio.sleep(0.3) or wait_for_selector
+#
+# Example:
+#   if ui_map_loader.has_map("canva"):
+#       element = ui_map_loader.get_element("canva", "main_navigation", "create_button")
+#       interaction_type = element.get("interaction_type")
+#       await page.click(element["selector"])
+#       if interaction_type == "navigation":
+#           await page.wait_for_load_state("networkidle")
+#       elif interaction_type == "sidebar":
+#           await page.wait_for_selector(".sidebar-panel")
+
 
 # ============================================================================
 # CONFIGURATION
