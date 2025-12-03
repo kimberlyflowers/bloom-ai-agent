@@ -539,6 +539,301 @@ class SkillLearner:
     def __init__(self):
         self.analyzer = VideoTutorialAnalyzer()
         self.learned_skills: Dict[str, LearnedSkill] = {}
+        self.logger = logging.getLogger(__name__)
+
+        # Rate limiting for Claude API
+        self.last_api_call = 0
+        self.min_api_interval = 1.0  # Minimum 1 second between calls
+
+        # Retry configuration
+        self.max_retries = 3
+        self.retry_delay = 2.0  # Seconds between retries
+
+    async def _rate_limited_api_call(self, api_call_func, *args, **kwargs):
+        """Rate-limited wrapper for Claude API calls to prevent hitting rate limits"""
+        import time
+
+        # Enforce minimum time between API calls
+        time_since_last = time.time() - self.last_api_call
+        if time_since_last < self.min_api_interval:
+            await asyncio.sleep(self.min_api_interval - time_since_last)
+
+        self.last_api_call = time.time()
+        return await api_call_func(*args, **kwargs)
+
+    def _is_transient_error(self, error: Exception) -> bool:
+        """Check if error is transient and worth retrying"""
+        transient_keywords = [
+            "timeout", "connection", "network", "temporary",
+            "rate limit", "503", "502", "429"
+        ]
+        error_str = str(error).lower()
+        return any(keyword in error_str for keyword in transient_keywords)
+
+    async def execute_tutorial_step(
+        self,
+        step: TutorialStep,
+        browser,
+        ui_finder
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Execute a single tutorial step using Vision to locate elements and browser to interact
+        Includes fallback mechanisms for when Vision fails
+
+        Args:
+            step: TutorialStep to execute
+            browser: SarahBrowser instance
+            ui_finder: UIElementFinder instance
+
+        Returns:
+            (success: bool, error_message: Optional[str])
+        """
+        from PIL import Image
+
+        self.logger.info(f"▶️  Executing: {step.description}")
+
+        try:
+            if step.action_type == StepType.NAVIGATE:
+                # Navigate to URL
+                url = step.input_value or step.target
+                await browser.navigate(url)
+                await asyncio.sleep(2)  # Wait for page load
+                self.logger.info(f"✅ Navigated to: {url}")
+                return (True, None)
+
+            elif step.action_type == StepType.CLICK:
+                # Take screenshot to find element
+                screenshot = await browser.take_screenshot()  # Returns PIL Image
+
+                # ATTEMPT 1: Use Vision to locate the element
+                self.logger.info(f"🔍 Looking for: {step.target}")
+                element_info = await ui_finder.find_element(
+                    screenshot=screenshot,
+                    instruction=f"Find the {step.target}. Return exact pixel coordinates."
+                )
+
+                # FALLBACK 1: If Vision fails, try different phrasing
+                if not element_info or not element_info.get("found"):
+                    self.logger.warning(f"⚠️  Vision attempt 1 failed, trying alternate phrasing...")
+                    element_info = await ui_finder.find_element(
+                        screenshot=screenshot,
+                        instruction=f"Locate the button, link, or element labeled '{step.target}'. Give me x,y coordinates."
+                    )
+
+                # FALLBACK 2: Try CSS/text selectors as last resort
+                if not element_info or not element_info.get("found"):
+                    self.logger.warning(f"⚠️  Vision attempt 2 failed, trying CSS/text selectors...")
+                    try:
+                        # Try common selector patterns
+                        selectors = [
+                            f"button:has-text('{step.target}')",
+                            f"[aria-label*='{step.target}' i]",
+                            f"a:has-text('{step.target}')",
+                            f"[title*='{step.target}' i]"
+                        ]
+
+                        for selector in selectors:
+                            try:
+                                element = await browser.page.query_selector(selector)
+                                if element:
+                                    await element.click()
+                                    await asyncio.sleep(1.5)
+                                    self.logger.info(f"✅ Clicked using selector: {selector}")
+                                    return (True, None)
+                            except:
+                                continue
+                    except Exception as e:
+                        self.logger.warning(f"⚠️  Selector fallback also failed: {e}")
+
+                # Check if Vision succeeded
+                if element_info and element_info.get("found"):
+                    coords = element_info.get("coordinates", {})
+                    x = coords.get("x")
+                    y = coords.get("y")
+
+                    if x is not None and y is not None:
+                        self.logger.info(f"🎯 Found element at ({x}, {y})")
+
+                        # Click at coordinates
+                        await browser.page.mouse.click(x, y)
+                        await asyncio.sleep(1.5)  # Wait for UI response
+
+                        # Verify the action worked (if expected_result provided)
+                        if step.expected_result:
+                            await asyncio.sleep(0.5)
+                            new_screenshot = await browser.take_screenshot()
+                            verification = await ui_finder.analyze_ui_state(
+                                screenshot=new_screenshot,
+                                question=f"Did this happen: {step.expected_result}? Answer yes or no and explain briefly."
+                            )
+
+                            self.logger.info(f"🔍 Verification: {verification}")
+
+                            # Check if verification indicates success
+                            success = "yes" in verification.lower() or "successfully" in verification.lower()
+                            if success:
+                                self.logger.info(f"✅ Step verified successful")
+                                return (True, None)
+                            else:
+                                self.logger.warning(f"⚠️  Step may have failed: {verification}")
+                                return (True, f"Verification uncertain: {verification}")
+                        else:
+                            self.logger.info(f"✅ Click executed (no verification)")
+                            return (True, None)
+                    else:
+                        error = "Vision found element but no coordinates returned"
+                        self.logger.error(f"❌ {error}")
+                        return (False, error)
+                else:
+                    error = f"Could not find element '{step.target}' after all attempts (Vision + selectors)"
+                    self.logger.error(f"❌ {error}")
+                    return (False, error)
+
+            elif step.action_type == StepType.TYPE:
+                # First, find and click the input field
+                screenshot = await browser.take_screenshot()
+                element_info = await ui_finder.find_element(
+                    screenshot=screenshot,
+                    instruction=f"Find the {step.target} (input field or text box)"
+                )
+
+                if element_info and element_info.get("found"):
+                    coords = element_info.get("coordinates", {})
+                    x = coords.get("x")
+                    y = coords.get("y")
+
+                    if x is not None and y is not None:
+                        # Click to focus the input
+                        await browser.page.mouse.click(x, y)
+                        await asyncio.sleep(0.5)
+
+                        # Type the text
+                        text_to_type = step.input_value or ""
+                        await browser.page.keyboard.type(text_to_type, delay=50)  # 50ms between keystrokes
+                        await asyncio.sleep(1)
+
+                        self.logger.info(f"✅ Typed: {text_to_type}")
+                        return (True, None)
+                    else:
+                        error = "Found input field but no coordinates"
+                        self.logger.error(f"❌ {error}")
+                        return (False, error)
+                else:
+                    error = f"Could not find input field: {step.target}"
+                    self.logger.error(f"❌ {error}")
+                    return (False, error)
+
+            elif step.action_type == StepType.WAIT:
+                # Simple wait
+                wait_seconds = float(step.input_value) if step.input_value else 2.0
+                self.logger.info(f"⏸️  Waiting {wait_seconds} seconds...")
+                await asyncio.sleep(wait_seconds)
+                return (True, None)
+
+            elif step.action_type == StepType.SELECT:
+                # For dropdowns/selects
+                screenshot = await browser.take_screenshot()
+                element_info = await ui_finder.find_element(
+                    screenshot=screenshot,
+                    instruction=f"Find the {step.target} (dropdown or select element)"
+                )
+
+                if element_info and element_info.get("found"):
+                    coords = element_info.get("coordinates", {})
+                    x = coords.get("x")
+                    y = coords.get("y")
+
+                    if x and y:
+                        await browser.page.mouse.click(x, y)
+                        await asyncio.sleep(1)
+
+                        # If there's an input value, it might be the option to select
+                        if step.input_value:
+                            await asyncio.sleep(0.5)
+                            option_screenshot = await browser.take_screenshot()
+                            option_info = await ui_finder.find_element(
+                                screenshot=option_screenshot,
+                                instruction=f"Find the option '{step.input_value}' in the dropdown"
+                            )
+
+                            if option_info and option_info.get("found"):
+                                opt_coords = option_info.get("coordinates", {})
+                                await browser.page.mouse.click(opt_coords.get("x"), opt_coords.get("y"))
+                                await asyncio.sleep(1)
+
+                        self.logger.info(f"✅ Selected from: {step.target}")
+                        return (True, None)
+                    else:
+                        return (False, "Found dropdown but no coordinates")
+                else:
+                    return (False, f"Could not find dropdown: {step.target}")
+
+            elif step.action_type == StepType.VERIFY:
+                # Verification step - check if something is visible/present
+                screenshot = await browser.take_screenshot()
+                verification = await ui_finder.analyze_ui_state(
+                    screenshot=screenshot,
+                    question=f"Is this visible or present: {step.expected_result}? Answer yes or no."
+                )
+
+                success = "yes" in verification.lower()
+                self.logger.info(f"🔍 Verification: {verification}")
+                return (success, None if success else "Verification failed")
+
+            else:
+                # Unsupported action type
+                error = f"Action type {step.action_type} not yet implemented"
+                self.logger.warning(f"⚠️  {error}")
+                return (False, error)
+
+        except Exception as e:
+            error = f"Exception during execution: {str(e)}"
+            self.logger.error(f"❌ {error}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            return (False, error)
+
+    async def execute_tutorial_step_with_retry(
+        self,
+        step: TutorialStep,
+        browser,
+        ui_finder,
+        retry_count: int = 0
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Execute step with automatic retry logic for transient failures
+        Includes 30-second timeout per attempt
+        """
+        try:
+            # Add timeout to prevent infinite hangs
+            return await asyncio.wait_for(
+                self.execute_tutorial_step(step, browser, ui_finder),
+                timeout=30.0  # 30 second timeout per step
+            )
+        except asyncio.TimeoutError:
+            self.logger.error(f"⏱️  Step timed out after 30 seconds")
+
+            if retry_count < self.max_retries:
+                self.logger.info(f"🔄 Retrying... (attempt {retry_count + 1}/{self.max_retries})")
+                await asyncio.sleep(self.retry_delay)
+                return await self.execute_tutorial_step_with_retry(
+                    step, browser, ui_finder, retry_count + 1
+                )
+            else:
+                return (False, "Step timed out after 3 retries")
+
+        except Exception as e:
+            self.logger.error(f"❌ Step execution failed: {e}")
+
+            # Retry transient errors
+            if retry_count < self.max_retries and self._is_transient_error(e):
+                self.logger.info(f"🔄 Transient error detected, retrying...")
+                await asyncio.sleep(self.retry_delay)
+                return await self.execute_tutorial_step_with_retry(
+                    step, browser, ui_finder, retry_count + 1
+                )
+            else:
+                return (False, str(e))
 
     def learn_from_video(
         self,
