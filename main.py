@@ -192,6 +192,47 @@ class Sarah:
         logger.info(f"   Location: Phoenix, Arizona")
         logger.info(f"   Specialization: TikTok growth & UGC creation")
 
+    async def check_youtube_ip_status(self):
+        """Check if Railway IP is flagged by YouTube"""
+        try:
+            logger.info("🧪 Testing YouTube IP status...")
+
+            # Use Sarah's browser
+            await self.browser.navigate("https://www.youtube.com")
+            await asyncio.sleep(3)
+
+            title = await self.browser.page.title()
+            url = self.browser.page.url
+
+            logger.info(f"📄 YouTube page title: {title}")
+            logger.info(f"🔗 YouTube URL: {url}")
+
+            # Analyze status
+            if "Sign in" in title or "Log in" in title:
+                status = "⚠️ FLAGGED - Login required"
+                logger.warning(f"🚨 YouTube IP Status: {status}")
+                logger.warning("⏸️ Tutorial learning should be paused for 48 hours")
+            elif "Fout" in title or "Error" in title:
+                status = "⚠️ FLAGGED - Error page"
+                logger.warning(f"🚨 YouTube IP Status: {status}")
+                logger.warning("⏸️ Tutorial learning should be paused for 48 hours")
+            elif "YouTube" in title:
+                status = "✅ CLEAN - Normal access"
+                logger.info(f"✅ YouTube IP Status: {status}")
+                logger.info("✅ Tutorial learning can proceed with safety limits")
+            else:
+                status = f"❓ UNKNOWN - {title}"
+                logger.warning(f"⚠️ YouTube IP Status: {status}")
+
+            # Navigate to blank page after test
+            await self.browser.navigate("about:blank")
+
+            return status
+
+        except Exception as e:
+            logger.error(f"❌ YouTube IP check failed: {e}")
+            return "ERROR"
+
     async def check_email(self):
         """Check email and respond (placeholder for now)"""
         logger.info("📧 Checking email...")
@@ -231,6 +272,10 @@ class Sarah:
             logger.error("❌ Failed to start browser - screen streaming won't work")
         else:
             logger.info("✅ Browser ready!")
+
+            # Check YouTube IP status on startup
+            youtube_status = await self.check_youtube_ip_status()
+            logger.info(f"📊 YouTube IP check complete: {youtube_status}")
 
         # Start unified WebSocket server (handles both chat and screen streaming)
         if self.unified_server:
