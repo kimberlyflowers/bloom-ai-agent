@@ -15,14 +15,15 @@ export default function Dashboard() {
   const messagesEndRef = useRef(null)
 
   // WebSocket URLs - use environment variable or localhost for development
-  const getWebSocketUrl = (port) => {
+  const getWebSocketUrl = (path) => {
     // Check if we have a Railway URL from environment variable
     const railwayUrl = process.env.NEXT_PUBLIC_RAILWAY_WS_URL
     if (railwayUrl) {
-      // Use Railway WebSocket URL (wss:// for secure connection)
-      return railwayUrl.replace(':8000', `:${port}`)
+      // Use Railway WebSocket URL with path-based routing (wss:// for secure connection)
+      return `${railwayUrl}${path}`
     }
-    // Fallback to localhost for development
+    // Fallback to localhost for development (old port-based routing)
+    const port = path === '/screen' ? 8765 : 8766
     return `ws://localhost:${port}`
   }
 
@@ -57,8 +58,8 @@ export default function Dashboard() {
 
   function connectToLiveScreen() {
     try {
-      // Connect to Railway WebSocket server
-      const wsUrl = getWebSocketUrl(8765)
+      // Connect to Railway WebSocket server (unified server with path-based routing)
+      const wsUrl = getWebSocketUrl('/screen')
       console.log('🎥 Connecting to screen stream:', wsUrl)
       const ws = new WebSocket(wsUrl)
 
@@ -100,8 +101,8 @@ export default function Dashboard() {
 
   function connectToChat() {
     try {
-      // Connect to chat WebSocket server (different port from screen stream)
-      const wsUrl = getWebSocketUrl(8766)
+      // Connect to chat WebSocket server (unified server with path-based routing)
+      const wsUrl = getWebSocketUrl('/chat')
       console.log('💬 Connecting to chat:', wsUrl)
       const ws = new WebSocket(wsUrl)
 
