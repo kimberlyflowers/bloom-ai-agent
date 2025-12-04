@@ -7,6 +7,8 @@ import os
 import asyncio
 import logging
 from datetime import datetime
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
 # Import Sarah's core systems
 from src.identity_persistence import IdentityManager, Backstory, PersonalityTraits, WritingStyle
@@ -20,6 +22,9 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Create FastAPI app for Railway
+app = FastAPI(title="BLOOM AI Agent - Sarah Rodriguez")
 
 class Sarah:
     """Sarah Rodriguez - Digital Employee at BLOOM"""
@@ -213,15 +218,125 @@ class Sarah:
                 # Sleep 5 minutes before retry
                 await asyncio.sleep(300)
 
-async def main():
-    """Entry point"""
+# Global Sarah instance
+sarah_instance = None
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize Sarah on startup"""
+    global sarah_instance
+
     logger.info("=" * 60)
     logger.info("🚀 BLOOM AI AGENT - STARTING UP")
+    logger.info("=" * 60)
+
+    sarah_instance = Sarah()
+    sarah_instance.create_identity()
+
+    # Start chat server in background
+    if sarah_instance.chat_server:
+        asyncio.create_task(sarah_instance.chat_server.start_server())
+        logger.info("💬 Chat server started - ready for conversations!")
+
+    # Start daily routine in background
+    asyncio.create_task(run_sarah_routine())
+
+    logger.info("✅ Sarah is fully online and ready!")
+
+async def run_sarah_routine():
+    """Run Sarah's daily routine in background"""
+    global sarah_instance
+
+    while True:
+        try:
+            await sarah_instance.daily_routine()
+
+            # Sleep for 1 hour
+            logger.info("😴 Sleeping for 1 hour...")
+            await asyncio.sleep(3600)
+
+        except Exception as e:
+            logger.error(f"❌ Error in daily routine: {e}")
+            logger.exception(e)
+            # Sleep 5 minutes before retry
+            await asyncio.sleep(300)
+
+@app.get("/")
+async def root():
+    """Root endpoint"""
+    return {
+        "status": "online",
+        "agent": "Sarah Rodriguez",
+        "role": "Growth & Community Lead at BLOOM",
+        "message": "Hi! I'm Sarah 🌸 I'm online and working!",
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Railway"""
+    global sarah_instance
+
+    if sarah_instance is None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "starting",
+                "message": "Sarah is initializing..."
+            }
+        )
+
+    return {
+        "status": "healthy",
+        "agent_id": sarah_instance.agent_id,
+        "systems": {
+            "identity": "online",
+            "relationships": "online",
+            "ethics": "online",
+            "chat_server": "online" if sarah_instance.chat_server else "offline"
+        },
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.get("/status")
+async def get_status():
+    """Get detailed status"""
+    global sarah_instance
+
+    if sarah_instance is None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "starting",
+                "message": "Sarah is initializing..."
+            }
+        )
+
+    total_relationships = len(sarah_instance.relationships.relationships)
+
+    return {
+        "status": "operational",
+        "agent": {
+            "id": sarah_instance.agent_id,
+            "name": "Sarah Rodriguez",
+            "role": "Growth & Community Lead"
+        },
+        "stats": {
+            "relationships": total_relationships,
+            "identity_loaded": sarah_instance.agent_id in sarah_instance.identity.identities
+        },
+        "timestamp": datetime.now().isoformat()
+    }
+
+async def main():
+    """Entry point for local development"""
+    logger.info("=" * 60)
+    logger.info("🚀 BLOOM AI AGENT - STARTING UP (Local Mode)")
     logger.info("=" * 60)
 
     sarah = Sarah()
     await sarah.run()
 
 if __name__ == "__main__":
-    # Run Sarah!
+    # Run Sarah in local mode (asyncio)
     asyncio.run(main())
