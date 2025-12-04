@@ -10,6 +10,7 @@ from typing import Set, Optional
 import websockets
 from websockets.server import WebSocketServerProtocol
 from anthropic import Anthropic
+from src.autonomous_executor import AutonomousExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,8 @@ class SarahChatServer:
         self,
         anthropic_api_key: str,
         port: int = 8766,
-        identity_manager=None
+        identity_manager=None,
+        browser_agent=None
     ):
         """
         Initialize chat server
@@ -32,11 +34,13 @@ class SarahChatServer:
             anthropic_api_key: Anthropic API key for Claude
             port: WebSocket port (default 8766)
             identity_manager: Sarah's identity for context
+            browser_agent: BrowserAgent for autonomous execution
         """
         self.port = port
         self.connected_clients: Set[WebSocketServerProtocol] = set()
         self.server = None
         self.identity_manager = identity_manager
+        self.browser_agent = browser_agent
 
         # Initialize Anthropic client
         self.anthropic = Anthropic(api_key=anthropic_api_key)
@@ -47,6 +51,16 @@ class SarahChatServer:
         # Conversation history (keep last 20 messages for context)
         self.conversation_history = []
         self.max_history = 20
+
+        # Initialize autonomous executor if browser is available
+        self.autonomous_executor = None
+        if self.browser_agent:
+            self.autonomous_executor = AutonomousExecutor(
+                api_key=anthropic_api_key,
+                sarah_browser=self.browser_agent,
+                websocket_send_callback=self.broadcast_message
+            )
+            logger.info("✅ Autonomous executor initialized")
 
     def _build_system_prompt(self) -> str:
         """Build Sarah's system prompt with her identity"""
@@ -148,32 +162,65 @@ Important:
                 # User sent a message - get Sarah's response
                 logger.info(f"💬 User: {content}")
 
-                # Add to conversation history
-                self.conversation_history.append({
-                    'role': 'user',
-                    'content': content
-                })
+                # Check if this is an autonomous execution request
+                if self.autonomous_executor and AutonomousExecutor.is_autonomous_request(content):
+                    logger.info("🤖 Autonomous request detected! Executing mission...")
 
-                # Get Sarah's response from Claude
-                response = await self.get_sarah_response(content)
+                    # Send acknowledgment
+                    await self.send_message(websocket, {
+                        'type': 'sarah_message',
+                        'message': f"🚀 Starting autonomous mission: {content}"
+                    })
 
-                # Add to conversation history
-                self.conversation_history.append({
-                    'role': 'assistant',
-                    'content': response
-                })
+                    # Execute the mission
+                    try:
+                        result = await self.autonomous_executor.execute_mission(content)
 
-                # Keep history manageable
-                if len(self.conversation_history) > self.max_history:
-                    self.conversation_history = self.conversation_history[-self.max_history:]
+                        # Send result summary
+                        if result.get('status') == 'success':
+                            summary = f"✅ Mission complete! {result.get('message', '')}"
+                        else:
+                            summary = f"⚠️ Mission had issues: {result.get('message', '')}"
 
-                # Send response back
-                await self.send_message(websocket, {
-                    'type': 'sarah_message',
-                    'message': response
-                })
+                        await self.send_message(websocket, {
+                            'type': 'sarah_message',
+                            'message': summary
+                        })
 
-                logger.info(f"💬 Sarah: {response[:100]}...")
+                    except Exception as e:
+                        logger.error(f"❌ Autonomous execution failed: {e}")
+                        await self.send_message(websocket, {
+                            'type': 'sarah_message',
+                            'message': f"❌ Sorry, I encountered an error: {str(e)}"
+                        })
+
+                else:
+                    # Regular chat message - add to history
+                    self.conversation_history.append({
+                        'role': 'user',
+                        'content': content
+                    })
+
+                    # Get Sarah's response from Claude
+                    response = await self.get_sarah_response(content)
+
+                    # Add to conversation history
+                    self.conversation_history.append({
+                        'role': 'assistant',
+                        'content': response
+                    })
+
+                    # Keep history manageable
+                    if len(self.conversation_history) > self.max_history:
+                        self.conversation_history = self.conversation_history[-self.max_history:]
+
+                    # Send response back
+                    await self.send_message(websocket, {
+                        'type': 'sarah_message',
+                        'message': response
+                    })
+
+                    logger.info(f"💬 Sarah: {response[:100]}...")
 
             elif msg_type == 'ping':
                 # Keep-alive ping

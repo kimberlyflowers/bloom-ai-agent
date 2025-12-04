@@ -16,6 +16,8 @@ from src.identity_persistence import IdentityManager, Backstory, PersonalityTrai
 from src.relationship_management import RelationshipManager
 from src.ethical_framework import EthicalFramework
 from src.chat_server import SarahChatServer
+from src.visual_capabilities import BrowserAgent
+from src.autonomous_executor import AutonomousExecutor
 
 # Setup logging
 logging.basicConfig(
@@ -114,13 +116,28 @@ class Sarah:
         self.relationships = RelationshipManager()
         self.ethics = EthicalFramework()
 
-        # Initialize chat server
+        # Initialize browser agent for autonomous execution
+        logger.info("🌐 Initializing browser agent...")
+        self.browser_agent = BrowserAgent(
+            agent_id=self.agent_id,
+            headless=False  # Show browser for debugging
+        )
+        # Start the browser
+        browser_started = self.browser_agent.start()
+        if browser_started:
+            logger.info("✅ Browser agent started")
+        else:
+            logger.warning("⚠️ Browser agent failed to start")
+            self.browser_agent = None
+
+        # Initialize chat server with browser agent
         anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
         if anthropic_api_key:
             self.chat_server = SarahChatServer(
                 anthropic_api_key=anthropic_api_key,
                 port=8766,
-                identity_manager=self.identity
+                identity_manager=self.identity,
+                browser_agent=self.browser_agent  # Pass browser agent to chat server
             )
             logger.info("✅ Chat server initialized")
         else:

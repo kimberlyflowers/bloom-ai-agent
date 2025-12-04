@@ -25,16 +25,34 @@ from dataclasses import dataclass
 import anthropic
 import os
 # Using existing video_tutorial_learning.py system
-from src.video_tutorial_learning import (
-    SkillLearner,
-    SkillCategory,
-    LearnedSkill,
-    TutorialStep,
-    StepType
-)
-from src.ui_element_finder import UIElementFinder  # Claude Vision for UI
-# 🛡️ YOUTUBE SAFETY SYSTEM
-from src.youtube_safety import YouTubeSafetyGuard, YouTubeSafetyLevel
+try:
+    from src.video_tutorial_learning import (
+        SkillLearner,
+        SkillCategory,
+        LearnedSkill,
+        TutorialStep,
+        StepType
+    )
+    VIDEO_TUTORIAL_AVAILABLE = True
+except ImportError:
+    VIDEO_TUTORIAL_AVAILABLE = False
+    logger.warning("video_tutorial_learning not available")
+
+# UI Element Finder - optional
+try:
+    from src.ui_element_finder import UIElementFinder
+    UI_FINDER_AVAILABLE = True
+except ImportError:
+    UI_FINDER_AVAILABLE = False
+    logger.warning("ui_element_finder not available")
+
+# YouTube Safety - optional
+try:
+    from src.youtube_safety import YouTubeSafetyGuard, YouTubeSafetyLevel
+    YOUTUBE_SAFETY_AVAILABLE = True
+except ImportError:
+    YOUTUBE_SAFETY_AVAILABLE = False
+    logger.warning("youtube_safety not available")
 
 logger = logging.getLogger(__name__)
 
@@ -647,8 +665,8 @@ class AutonomousExecutor:
         self.reporter = ProgressReporter(websocket_send_callback)
         self.browser = sarah_browser
         # Using existing video_tutorial_learning.py system
-        self.skill_learner = SkillLearner()
-        self.ui_finder = UIElementFinder(api_key)
+        self.skill_learner = SkillLearner() if VIDEO_TUTORIAL_AVAILABLE else None
+        self.ui_finder = UIElementFinder(api_key) if UI_FINDER_AVAILABLE else None
 
     async def execute_mission(self, user_goal: str) -> Dict[str, Any]:
         """
@@ -713,10 +731,16 @@ class AutonomousExecutor:
         await self.reporter.report("🎓 UI Tutorial Learning Mode activated", 'info')
 
         # 🛡️ YOUTUBE SAFETY CHECK - CRITICAL!
-        youtube_guard = YouTubeSafetyGuard(YouTubeSafetyLevel.MEDIUM)
+        youtube_guard = None
+        can_access = True
+        reason = ""
 
-        # Check if we can access YouTube
-        can_access, reason = await youtube_guard.can_perform_action("watch")
+        if YOUTUBE_SAFETY_AVAILABLE:
+            youtube_guard = YouTubeSafetyGuard(YouTubeSafetyLevel.MEDIUM)
+            # Check if we can access YouTube
+            can_access, reason = await youtube_guard.can_perform_action("watch")
+        else:
+            logger.warning("YouTube safety not available - proceeding without safety checks")
 
         if not can_access:
             await self.reporter.report(f"⏸️ YouTube safety check: {reason}", 'warning')
@@ -851,11 +875,12 @@ class AutonomousExecutor:
             await self.reporter.report(f"📺 Found tutorial", 'success')
 
             # 🛡️ RECORD YOUTUBE ACTION FOR SAFETY
-            youtube_guard.record_action(
-                action_type="watch",
-                video_id=self._extract_video_id(video_url),
-                duration_seconds=300  # 5 minutes typical tutorial
-            )
+            if youtube_guard:
+                youtube_guard.record_action(
+                    action_type="watch",
+                    video_id=self._extract_video_id(video_url),
+                    duration_seconds=300  # 5 minutes typical tutorial
+                )
 
             # 4. Learn from the video using REAL implementation
             await self.reporter.report("🎓 Starting learning process...", 'info')
@@ -884,7 +909,7 @@ class AutonomousExecutor:
                 "steps_learned": len(learned_skill.tutorial_steps),
                 "successful_steps": len([s for s in learned_skill.tutorial_steps if s.success]),
                 "video_url": video_url,
-                "youtube_safety_status": youtube_guard.get_status(),
+                "youtube_safety_status": youtube_guard.get_status() if youtube_guard else "not_available",
                 "message": f"✅ Successfully learned '{skill_name}'! I can now execute this workflow autonomously. Workflow saved as: {learned_skill.skill_id}"
             }
 
@@ -894,17 +919,18 @@ class AutonomousExecutor:
             logger.error(traceback.format_exc())
 
             # 🛡️ Record failure for safety tracking
-            youtube_guard.record_action(
-                action_type="watch",
-                video_id=None,
-                duration_seconds=0,
-                success=False
-            )
+            if youtube_guard:
+                youtube_guard.record_action(
+                    action_type="watch",
+                    video_id=None,
+                    duration_seconds=0,
+                    success=False
+                )
 
             return {
                 "status": "error",
                 "message": f"Failed to learn from tutorial: {str(e)}",
-                "youtube_safety_status": youtube_guard.get_status()
+                "youtube_safety_status": youtube_guard.get_status() if youtube_guard else "not_available"
             }
 
     def _extract_video_id(self, url: str) -> Optional[str]:
