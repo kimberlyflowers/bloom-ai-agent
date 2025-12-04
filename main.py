@@ -9,6 +9,7 @@ import logging
 from datetime import datetime
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import JSONResponse
+import websockets
 
 # Import Sarah's core systems
 from src.identity_persistence import IdentityManager, Backstory, PersonalityTraits, WritingStyle
@@ -26,41 +27,78 @@ logger = logging.getLogger(__name__)
 # Create FastAPI app for Railway
 app = FastAPI(title="BLOOM AI Agent - Sarah Rodriguez")
 
-# WebSocket endpoint for root path to prevent 403 errors
+async def proxy_to_chat_server(client_ws: WebSocket):
+    """
+    Proxy WebSocket connection to Sarah's real chat server on port 8766
+    All paths connect to Sarah's root endpoint
+    """
+    await client_ws.accept()
+    
+    # ALWAYS connect to root - Sarah's server doesn't handle sub-paths
+    server_url = "ws://localhost:8766"
+    
+    try:
+        async with websockets.connect(server_url) as server_ws:
+            logger.info(f"✅ Proxy connected to chat server")
+            
+            # Forward client messages to server
+            async def client_to_server():
+                try:
+                    while True:
+                        data = await client_ws.receive_text()
+                        await server_ws.send(data)
+                except Exception as e:
+                    logger.debug(f"Client→Server closed: {e}")
+            
+            # Forward server messages to client
+            async def server_to_client():
+                try:
+                    while True:
+                        data = await server_ws.recv()
+                        await client_ws.send_text(data)
+                except Exception as e:
+                    logger.debug(f"Server→Client closed: {e}")
+            
+            # Run both directions concurrently
+            await asyncio.gather(
+                client_to_server(),
+                server_to_client(),
+                return_exceptions=True
+            )
+            
+    except ConnectionRefusedError:
+        logger.error("❌ Chat server not available on port 8766")
+        try:
+            await client_ws.send_json({
+                "error": "Chat server offline",
+                "status": "unavailable"
+            })
+        except:
+            pass
+        await client_ws.close()
+    except Exception as e:
+        logger.error(f"❌ WebSocket proxy error: {e}")
+        try:
+            await client_ws.close()
+        except:
+            pass
+
+# ==================== WEBSOCKET PROXY ENDPOINTS ====================
+
 @app.websocket("/")
 async def websocket_root(websocket: WebSocket):
-    """Accept WebSocket connections to root path to prevent 403 Forbidden errors"""
-    await websocket.accept()
-    # Keep connection alive without processing
-    try:
-        while True:
-            await websocket.receive_text()
-    except:
-        pass  # Client disconnected normally
+    """Proxy root WebSocket to chat server"""
+    await proxy_to_chat_server(websocket)
 
-# WebSocket endpoint for /screen to prevent 403 errors
 @app.websocket("/screen")
 async def websocket_screen(websocket: WebSocket):
-    """Accept WebSocket connections to prevent 403 Forbidden errors"""
-    await websocket.accept()
-    # Keep connection alive without processing
-    try:
-        while True:
-            await websocket.receive_text()
-    except:
-        pass  # Client disconnected normally
+    """Proxy /screen WebSocket to chat server"""
+    await proxy_to_chat_server(websocket)
 
-# WebSocket endpoint for /chat to prevent 403 errors  
 @app.websocket("/chat")
 async def websocket_chat(websocket: WebSocket):
-    """Accept WebSocket connections for chat to prevent 403 Forbidden errors"""
-    await websocket.accept()
-    # Keep connection alive without processing
-    try:
-        while True:
-            await websocket.receive_text()
-    except:
-        pass  # Client disconnected normally
+    """Proxy /chat WebSocket to chat server"""
+    await proxy_to_chat_server(websocket)
 
 
 class Sarah:
@@ -211,7 +249,7 @@ class Sarah:
         return []
 
     async def daily_routine(self):
-        """Sarah's daily routine"""
+        """Sarah's daily routine - runs every 5 minutes"""
         logger.info("🌅 Starting daily routine...")
 
         # 1. Check email
@@ -221,39 +259,8 @@ class Sarah:
         total_relationships = len(self.relationships.relationships)
         logger.info(f"💝 Managing {total_relationships} relationships")
 
-        # 3. Check trust score
-        # trust_score = self.ethics.get_current_trust_score(self.agent_id)
-        # logger.info(f"🎯 Trust score: {trust_score}")
-
-        # 4. Log activity
+        # 3. Log activity
         logger.info("✅ Daily routine complete!")
-
-    async def run(self):
-        """Main loop - Sarah's 'life'"""
-        logger.info("🌸 Sarah Rodriguez is online!")
-
-        # Create identity on first run
-        self.create_identity()
-
-        # Start chat server in background
-        if self.chat_server:
-            asyncio.create_task(self.chat_server.start_server())
-            logger.info("💬 Chat server started - ready for conversations!")
-
-        # Run daily routine
-        while True:
-            try:
-                await self.daily_routine()
-
-                # Sleep for 1 hour
-                logger.info("😴 Sleeping for 1 hour...")
-                await asyncio.sleep(3600)
-
-            except Exception as e:
-                logger.error(f"❌ Error in daily routine: {e}")
-                logger.exception(e)
-                # Sleep 5 minutes before retry
-                await asyncio.sleep(300)
 
 # Global Sarah instance
 sarah_instance = None
@@ -288,15 +295,15 @@ async def run_sarah_routine():
         try:
             await sarah_instance.daily_routine()
 
-            # Sleep for 1 hour
-            logger.info("😴 Sleeping for 1 hour...")
-            await asyncio.sleep(3600)
+            # Sleep for 5 minutes (not 1 hour!)
+            logger.info("😴 Sleeping for 5 minutes...")
+            await asyncio.sleep(300)  # 5 minutes = 300 seconds
 
         except Exception as e:
             logger.error(f"❌ Error in daily routine: {e}")
             logger.exception(e)
-            # Sleep 5 minutes before retry
-            await asyncio.sleep(300)
+            # Sleep 1 minute before retry
+            await asyncio.sleep(60)
 
 @app.get("/")
 async def root():
