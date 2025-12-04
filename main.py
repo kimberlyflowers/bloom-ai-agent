@@ -26,10 +26,22 @@ logger = logging.getLogger(__name__)
 # Create FastAPI app for Railway
 app = FastAPI(title="BLOOM AI Agent - Sarah Rodriguez")
 
-# WebSocket endpoint to prevent 403 errors
+# WebSocket endpoint for /screen to prevent 403 errors
 @app.websocket("/screen")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_screen(websocket: WebSocket):
     """Accept WebSocket connections to prevent 403 Forbidden errors"""
+    await websocket.accept()
+    # Keep connection alive without processing
+    try:
+        while True:
+            await websocket.receive_text()
+    except:
+        pass  # Client disconnected normally
+
+# WebSocket endpoint for /chat to prevent 403 errors  
+@app.websocket("/chat")
+async def websocket_chat(websocket: WebSocket):
+    """Accept WebSocket connections for chat to prevent 403 Forbidden errors"""
     await websocket.accept()
     # Keep connection alive without processing
     try:
