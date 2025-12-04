@@ -7,7 +7,7 @@ import os
 import asyncio
 import logging
 from datetime import datetime
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.responses import JSONResponse
 
 # Import Sarah's core systems
@@ -25,6 +25,19 @@ logger = logging.getLogger(__name__)
 
 # Create FastAPI app for Railway
 app = FastAPI(title="BLOOM AI Agent - Sarah Rodriguez")
+
+# WebSocket endpoint to prevent 403 errors
+@app.websocket("/screen")
+async def websocket_endpoint(websocket: WebSocket):
+    """Accept WebSocket connections to prevent 403 Forbidden errors"""
+    await websocket.accept()
+    # Keep connection alive without processing
+    try:
+        while True:
+            await websocket.receive_text()
+    except:
+        pass  # Client disconnected normally
+
 
 class Sarah:
     """Sarah Rodriguez - Digital Employee at BLOOM"""
