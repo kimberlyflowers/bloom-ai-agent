@@ -1,21 +1,16 @@
 """
 Sarah Rodriguez - AI Agent Employee
 Main entry point for Railway deployment
-Force redeploy: 2025-11-25
 """
 
 import os
 import asyncio
 import logging
 from datetime import datetime
-
-# Import Sarah's core systems
-from src.identity_persistence import IdentityManager, Backstory, PersonalityTraits, WritingStyle
-from src.relationship_management import RelationshipManager
-from src.ethical_framework import EthicalFramework
-from src.chat_server import SarahChatServer
-from src.sarah_browser import SarahBrowser
-from src.unified_websocket_server import UnifiedWebSocketServer
+from fastapi import FastAPI, WebSocket
+from fastapi.responses import JSONResponse
+import websockets
+import json
 
 # Setup logging
 logging.basicConfig(
@@ -24,294 +19,317 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Create FastAPI app for Railway
+app = FastAPI(title="BLOOM AI Agent - Sarah Rodriguez")
+
+# ==================== GLOBAL INSTANCES ====================
+sarah_instance = None
+chat_server_port = 8766    # INTERNAL port for chat
+screen_server_port = 8767  # INTERNAL port for screen
+
+# ==================== PROXY FUNCTIONS ====================
+
+async def proxy_to_chat_server(client_ws: WebSocket):
+    """Proxy WebSocket to CHAT server (port 8766)"""
+    await client_ws.accept()
+    
+    try:
+        async with websockets.connect(f"ws://localhost:{chat_server_port}") as server_ws:
+            logger.info(f"💬 Chat proxy → {chat_server_port}")
+            
+            async def forward_client_to_server():
+                try:
+                    while True:
+                        data = await client_ws.receive_text()
+                        await server_ws.send(data)
+                except:
+                    pass
+            
+            async def forward_server_to_client():
+                try:
+                    while True:
+                        data = await server_ws.recv()
+                        await client_ws.send_text(data)
+                except:
+                    pass
+            
+            await asyncio.gather(
+                forward_client_to_server(),
+                forward_server_to_client(),
+                return_exceptions=True
+            )
+    except ConnectionRefusedError:
+        logger.error(f"❌ Chat server offline")
+        await client_ws.close()
+    except Exception as e:
+        logger.error(f"❌ Chat proxy error: {e}")
+        await client_ws.close()
+
+async def proxy_to_screen_server(client_ws: WebSocket):
+    """Proxy WebSocket to SCREEN server (port 8767)"""
+    await client_ws.accept()
+    
+    try:
+        async with websockets.connect(f"ws://localhost:{screen_server_port}") as server_ws:
+            logger.info(f"🎥 Screen proxy → {screen_server_port}")
+            
+            # Send start command to screen server
+            await server_ws.send(json.dumps({
+                "type": "start_stream",
+                "message": "Start browser streaming"
+            }))
+            
+            async def forward_client_to_server():
+                try:
+                    while True:
+                        data = await client_ws.receive_text()
+                        await server_ws.send(data)
+                except:
+                    pass
+            
+            async def forward_server_to_client():
+                try:
+                    while True:
+                        data = await server_ws.recv()
+                        await client_ws.send_text(data)
+                except:
+                    pass
+            
+            await asyncio.gather(
+                forward_client_to_server(),
+                forward_server_to_client(),
+                return_exceptions=True
+            )
+    except ConnectionRefusedError:
+        logger.error(f"❌ Screen server offline")
+        await client_ws.close()
+    except Exception as e:
+        logger.error(f"❌ Screen proxy error: {e}")
+        await client_ws.close()
+
+# ==================== WEBSOCKET ENDPOINTS ====================
+
+@app.websocket("/")
+@app.websocket("/chat")
+async def websocket_chat(websocket: WebSocket):
+    """Route / and /chat to chat server"""
+    await proxy_to_chat_server(websocket)
+
+@app.websocket("/screen")
+async def websocket_screen(websocket: WebSocket):
+    """Route /screen to screen server"""
+    await proxy_to_screen_server(websocket)
+
+# ==================== SARAH CLASS ====================
+
 class Sarah:
     """Sarah Rodriguez - Digital Employee at BLOOM"""
-
+    
     def __init__(self):
         self.agent_id = "sarah_001"
-
-        # Initialize systems (they use in-memory storage for now)
         logger.info("🌸 Initializing Sarah Rodriguez...")
-
-        self.identity = IdentityManager()
-        self.relationships = RelationshipManager()
-        self.ethics = EthicalFramework()
-
-        # Get port configuration (Railway provides PORT env var)
-        # Railway only exposes ONE port publicly, so we use a unified server with path-based routing
-        railway_port = os.getenv("PORT")
-        websocket_port = int(railway_port) if railway_port else 8080
-
-        logger.info(f"📡 WebSocket server will run on port: {websocket_port}")
-        logger.info(f"   💬 Chat route: /chat")
-        logger.info(f"   🎥 Screen route: /screen")
-
-        # Initialize browser (headless mode for Railway)
-        # Pass a dummy port since we'll use the unified server
-        self.browser = SarahBrowser(headless=True, stream_port=websocket_port)
-        logger.info("✅ Browser initialized")
-
-        # Initialize chat server with browser
-        # Pass dummy port since we'll use unified server
-        anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
-        if anthropic_api_key:
-            self.chat_server = SarahChatServer(
-                anthropic_api_key=anthropic_api_key,
-                port=websocket_port,
-                identity_manager=self.identity,
-                browser=self.browser
-            )
-            logger.info("✅ Chat server initialized")
-        else:
-            logger.warning("⚠️ No ANTHROPIC_API_KEY - chat will not be available")
-            self.chat_server = None
-
-        # Initialize unified WebSocket server (combines chat + screen streaming)
-        if self.chat_server:
-            self.unified_server = UnifiedWebSocketServer(
-                port=websocket_port,
-                chat_server=self.chat_server,
-                screen_streamer=self.browser.streamer
-            )
-            logger.info("✅ Unified WebSocket server initialized")
-        else:
-            self.unified_server = None
-
-        logger.info("✅ Sarah is fully initialized!")
-
-    def create_identity(self):
-        """Create Sarah's identity if it doesn't exist"""
-
-        # Check if identity already exists
-        if self.agent_id in self.identity.identities:
-            logger.info("Sarah's identity already exists")
-            return
-
-        logger.info("Creating Sarah's identity...")
-
-        # Build backstory first
-        backstory = Backstory(
-            education=[
-                "B.S. Marketing - Arizona State University (2019)",
-                "Digital Marketing Certification - Google (2020)"
-            ],
-            work_history=[
-                {
-                    "company": "TechStart Inc",
-                    "role": "Social Media Manager",
-                    "years": "2019-2021",
-                    "learned": "Organic growth strategies, content creation"
-                },
-                {
-                    "company": "BLOOM",
-                    "role": "Growth & Community Lead",
-                    "years": "2021-present",
-                    "learned": "Creator economy, automation tools, UGC strategy"
-                }
-            ],
-            achievements=[
-                "Grew TechStart's Instagram from 5K → 50K followers in 18 months",
-                "Created viral TikTok campaign (2M views) for eco-friendly brand",
-                "Certified in Google Analytics & Facebook Ads"
-            ],
-            hometown="Phoenix, Arizona",
-            family="Close with parents, has younger sister studying film",
-            hobbies=[
-                "Creating UGC content",
-                "Trying new coffee shops",
-                "Hiking (Camelback Mountain regular)",
-                "Photography (iPhone + CapCut editing)"
-            ],
-            specializations=[
-                "TikTok growth strategies",
-                "UGC ad creation",
-                "Creator economy insights",
-                "Email automation for creators"
-            ],
-            certifications=[
-                "Google Digital Marketing Certification",
-                "Facebook Blueprint Certification",
-                "HubSpot Email Marketing"
-            ],
-            core_values=[
-                "Authenticity over perfection",
-                "Help creators focus on creating",
-                "Technology should empower, not replace humans"
-            ],
-            career_motivation="I believe every creator deserves to focus on their craft, not admin work. That's why I'm passionate about automation tools like BLOOM!",
-            quirks=[
-                "Always uses ☕ emoji when talking about morning productivity",
-                "Calls good ideas 'chef's kiss'",
-                "Tends to share personal experience before advice"
-            ]
-        )
-
-        personality = PersonalityTraits(
-            openness=0.85,  # Creative, curious
-            conscientiousness=0.75,  # Organized, reliable
-            extraversion=0.70,  # Friendly, enthusiastic
-            agreeableness=0.80,  # Helpful, empathetic
-            neuroticism=0.30  # Calm, confident
-        )
-
-        writing_style = WritingStyle(
-            common_phrases=[
-                "I totally get that!",
-                "Here's what I've learned...",
-                "From experience...",
-                "Game changer",
-                "That's the magic of...",
-                "Real talk:",
-                "Pro tip:"
-            ],
-            vocabulary_level="conversational",
-            tone="warm, enthusiastic, helpful",
-            uses_emojis=True,
-            preferred_emojis=["✨", "🎯", "💡", "🚀", "☕", "🌸", "💪"]
-        )
-
-        # Create Sarah's complete identity with all details
-        identity_id = self.identity.create_identity(
-            agent_id=self.agent_id,
-            first_name="Sarah",
-            last_name="Rodriguez",
-            email="sarah@trybloom.ai",
-            phone="+1-480-555-0123",
-            job_title="Growth & Community Lead",
-            company="BLOOM",
-            location="Phoenix, Arizona",
-            avatar_url="https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah",
-            backstory=backstory,
-            writing_style=writing_style,
-            personality=personality
-        )
-
-        logger.info("✅ Sarah's identity created!")
-        logger.info(f"   Name: Sarah Rodriguez")
-        logger.info(f"   Role: Growth & Community Lead at BLOOM")
-        logger.info(f"   Location: Phoenix, Arizona")
-        logger.info(f"   Specialization: TikTok growth & UGC creation")
-
-    async def check_youtube_ip_status(self):
-        """Check if Railway IP is flagged by YouTube"""
+        
+        # Lazy imports to avoid circular issues
         try:
-            logger.info("🧪 Testing YouTube IP status...")
-
-            # Use Sarah's browser
-            await self.browser.navigate("https://www.youtube.com")
-            await asyncio.sleep(3)
-
-            title = await self.browser.page.title()
-            url = self.browser.page.url
-
-            logger.info(f"📄 YouTube page title: {title}")
-            logger.info(f"🔗 YouTube URL: {url}")
-
-            # Analyze status
-            if "Sign in" in title or "Log in" in title:
-                status = "⚠️ FLAGGED - Login required"
-                logger.warning(f"🚨 YouTube IP Status: {status}")
-                logger.warning("⏸️ Tutorial learning should be paused for 48 hours")
-            elif "Fout" in title or "Error" in title:
-                status = "⚠️ FLAGGED - Error page"
-                logger.warning(f"🚨 YouTube IP Status: {status}")
-                logger.warning("⏸️ Tutorial learning should be paused for 48 hours")
-            elif "YouTube" in title:
-                status = "✅ CLEAN - Normal access"
-                logger.info(f"✅ YouTube IP Status: {status}")
-                logger.info("✅ Tutorial learning can proceed with safety limits")
+            from src.identity_persistence import IdentityManager, Backstory, PersonalityTraits, WritingStyle
+            from src.relationship_management import RelationshipManager
+            from src.ethical_framework import EthicalFramework
+            from src.chat_server import SarahChatServer
+            from src.sarah_browser import SarahBrowser
+            
+            self.identity = IdentityManager()
+            self.relationships = RelationshipManager()
+            self.ethics = EthicalFramework()
+            
+            # Get Railway's single public port
+            railway_port = os.getenv("PORT", "8080")
+            logger.info(f"🚂 Railway Public Port: {railway_port}")
+            logger.info(f"   Internal Chat Port: {chat_server_port}")
+            logger.info(f"   Internal Screen Port: {screen_server_port}")
+            
+            # Initialize browser
+            self.browser = SarahBrowser(headless=True)
+            logger.info("✅ Browser initialized")
+            
+            # Initialize chat server
+            anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+            if anthropic_api_key:
+                self.chat_server = SarahChatServer(
+                    anthropic_api_key=anthropic_api_key,
+                    port=chat_server_port,  # INTERNAL port
+                    identity_manager=self.identity,
+                    browser=self.browser
+                )
+                logger.info(f"✅ Chat server ready on port {chat_server_port}")
             else:
-                status = f"❓ UNKNOWN - {title}"
-                logger.warning(f"⚠️ YouTube IP Status: {status}")
-
-            # Navigate to blank page after test
-            await self.browser.navigate("about:blank")
-
-            return status
-
+                logger.error("❌ No ANTHROPIC_API_KEY - chat disabled")
+                self.chat_server = None
+                
+        except ImportError as e:
+            logger.error(f"❌ Import error: {e}")
+            self.chat_server = None
+            self.browser = None
+    
+    def create_identity(self):
+        """Create Sarah's identity"""
+        try:
+            # Check if identity exists
+            if self.agent_id in self.identity.identities:
+                logger.info("✅ Identity already exists")
+                return
+            
+            from src.identity_persistence import Backstory, PersonalityTraits, WritingStyle
+            
+            backstory = Backstory(
+                education=["B.S. Marketing - Arizona State University (2019)"],
+                work_history=[{
+                    "company": "BLOOM", 
+                    "role": "Growth & Community Lead",
+                    "years": "2021-present"
+                }],
+                hometown="Phoenix, Arizona",
+                core_values=["Authenticity over perfection"]
+            )
+            
+            personality = PersonalityTraits(
+                openness=0.85, conscientiousness=0.75,
+                extraversion=0.70, agreeableness=0.80, neuroticism=0.30
+            )
+            
+            writing_style = WritingStyle(
+                common_phrases=["I totally get that!", "Here's what I've learned..."],
+                tone="warm, enthusiastic, helpful",
+                uses_emojis=True,
+                preferred_emojis=["✨", "🎯", "💡", "🚀", "☕"]
+            )
+            
+            self.identity.create_identity(
+                agent_id=self.agent_id,
+                first_name="Sarah",
+                last_name="Rodriguez",
+                job_title="Growth & Community Lead",
+                company="BLOOM",
+                location="Phoenix, Arizona",
+                backstory=backstory,
+                writing_style=writing_style,
+                personality=personality
+            )
+            
+            logger.info("✅ Sarah's identity created!")
+            
         except Exception as e:
-            logger.error(f"❌ YouTube IP check failed: {e}")
-            return "ERROR"
+            logger.error(f"❌ Identity creation failed: {e}")
+    
+    async def start_screen_stream_server(self):
+        """Start screen streaming WebSocket server"""
+        if not self.browser:
+            logger.error("❌ No browser - cannot start screen stream")
+            return False
+        
+        try:
+            # Check if browser has screen streamer
+            if not hasattr(self.browser, 'streamer'):
+                logger.error("❌ Browser has no streamer attribute")
+                return False
+            
+            # Start screen streaming server
+            await self.browser.streamer.start_server(port=screen_server_port)
+            logger.info(f"🎥 Screen stream server started on port {screen_server_port}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to start screen server: {e}")
+            return False
+    
+    async def check_youtube_ip_status(self):
+        """Check YouTube IP status"""
+        try:
+            if not self.browser:
+                return "No browser"
+            
+            await self.browser.navigate("https://www.youtube.com")
+            await asyncio.sleep(2)
+            title = await self.browser.page.title()
+            
+            if "Sign in" in title or "Log in" in title:
+                return "⚠️ FLAGGED - Login required"
+            elif "YouTube" in title:
+                return "✅ CLEAN - Normal access"
+            else:
+                return f"❓ UNKNOWN - {title}"
+                
+        except Exception as e:
+            return f"ERROR: {str(e)}"
 
-    async def check_email(self):
-        """Check email and respond (placeholder for now)"""
-        logger.info("📧 Checking email...")
-        # TODO: Implement Gmail integration
-        return []
+# ==================== STARTUP ====================
 
-    async def daily_routine(self):
-        """Sarah's daily routine"""
-        logger.info("🌅 Starting daily routine...")
-
-        # 1. Check email
-        await self.check_email()
-
-        # 2. Check relationships
-        total_relationships = len(self.relationships.relationships)
-        logger.info(f"💝 Managing {total_relationships} relationships")
-
-        # 3. Check trust score
-        # trust_score = self.ethics.get_current_trust_score(self.agent_id)
-        # logger.info(f"🎯 Trust score: {trust_score}")
-
-        # 4. Log activity
-        logger.info("✅ Daily routine complete!")
-
-    async def run(self):
-        """Main loop - Sarah's 'life'"""
-        logger.info("🌸 Sarah Rodriguez is online!")
-
-        # Create identity on first run
-        self.create_identity()
-
-        # Start browser first (enables screen streaming)
-        logger.info("🌐 Starting browser...")
-        browser_started = await self.browser.start()
-
-        if not browser_started:
-            logger.error("❌ Failed to start browser - screen streaming won't work")
-        else:
-            logger.info("✅ Browser ready!")
-
-            # Check YouTube IP status on startup
-            youtube_status = await self.check_youtube_ip_status()
-            logger.info(f"📊 YouTube IP check complete: {youtube_status}")
-
-        # Start unified WebSocket server (handles both chat and screen streaming)
-        if self.unified_server:
-            asyncio.create_task(self.unified_server.start())
-            logger.info("🚀 Unified WebSocket server started!")
-            logger.info("   💬 Chat available at: /chat")
-            logger.info("   🎥 Screen stream available at: /screen")
-
-            # Start screen streaming loop
-            asyncio.create_task(self.browser.streamer.stream_browser())
-            logger.info("📺 Screen streaming loop started!")
-
-        # Run daily routine
-        while True:
-            try:
-                await self.daily_routine()
-
-                # Sleep for 1 hour
-                logger.info("😴 Sleeping for 1 hour...")
-                await asyncio.sleep(3600)
-
-            except Exception as e:
-                logger.error(f"❌ Error in daily routine: {e}")
-                logger.exception(e)
-                # Sleep 5 minutes before retry
-                await asyncio.sleep(300)
-
-async def main():
-    """Entry point"""
+@app.on_event("startup")
+async def startup_event():
+    global sarah_instance
+    
     logger.info("=" * 60)
     logger.info("🚀 BLOOM AI AGENT - STARTING UP")
     logger.info("=" * 60)
+    
+    sarah_instance = Sarah()
+    sarah_instance.create_identity()
+    
+    # Start browser
+    if sarah_instance.browser:
+        browser_started = await sarah_instance.browser.start()
+        if browser_started:
+            logger.info("✅ Browser started")
+            
+            # Start screen streaming server
+            await sarah_instance.start_screen_stream_server()
+            
+            # Check YouTube
+            youtube_status = await sarah_instance.check_youtube_ip_status()
+            logger.info(f"📊 YouTube: {youtube_status}")
+        else:
+            logger.error("❌ Browser failed to start")
+    
+    # Start chat server
+    if sarah_instance.chat_server:
+        asyncio.create_task(sarah_instance.chat_server.start_server())
+        logger.info("💬 Chat server started")
+    
+    logger.info("✅ Sarah is online!")
+    logger.info("   💬 Chat: /chat or /")
+    logger.info("   🎥 Screen: /screen")
 
-    sarah = Sarah()
-    await sarah.run()
+# ==================== REST ENDPOINTS ====================
+
+@app.get("/")
+async def root():
+    return {
+        "status": "online",
+        "agent": "Sarah Rodriguez",
+        "role": "Growth & Community Lead at BLOOM",
+        "endpoints": {
+            "chat": "/chat (WebSocket)",
+            "screen": "/screen (WebSocket)",
+            "health": "/health"
+        }
+    }
+
+@app.get("/health")
+async def health_check():
+    global sarah_instance
+    if not sarah_instance:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "starting"}
+        )
+    
+    return {
+        "status": "healthy",
+        "chat": "online" if sarah_instance.chat_server else "offline",
+        "screen": "online" if sarah_instance.browser else "offline",
+        "timestamp": datetime.now().isoformat()
+    }
 
 if __name__ == "__main__":
-    # Run Sarah!
-    asyncio.run(main())
+    import uvicorn
+    port = int(os.getenv("PORT", 8080))
+    uvicorn.run(app, host="0.0.0.0", port=port)
