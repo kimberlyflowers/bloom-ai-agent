@@ -1,340 +1,271 @@
 """
-BLOOM AI Agent - Main FastAPI Server
-Runs Sarah Rodriguez as an autonomous AI agent employee
-FIXED: Proper imports matching original structure
+Sarah Rodriguez - AI Agent Employee
+Main entry point for Railway deployment
 """
 
+import os
 import asyncio
 import logging
-import os
-from contextlib import asynccontextmanager
 from datetime import datetime
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+# Import Sarah's core systems
+from src.identity_persistence import IdentityManager, Backstory, PersonalityTraits, WritingStyle
+from src.relationship_management import RelationshipManager
+from src.ethical_framework import EthicalFramework
+from src.chat_server import SarahChatServer
+from src.sarah_browser import SarahBrowser
+from src.unified_websocket_server import UnifiedWebSocketServer
 
-# Configure logging
+# Setup logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# ==================== SARAH AGENT CLASS ====================
+class Sarah:
+    """Sarah Rodriguez - Digital Employee at BLOOM"""
 
-class SarahAgent:
-    """Global Sarah instance with lazy imports"""
-    
     def __init__(self):
-        self.identity_manager = None
-        self.browser = None
-        self.chat_handler = None
-        self.screen_streamer = None
-        self.initialized = False
+        self.agent_id = "sarah_001"
 
-    async def initialize(self):
-        """Initialize Sarah's core systems"""
-        if self.initialized:
-            logger.warning("⚠️ Sarah already initialized")
-            return
-
+        # Initialize systems (they use in-memory storage for now)
         logger.info("🌸 Initializing Sarah Rodriguez...")
 
-        # Get API key
-        api_key = os.environ.get('ANTHROPIC_API_KEY')
-        if not api_key:
-            raise ValueError("❌ ANTHROPIC_API_KEY not set!")
+        self.identity = IdentityManager()
+        self.relationships = RelationshipManager()
+        self.ethics = EthicalFramework()
 
-        # 1. Initialize identity manager (lazy import)
-        try:
-            from src.identity_persistence import IdentityManager
-            self.identity_manager = IdentityManager()
-            logger.info("✅ Identity manager created")
-        except ImportError:
-            logger.warning("⚠️ Identity manager not available")
-            self.identity_manager = None
+        # Get port configuration (Railway provides PORT env var)
+        # Railway only exposes ONE port publicly, so we use a unified server with path-based routing
+        railway_port = os.getenv("PORT")
+        websocket_port = int(railway_port) if railway_port else 8080
 
-        # 2. Initialize browser (lazy import)
-        try:
-            from src.sarah_browser import SarahBrowser
-            self.browser = SarahBrowser(headless=True)
-            logger.info("✅ Browser initialized")
-        except ImportError as e:
-            logger.error(f"❌ Browser import failed: {e}")
-            self.browser = None
+        logger.info(f"📡 WebSocket server will run on port: {websocket_port}")
+        logger.info(f"   💬 Chat route: /chat")
+        logger.info(f"   🎥 Screen route: /screen")
 
-        # 3. Initialize chat handler (lazy import)
-        try:
-            from chat_server import SarahChatHandler
-            self.chat_handler = SarahChatHandler(
-                api_key=api_key,
+        # Initialize browser (headless mode for Railway)
+        # Pass a dummy port since we'll use the unified server
+        self.browser = SarahBrowser(headless=True, stream_port=websocket_port)
+        logger.info("✅ Browser initialized")
+
+        # Initialize chat server with browser
+        # Pass dummy port since we'll use unified server
+        anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+        if anthropic_api_key:
+            self.chat_server = SarahChatServer(
+                anthropic_api_key=anthropic_api_key,
+                port=websocket_port,
+                identity_manager=self.identity,
                 browser=self.browser
             )
-            logger.info("✅ Chat handler initialized")
-        except ImportError as e:
-            logger.error(f"❌ Chat handler import failed: {e}")
-            self.chat_handler = None
+            logger.info("✅ Chat server initialized")
+        else:
+            logger.warning("⚠️ No ANTHROPIC_API_KEY - chat will not be available")
+            self.chat_server = None
 
-        # 4. Initialize screen streamer (lazy import)
-        try:
-            from src.live_screen_stream import LiveScreenStreamer
-            self.screen_streamer = LiveScreenStreamer()
-            logger.info("✅ Screen streamer initialized")
-        except ImportError:
-            logger.warning("⚠️ Screen streamer not available")
-            self.screen_streamer = None
+        # Initialize unified WebSocket server (combines chat + screen streaming)
+        if self.chat_server:
+            self.unified_server = UnifiedWebSocketServer(
+                port=websocket_port,
+                chat_server=self.chat_server,
+                screen_streamer=self.browser.streamer
+            )
+            logger.info("✅ Unified WebSocket server initialized")
+        else:
+            self.unified_server = None
 
-        logger.info("🚀 Starting Sarah's services...")
+        logger.info("✅ Sarah is fully initialized!")
 
-        # Start browser
-        if self.browser and hasattr(self.browser, 'start'):
-            try:
-                await self.browser.start()
-                logger.info("✅ Browser started")
-            except Exception as e:
-                logger.error(f"❌ Browser start failed: {e}")
+    def create_identity(self):
+        """Create Sarah's identity if it doesn't exist"""
 
-        # Start screen streamer
-        if self.screen_streamer and self.browser and hasattr(self.browser, 'page'):
-            try:
-                self.screen_streamer.start(self.browser.page)
-                logger.info("✅ Screen streamer started")
-            except Exception as e:
-                logger.error(f"❌ Screen streamer start failed: {e}")
+        # Check if identity already exists
+        if self.agent_id in self.identity.identities:
+            logger.info("Sarah's identity already exists")
+            return
 
-        # Load Sarah's identity
-        if self.identity_manager:
-            try:
-                sarah_identity = self.identity_manager.get_agent_identity("sarah_001")
-                logger.info("✅ Sarah's identity ready")
-                logger.info(f"   Name: {sarah_identity.name}")
-                logger.info(f"   Role: {sarah_identity.role}")
-                logger.info(f"   Location: {sarah_identity.location}")
-            except Exception as e:
-                logger.warning(f"⚠️ Could not load identity: {e}")
+        logger.info("Creating Sarah's identity...")
 
-        self.initialized = True
-        logger.info("✅ Sarah is online!")
-
-    async def shutdown(self):
-        """Clean shutdown of Sarah's systems"""
-        logger.info("🌙 Shutting down Sarah...")
-
-        if self.screen_streamer and hasattr(self.screen_streamer, 'stop'):
-            try:
-                self.screen_streamer.stop()
-                logger.info("✅ Screen streamer stopped")
-            except Exception as e:
-                logger.error(f"❌ Screen streamer stop failed: {e}")
-
-        if self.browser and hasattr(self.browser, 'close'):
-            try:
-                await self.browser.close()
-                logger.info("✅ Browser closed")
-            except Exception as e:
-                logger.error(f"❌ Browser close failed: {e}")
-
-        self.initialized = False
-        logger.info("✅ Sarah shutdown complete")
-
-
-# Global Sarah instance
-sarah = SarahAgent()
-
-
-# ==================== FASTAPI LIFESPAN ====================
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    FastAPI lifespan manager
-    Handles startup and shutdown
-    """
-    # Startup
-    logger.info("============================================================")
-    logger.info("🚀 BLOOM AI AGENT - STARTING UP")
-    logger.info("============================================================")
-
-    try:
-        await sarah.initialize()
-        logger.info("✅ Sarah initialized successfully")
-    except Exception as e:
-        logger.error(f"❌ Failed to initialize Sarah: {e}")
-        logger.exception(e)
-        raise
-
-    yield
-
-    # Shutdown
-    logger.info("============================================================")
-    logger.info("🌙 BLOOM AI AGENT - SHUTTING DOWN")
-    logger.info("============================================================")
-
-    try:
-        await sarah.shutdown()
-    except Exception as e:
-        logger.error(f"❌ Error during shutdown: {e}")
-        logger.exception(e)
-
-
-# ==================== FASTAPI APP ====================
-
-app = FastAPI(
-    title="BLOOM AI Agent",
-    description="Sarah Rodriguez - Autonomous AI Agent Employee",
-    version="1.0.0",
-    lifespan=lifespan
-)
-
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-# ==================== HEALTH ENDPOINTS ====================
-
-@app.get("/")
-async def root():
-    """Root endpoint"""
-    return {
-        "service": "BLOOM AI Agent",
-        "agent": "Sarah Rodriguez",
-        "status": "online" if sarah.initialized else "initializing",
-        "endpoints": {
-            "health": "/health",
-            "chat": "ws://[host]/chat",
-            "screen": "ws://[host]/screen"
-        }
-    }
-
-
-@app.get("/health")
-async def health():
-    """Health check endpoint"""
-    if not sarah.initialized:
-        return JSONResponse(
-            status_code=503,
-            content={
-                "status": "initializing",
-                "message": "Sarah is still starting up..."
-            }
+        # Build backstory first
+        backstory = Backstory(
+            education=[
+                "B.S. Marketing - Arizona State University (2019)",
+                "Digital Marketing Certification - Google (2020)"
+            ],
+            work_history=[
+                {
+                    "company": "TechStart Inc",
+                    "role": "Social Media Manager",
+                    "years": "2019-2021",
+                    "learned": "Organic growth strategies, content creation"
+                },
+                {
+                    "company": "BLOOM",
+                    "role": "Growth & Community Lead",
+                    "years": "2021-present",
+                    "learned": "Creator economy, automation tools, UGC strategy"
+                }
+            ],
+            achievements=[
+                "Grew TechStart's Instagram from 5K → 50K followers in 18 months",
+                "Created viral TikTok campaign (2M views) for eco-friendly brand",
+                "Certified in Google Analytics & Facebook Ads"
+            ],
+            hometown="Phoenix, Arizona",
+            family="Close with parents, has younger sister studying film",
+            hobbies=[
+                "Creating UGC content",
+                "Trying new coffee shops",
+                "Hiking (Camelback Mountain regular)",
+                "Photography (iPhone + CapCut editing)"
+            ],
+            specializations=[
+                "TikTok growth strategies",
+                "UGC ad creation",
+                "Creator economy insights",
+                "Email automation for creators"
+            ],
+            certifications=[
+                "Google Digital Marketing Certification",
+                "Facebook Blueprint Certification",
+                "HubSpot Email Marketing"
+            ],
+            core_values=[
+                "Authenticity over perfection",
+                "Help creators focus on creating",
+                "Technology should empower, not replace humans"
+            ],
+            career_motivation="I believe every creator deserves to focus on their craft, not admin work. That's why I'm passionate about automation tools like BLOOM!",
+            quirks=[
+                "Always uses ☕ emoji when talking about morning productivity",
+                "Calls good ideas 'chef's kiss'",
+                "Tends to share personal experience before advice"
+            ]
         )
 
-    browser_running = (
-        sarah.browser and 
-        hasattr(sarah.browser, 'is_running') and 
-        sarah.browser.is_running
-    )
+        personality = PersonalityTraits(
+            openness=0.85,  # Creative, curious
+            conscientiousness=0.75,  # Organized, reliable
+            extraversion=0.70,  # Friendly, enthusiastic
+            agreeableness=0.80,  # Helpful, empathetic
+            neuroticism=0.30  # Calm, confident
+        )
 
-    return {
-        "status": "healthy",
-        "agent": "Sarah Rodriguez",
-        "systems": {
-            "browser": "running" if browser_running else "stopped",
-            "chat": "ready" if sarah.chat_handler else "not initialized",
-            "screen_stream": "active" if sarah.screen_streamer else "not initialized"
-        }
-    }
+        writing_style = WritingStyle(
+            common_phrases=[
+                "I totally get that!",
+                "Here's what I've learned...",
+                "From experience...",
+                "Game changer",
+                "That's the magic of...",
+                "Real talk:",
+                "Pro tip:"
+            ],
+            vocabulary_level="conversational",
+            tone="warm, enthusiastic, helpful",
+            uses_emojis=True,
+            preferred_emojis=["✨", "🎯", "💡", "🚀", "☕", "🌸", "💪"]
+        )
 
+        # Create Sarah's complete identity with all details
+        identity_id = self.identity.create_identity(
+            agent_id=self.agent_id,
+            first_name="Sarah",
+            last_name="Rodriguez",
+            email="sarah@trybloom.ai",
+            phone="+1-480-555-0123",
+            job_title="Growth & Community Lead",
+            company="BLOOM",
+            location="Phoenix, Arizona",
+            avatar_url="https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah",
+            backstory=backstory,
+            writing_style=writing_style,
+            personality=personality
+        )
 
-# ==================== WEBSOCKET ENDPOINTS ====================
+        logger.info("✅ Sarah's identity created!")
+        logger.info(f"   Name: Sarah Rodriguez")
+        logger.info(f"   Role: Growth & Community Lead at BLOOM")
+        logger.info(f"   Location: Phoenix, Arizona")
+        logger.info(f"   Specialization: TikTok growth & UGC creation")
 
-@app.websocket("/chat")
-async def chat_websocket(websocket: WebSocket):
-    """
-    Chat WebSocket - Direct FastAPI handling
-    No proxy, no double accept, just works!
-    """
-    if not sarah.initialized or not sarah.chat_handler:
-        await websocket.accept()
-        await websocket.send_json({
-            'type': 'error',
-            'message': 'Sarah is still initializing. Please wait a moment and try again.'
-        })
-        await websocket.close()
-        return
+    async def check_email(self):
+        """Check email and respond (placeholder for now)"""
+        logger.info("📧 Checking email...")
+        # TODO: Implement Gmail integration
+        return []
 
-    try:
-        # Let Sarah's chat handler handle this connection
-        await sarah.chat_handler.handle_websocket(websocket)
-    except WebSocketDisconnect:
-        logger.info("💬 Client disconnected from chat")
-    except Exception as e:
-        logger.error(f"❌ Chat WebSocket error: {e}")
-        logger.exception(e)
+    async def daily_routine(self):
+        """Sarah's daily routine"""
+        logger.info("🌅 Starting daily routine...")
 
+        # 1. Check email
+        await self.check_email()
 
-@app.websocket("/screen")
-async def screen_websocket(websocket: WebSocket):
-    """
-    Screen streaming WebSocket
-    Watch Sarah work in real-time!
-    """
-    if not sarah.initialized or not sarah.screen_streamer:
-        await websocket.accept()
-        await websocket.send_json({
-            'type': 'error',
-            'message': 'Screen streaming not available yet'
-        })
-        await websocket.close()
-        return
+        # 2. Check relationships
+        total_relationships = len(self.relationships.relationships)
+        logger.info(f"💝 Managing {total_relationships} relationships")
 
-    await websocket.accept()
-    logger.info("🎥 New screen connection")
+        # 3. Check trust score
+        # trust_score = self.ethics.get_current_trust_score(self.agent_id)
+        # logger.info(f"🎯 Trust score: {trust_score}")
 
-    try:
-        # Add client to streamer (FIXED: use connected_clients not clients!)
-        sarah.screen_streamer.connected_clients.add(websocket)
+        # 4. Log activity
+        logger.info("✅ Daily routine complete!")
 
-        # Keep connection alive
+    async def run(self):
+        """Main loop - Sarah's 'life'"""
+        logger.info("🌸 Sarah Rodriguez is online!")
+
+        # Create identity on first run
+        self.create_identity()
+
+        # Start browser first (enables screen streaming)
+        logger.info("🌐 Starting browser...")
+        browser_started = await self.browser.start()
+
+        if not browser_started:
+            logger.error("❌ Failed to start browser - screen streaming won't work")
+        else:
+            logger.info("✅ Browser ready!")
+
+        # Start unified WebSocket server (handles both chat and screen streaming)
+        if self.unified_server:
+            asyncio.create_task(self.unified_server.start())
+            logger.info("🚀 Unified WebSocket server started!")
+            logger.info("   💬 Chat available at: /chat")
+            logger.info("   🎥 Screen stream available at: /screen")
+
+            # Start screen streaming loop
+            asyncio.create_task(self.browser.streamer.stream_browser())
+            logger.info("📺 Screen streaming loop started!")
+
+        # Run daily routine
         while True:
             try:
-                # Wait for client messages (mostly pings)
-                message = await websocket.receive_text()
-                
-                # Echo back pings
-                if message == "ping":
-                    await websocket.send_text("pong")
-                    
-            except WebSocketDisconnect:
-                break
+                await self.daily_routine()
+
+                # Sleep for 1 hour
+                logger.info("😴 Sleeping for 1 hour...")
+                await asyncio.sleep(3600)
+
             except Exception as e:
-                logger.debug(f"Screen WebSocket receive error: {e}")
-                break
+                logger.error(f"❌ Error in daily routine: {e}")
+                logger.exception(e)
+                # Sleep 5 minutes before retry
+                await asyncio.sleep(300)
 
-    except Exception as e:
-        logger.error(f"❌ Screen WebSocket error: {e}")
-    finally:
-        # Remove client from streamer (FIXED: use connected_clients not clients!)
-        if websocket in sarah.screen_streamer.connected_clients:
-            sarah.screen_streamer.connected_clients.remove(websocket)
-        logger.info("🎥 Screen client disconnected")
+async def main():
+    """Entry point"""
+    logger.info("=" * 60)
+    logger.info("🚀 BLOOM AI AGENT - STARTING UP")
+    logger.info("=" * 60)
 
-
-# ==================== MAIN ====================
+    sarah = Sarah()
+    await sarah.run()
 
 if __name__ == "__main__":
-    import uvicorn
-    
-    # Get port from environment or default to 8080
-    port = int(os.environ.get('PORT', 8080))
-    
-    logger.info("============================================================")
-    logger.info(f"🚀 Starting server on port {port}")
-    logger.info(f"   Chat WebSocket: ws://localhost:{port}/chat")
-    logger.info(f"   Screen WebSocket: ws://localhost:{port}/screen")
-    logger.info(f"   Health check: http://localhost:{port}/health")
-    logger.info("============================================================")
-    
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=port,
-        log_level="info"
-    )
+    # Run Sarah!
+    asyncio.run(main())
