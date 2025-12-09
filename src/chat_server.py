@@ -518,6 +518,11 @@ Important:
             msg_type = data.get('type')
             content = data.get('message', '')
 
+            # 📸 NEW: Check for uploaded image data
+            user_image = data.get('image')  # Base64 image from frontend
+            if user_image:
+                logger.info(f"📸 User uploaded an image with message: {content[:50]}...")
+
             if msg_type == 'user_message':
                 # 🆕 NEW: Reset interruption flag on every message
                 self.current_action_interrupted = False
@@ -844,8 +849,8 @@ Important:
                     # Pure conversation - skip expensive action planning
                     logger.info("💬 Conversational message - fast path (skipping action planning + screenshots)")
 
-                    # Simple conversation - no screenshot needed
-                    user_msg = self._format_message_for_api('user', content, None)
+                    # Simple conversation - use uploaded image if provided, otherwise no screenshot
+                    user_msg = self._format_message_for_api('user', content, user_image)
                     self.conversation_history.append(user_msg)
                     self._save_message_to_memory('user', content)
 
@@ -906,7 +911,9 @@ Important:
                     screenshot = await self._capture_screen_context()
 
                 # Add to conversation history (with vision if available)
-                user_msg = self._format_message_for_api('user', content, screenshot)
+                # Prioritize user-uploaded image over screenshot
+                image_to_use = user_image if user_image else screenshot
+                user_msg = self._format_message_for_api('user', content, image_to_use)
                 self.conversation_history.append(user_msg)
 
                 # Save user message to persistent memory

@@ -161,6 +161,66 @@ export default function Dashboard() {
     }
   }
 
+  function handleImageUpload() {
+    // Trigger file input click
+    if (fileInputRef.current) {
+      fileInputRef.current.click()
+    }
+  }
+
+  async function onImageSelected(e) {
+    const file = e.target.files[0]
+    if (!file || !chatConnected) {
+      return
+    }
+
+    // Check file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file')
+      return
+    }
+
+    setIsUploading(true)
+
+    try {
+      // Convert to base64
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        const base64 = event.target.result.split(',')[1] // Remove data:image/jpeg;base64, prefix
+
+        // Add user message to UI
+        const userMessage = {
+          id: Date.now(),
+          type: 'user',
+          text: `📸 [Sent an image: ${file.name}]`,
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, userMessage])
+
+        // Send to Sarah via WebSocket
+        chatWsRef.current.send(JSON.stringify({
+          type: 'user_message',
+          message: chatInput || 'Look at this image!',
+          image: base64
+        }))
+
+        // Clear input and set sending state
+        setChatInput('')
+        setIsSending(true)
+        setIsUploading(false)
+
+        // Reset file input
+        e.target.value = ''
+      }
+
+      reader.readAsDataURL(file)
+    } catch (error) {
+      console.error('Error uploading image:', error)
+      setIsUploading(false)
+      alert('Failed to upload image')
+    }
+  }
+
   function sendMessage(e) {
     e.preventDefault()
 
@@ -298,6 +358,22 @@ export default function Dashboard() {
         </div>
 
         <form onSubmit={sendMessage} className="chat-input-container">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={onImageSelected}
+            accept="image/*"
+            style={{ display: 'none' }}
+          />
+          <button
+            type="button"
+            className="chat-image-button"
+            onClick={handleImageUpload}
+            disabled={!chatConnected || isUploading}
+            title="Upload image"
+          >
+            {isUploading ? '⏳' : '📷'}
+          </button>
           <input
             type="text"
             className="chat-input"
@@ -806,6 +882,24 @@ export default function Dashboard() {
           background: #f3f4f6;
           cursor: not-allowed;
         }
+        .chat-image-button {
+          padding: 0.75rem 1rem;
+          background: linear-gradient(135deg, #ec4899, #db2777);
+          color: white;
+          border: none;
+          border-radius: 8px;
+          font-size: 1.25rem;
+          cursor: pointer;
+          transition: opacity 0.2s;
+          flex-shrink: 0;
+        }
+        .chat-image-button:hover:not(:disabled) {
+          opacity: 0.9;
+        }
+        .chat-image-button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
         .chat-send-button {
           padding: 0.75rem 1.5rem;
           background: linear-gradient(135deg, #a855f7, #9333ea);
@@ -815,6 +909,7 @@ export default function Dashboard() {
           font-size: 1.25rem;
           cursor: pointer;
           transition: opacity 0.2s;
+          flex-shrink: 0;
         }
         .chat-send-button:hover:not(:disabled) {
           opacity: 0.9;
