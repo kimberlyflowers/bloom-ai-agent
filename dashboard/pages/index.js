@@ -14,6 +14,10 @@ export default function Dashboard() {
   const chatWsRef = useRef(null)
   const messagesEndRef = useRef(null)
 
+  // Image upload state
+  const [isUploading, setIsUploading] = useState(false)
+  const fileInputRef = useRef(null)
+
   // WebSocket URLs - use environment variable or localhost for development
   const getWebSocketUrl = (path) => {
     // Check if we have a Railway URL from environment variable
