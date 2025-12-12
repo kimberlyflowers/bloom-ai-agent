@@ -48,7 +48,7 @@ class UnifiedWebSocketServer:
     async def start(self):
         """Start the unified WebSocket server"""
         logger.info(f"🚀 Starting unified WebSocket server on port {self.port}...")
-        logger.info(f"   📍 Routes: /chat, /screen, /command, /videos/*")
+        logger.info(f"   📍 Routes: /chat, /screen, /command")
 
         self.server = await websockets.serve(
             self.handle_connection,
@@ -58,9 +58,9 @@ class UnifiedWebSocketServer:
             ping_interval=5,      # Send keepalive ping every 5 seconds (instead of 20)
             ping_timeout=10,      # Wait 10 seconds for pong (instead of 20)
             compression=None,     # Disable compression for lower latency
-            max_size=10485760,    # 10MB max message size (default is 1MB)
-            # HTTP request handler for file serving
-            process_request=self.process_http_request
+            max_size=10485760     # 10MB max message size (default is 1MB)
+            # NOTE: HTTP video serving removed - was breaking WebSocket connections
+            # Will implement video serving separately (not via websockets library)
         )
 
         logger.info(f"✅ Unified server running on ws://0.0.0.0:{self.port}")
@@ -68,7 +68,6 @@ class UnifiedWebSocketServer:
         logger.info(f"   🎥 Screen: ws://0.0.0.0:{self.port}/screen")
         if self.command_center_handler:
             logger.info(f"   🎛️  Command: ws://0.0.0.0:{self.port}/command")
-        logger.info(f"   📹 Videos: http://0.0.0.0:{self.port}/videos/<filename>")
 
     async def stop(self):
         """Stop the server"""
