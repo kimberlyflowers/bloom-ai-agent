@@ -1,924 +1,326 @@
 import { useEffect, useState, useRef } from 'react'
 
-export default function Dashboard() {
-  const [sarah, setSarah] = useState(null)
-  const [liveScreen, setLiveScreen] = useState(null)
-  const [screenConnected, setScreenConnected] = useState(false)
+export default function CommandCenter() {
+  // Active tasks (dynamically spawned agents currently working)
+  const [activeTasks, setActiveTasks] = useState([])
+
+  // Approval queue (content waiting for review)
+  const [approvalQueue, setApprovalQueue] = useState([])
+
+  // WebSocket connection state
+  const [connected, setConnected] = useState(false)
+  const [liveUpdate, setLiveUpdate] = useState(null)
   const wsRef = useRef(null)
 
-  // Chat state
-  const [messages, setMessages] = useState([])
-  const [chatInput, setChatInput] = useState('')
-  const [chatConnected, setChatConnected] = useState(false)
-  const [isSending, setIsSending] = useState(false)
-  const chatWsRef = useRef(null)
-  const messagesEndRef = useRef(null)
-
-  // Image upload state
-  const [isUploading, setIsUploading] = useState(false)
-  const fileInputRef = useRef(null)
-
-  // WebSocket URLs - use environment variable or localhost for development
-  const getWebSocketUrl = (path) => {
-    // Check if we have a Railway URL from environment variable
-    const railwayUrl = process.env.NEXT_PUBLIC_RAILWAY_WS_URL
-    if (railwayUrl) {
-      // Use Railway WebSocket URL with path-based routing (wss:// for secure connection)
-      return `${railwayUrl}${path}`
-    }
-    // Fallback to localhost for development (old port-based routing)
-    const port = path === '/screen' ? 8765 : 8766
-    return `ws://localhost:${port}`
-  }
-
+  // Connect to command center WebSocket
   useEffect(() => {
-    setSarah({
-      name: "Sarah Rodriguez",
-      role: "Growth & Community Lead",
-      location: "Phoenix, Arizona",
-      specialization: "TikTok growth & UGC creation"
-    })
-
-    // Connect to live screen stream
-    connectToLiveScreen()
-
-    // Connect to chat server
-    connectToChat()
+    connectToCommandCenter()
 
     return () => {
       if (wsRef.current) {
         wsRef.current.close()
       }
-      if (chatWsRef.current) {
-        chatWsRef.current.close()
-      }
     }
   }, [])
 
-  // Auto-scroll chat to bottom when new messages arrive
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
-  function connectToLiveScreen() {
+  function connectToCommandCenter() {
     try {
-      // Connect to Railway WebSocket server (unified server with path-based routing)
-      const wsUrl = getWebSocketUrl('/screen')
-      console.log('🎥 Connecting to screen stream:', wsUrl)
+      // Use Railway WebSocket URL with /command path
+      const railwayUrl = process.env.NEXT_PUBLIC_RAILWAY_WS_URL
+      const wsUrl = railwayUrl ? `${railwayUrl}/command` : 'ws://localhost:8080/command'
+
+      console.log('🎛️  Connecting to command center:', wsUrl)
       const ws = new WebSocket(wsUrl)
-
-      ws.onopen = () => {
-        console.log('📺 Connected to Sarah\'s screen!')
-        setScreenConnected(true)
-      }
-
-      ws.onmessage = (event) => {
-        const data = event.data
-
-        if (data.startsWith('FRAME:')) {
-          // Received a new frame
-          const frameData = data.substring(6)
-          setLiveScreen(`data:image/jpeg;base64,${frameData}`)
-        } else if (data.startsWith('CONNECTED:')) {
-          console.log('✅ Screen stream ready')
-        }
-      }
-
-      ws.onerror = (error) => {
-        console.error('❌ Screen stream error:', error)
-        setScreenConnected(false)
-      }
-
-      ws.onclose = () => {
-        console.log('🔴 Screen stream disconnected')
-        setScreenConnected(false)
-
-        // Auto-reconnect after 5 seconds
-        setTimeout(connectToLiveScreen, 5000)
-      }
-
       wsRef.current = ws
-    } catch (error) {
-      console.error('Error connecting to screen stream:', error)
-    }
-  }
-
-  function connectToChat() {
-    try {
-      // Connect to chat WebSocket server (unified server with path-based routing)
-      const wsUrl = getWebSocketUrl('/chat')
-      console.log('💬 Connecting to chat:', wsUrl)
-      const ws = new WebSocket(wsUrl)
 
       ws.onopen = () => {
-        console.log('💬 Connected to Sarah\'s chat!')
-        setChatConnected(true)
+        console.log('✅ Connected to command center')
+        setConnected(true)
+        setLiveUpdate('Connected to command center')
       }
 
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
+          console.log('📥 Command center message:', data.type)
 
-          if (data.type === 'system') {
-            // System message (welcome, etc.)
-            setMessages(prev => [...prev, {
-              id: Date.now(),
-              type: 'system',
-              text: data.message,
-              timestamp: new Date()
-            }])
-          } else if (data.type === 'sarah_message') {
-            // Message from Sarah
-            setMessages(prev => [...prev, {
-              id: Date.now(),
-              type: 'sarah',
-              text: data.message,
-              timestamp: new Date()
-            }])
-            setIsSending(false)
+          if (data.type === 'initial_data') {
+            // Initial data: active tasks and pending approvals
+            setActiveTasks(data.active_tasks || [])
+            setApprovalQueue(data.pending_approvals || [])
+            setLiveUpdate('Received initial data')
+          } else if (data.type === 'task_started') {
+            // New agent spawned - add to active tasks
+            setActiveTasks(prev => [...prev, data.task])
+            setLiveUpdate(`Started: ${data.task.agent_type}`)
+          } else if (data.type === 'task_progress') {
+            // Agent progress update
+            setActiveTasks(prev => prev.map(t =>
+              t.task_id === data.task_id ? { ...t, progress: data.progress } : t
+            ))
+            setLiveUpdate(`Progress: ${data.progress}`)
+          } else if (data.type === 'task_completed') {
+            // Agent finished - remove from active tasks
+            setActiveTasks(prev => prev.filter(t => t.task_id !== data.task_id))
+            setLiveUpdate(`Completed: ${data.task_id}`)
+          } else if (data.type === 'new_content') {
+            // Content created - add to approval queue
+            setApprovalQueue(prev => [...prev, data.content])
+            setLiveUpdate(`New content: ${data.content.title}`)
+          } else if (data.type === 'approval_action') {
+            // Content approved/rejected - remove from queue
+            setApprovalQueue(prev => prev.filter(c => c.content_id !== data.content_id))
+            setLiveUpdate(`${data.action}: ${data.content_id}`)
           }
-        } catch (error) {
-          console.error('Error parsing chat message:', error)
+        } catch (e) {
+          console.error('Error parsing message:', e)
         }
-      }
-
-      ws.onerror = (error) => {
-        console.error('❌ Chat error:', error)
-        setChatConnected(false)
       }
 
       ws.onclose = () => {
-        console.log('🔴 Chat disconnected')
-        setChatConnected(false)
+        console.log('🔌 Disconnected from command center')
+        setConnected(false)
+        setLiveUpdate('Disconnected')
 
         // Auto-reconnect after 5 seconds
-        setTimeout(connectToChat, 5000)
+        setTimeout(connectToCommandCenter, 5000)
       }
 
-      chatWsRef.current = ws
-    } catch (error) {
-      console.error('Error connecting to chat:', error)
-    }
-  }
-
-  function handleImageUpload() {
-    // Trigger file input click
-    if (fileInputRef.current) {
-      fileInputRef.current.click()
-    }
-  }
-
-  async function onImageSelected(e) {
-    const file = e.target.files[0]
-    if (!file || !chatConnected) {
-      return
-    }
-
-    // Check file type
-    if (!file.type.startsWith('image/')) {
-      alert('Please select an image file')
-      return
-    }
-
-    setIsUploading(true)
-
-    try {
-      // Convert to base64
-      const reader = new FileReader()
-      reader.onload = (event) => {
-        const base64 = event.target.result.split(',')[1] // Remove data:image/jpeg;base64, prefix
-
-        // Add user message to UI
-        const userMessage = {
-          id: Date.now(),
-          type: 'user',
-          text: `📸 [Sent an image: ${file.name}]`,
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev, userMessage])
-
-        // Send to Sarah via WebSocket
-        chatWsRef.current.send(JSON.stringify({
-          type: 'user_message',
-          message: chatInput || 'Look at this image!',
-          image: base64
-        }))
-
-        // Clear input and set sending state
-        setChatInput('')
-        setIsSending(true)
-        setIsUploading(false)
-
-        // Reset file input
-        e.target.value = ''
+      ws.onerror = (error) => {
+        console.error('❌ WebSocket error:', error)
+        setLiveUpdate('Connection error')
       }
-
-      reader.readAsDataURL(file)
     } catch (error) {
-      console.error('Error uploading image:', error)
-      setIsUploading(false)
-      alert('Failed to upload image')
+      console.error('Error connecting to command center:', error)
     }
   }
 
-  function sendMessage(e) {
-    e.preventDefault()
-
-    if (!chatInput.trim() || !chatConnected || isSending) {
-      return
+  const sendCommand = (command) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(command))
+      console.log('📤 Sent command:', command.type)
     }
-
-    // Add user message to UI
-    const userMessage = {
-      id: Date.now(),
-      type: 'user',
-      text: chatInput,
-      timestamp: new Date()
-    }
-    setMessages(prev => [...prev, userMessage])
-
-    // Send to Sarah via WebSocket
-    chatWsRef.current.send(JSON.stringify({
-      type: 'user_message',
-      message: chatInput
-    }))
-
-    // Clear input and set sending state
-    setChatInput('')
-    setIsSending(true)
   }
 
-  if (!sarah) {
-    return <div className="loading">Loading Sarah...</div>
+  const approveContent = (contentId) => {
+    sendCommand({
+      type: 'approve_content',
+      content_id: contentId,
+      feedback: 'Approved!'
+    })
+  }
+
+  const rejectContent = (contentId, feedback) => {
+    sendCommand({
+      type: 'reject_content',
+      content_id: contentId,
+      feedback: feedback || 'Please revise'
+    })
   }
 
   return (
-    <div className="container">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
       {/* Header */}
-      <div className="header">
-        <div className="avatar">SR</div>
-        <div className="header-info">
-          <h1>{sarah.name}</h1>
-          <p>🌸 AI Agent Employee • {sarah.role} at BLOOM</p>
-        </div>
-        <div className="status-badge">
-          <div className="status-dot"></div>
-          Online
-        </div>
-      </div>
-
-      {/* Metrics */}
-      <div className="metrics">
-        <div className="metric-card pink">
-          <div className="metric-icon">💝</div>
-          <div className="metric-label">Trust Score</div>
-          <div className="metric-value">50.0</div>
-        </div>
-        <div className="metric-card blue">
-          <div className="metric-icon">🤝</div>
-          <div className="metric-label">Relationships</div>
-          <div className="metric-value">0</div>
-        </div>
-        <div className="metric-card purple">
-          <div className="metric-icon">✨</div>
-          <div className="metric-label">Value Provided</div>
-          <div className="metric-value">0</div>
-        </div>
-        <div className="metric-card green">
-          <div className="metric-icon">💰</div>
-          <div className="metric-label">Revenue</div>
-          <div className="metric-value">$0</div>
+      <div className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-pink-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">
+                🌸
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">BLOOM Command Center</h1>
+                <p className="text-sm text-gray-600">Sarah's Multi-Agent Orchestration Dashboard</p>
+              </div>
+            </div>
+            <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${connected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+              <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+              <span className="text-sm font-medium">{connected ? 'Connected' : 'Offline'}</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* LIVE SCREEN VIEW - THE COOLEST FEATURE! */}
-      <div className="live-screen-card">
-        <div className="live-screen-header">
-          <h2>🎥 Sarah's Live Screen</h2>
-          <div className={screenConnected ? "stream-status connected" : "stream-status disconnected"}>
-            <div className="stream-dot"></div>
-            {screenConnected ? 'LIVE' : 'Offline'}
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="bg-white rounded-xl shadow-sm p-6 border border-purple-100">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center text-2xl">
+                🎯
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Active Tasks</p>
+                <p className="text-3xl font-bold text-gray-900">{activeTasks.length}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm p-6 border border-yellow-100">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center text-2xl">
+                ⏳
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Pending Approval</p>
+                <p className="text-3xl font-bold text-gray-900">{approvalQueue.length}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm p-6 border border-green-100">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center text-2xl">
+                ✨
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">System Status</p>
+                <p className="text-xl font-bold text-green-600">Operational</p>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="live-screen-viewer">
-          {liveScreen ? (
-            <img
-              src={liveScreen}
-              alt="Sarah's live screen"
-              className="live-screen-image"
-            />
-          ) : (
-            <div className="no-stream">
-              <div className="no-stream-icon">📺</div>
-              <p>{screenConnected ? 'Waiting for Sarah to start working...' : 'Connecting to live stream...'}</p>
+        {/* Live Update Banner */}
+        {liveUpdate && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8">
+            <div className="flex items-center gap-2 text-blue-700">
+              <span className="text-lg">📡</span>
+              <span className="font-medium">Latest Update:</span>
+              <span>{liveUpdate}</span>
+              <span className="ml-auto text-sm text-blue-600">
+                {new Date().toLocaleTimeString()}
+              </span>
             </div>
-          )}
-        </div>
-
-        <div className="live-screen-info">
-          <p>💡 Watch Sarah work in real-time! You'll see her create emails, browse TikTok, and more!</p>
-        </div>
-      </div>
-
-      {/* CHAT WITH SARAH - TALK TO HER IN REAL-TIME! */}
-      <div className="chat-card">
-        <div className="chat-header">
-          <h2>💬 Chat with Sarah</h2>
-          <div className={chatConnected ? "stream-status connected" : "stream-status disconnected"}>
-            <div className="stream-dot"></div>
-            {chatConnected ? 'Online' : 'Offline'}
           </div>
-        </div>
+        )}
 
-        <div className="chat-messages">
-          {messages.length === 0 ? (
-            <div className="no-messages">
-              <div className="no-messages-icon">💬</div>
-              <p>Start a conversation with Sarah!</p>
-              <p className="no-messages-hint">Ask her about her work, TikTok strategies, or anything else 🌸</p>
+        {/* Active Tasks Section */}
+        <div className="mb-8">
+          <h2 className="text-xl font-bold text-gray-900 mb-4">🎯 Active Tasks</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Specialized agents that Sarah has spawned to handle complex requests
+          </p>
+
+          {activeTasks.length === 0 ? (
+            <div className="bg-white rounded-xl shadow-sm p-12 text-center border border-gray-200">
+              <div className="text-6xl mb-4">😴</div>
+              <p className="text-lg font-medium text-gray-600">No active tasks</p>
+              <p className="text-sm text-gray-500 mt-2">
+                Agents are spawned dynamically when Sarah receives complex requests
+              </p>
             </div>
           ) : (
-            messages.map(msg => (
-              <div key={msg.id} className={`message message-${msg.type}`}>
-                {msg.type === 'sarah' && <div className="message-avatar">SR</div>}
-                <div className="message-content">
-                  {msg.type === 'sarah' && <div className="message-sender">Sarah Rodriguez</div>}
-                  {msg.type === 'user' && <div className="message-sender">You</div>}
-                  <div className="message-text">{msg.text}</div>
-                  <div className="message-time">
-                    {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            <div className="grid grid-cols-1 gap-4">
+              {activeTasks.map((task, i) => (
+                <div key={i} className="bg-white rounded-xl shadow-sm p-6 border border-purple-200">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <span className="text-2xl">
+                          {task.agent_type === 'VideoCreationAgent' ? '🎬' :
+                           task.agent_type === 'ResearchAgent' ? '🔍' :
+                           task.agent_type === 'ContentPostingAgent' ? '📱' : '🤖'}
+                        </span>
+                        <h3 className="text-lg font-bold text-gray-900">{task.agent_type}</h3>
+                        <span className="ml-auto px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-medium">
+                          Active
+                        </span>
+                      </div>
+                      <p className="text-gray-700 mb-3">{task.description}</p>
+                      {task.progress && (
+                        <div className="bg-gray-100 rounded-lg p-3">
+                          <p className="text-sm text-gray-600">{task.progress}</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-                {msg.type === 'user' && <div className="message-avatar-user">You</div>}
-              </div>
-            ))
+              ))}
+            </div>
           )}
-          <div ref={messagesEndRef} />
         </div>
 
-        <form onSubmit={sendMessage} className="chat-input-container">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={onImageSelected}
-            accept="image/*"
-            style={{ display: 'none' }}
-          />
-          <button
-            type="button"
-            className="chat-image-button"
-            onClick={handleImageUpload}
-            disabled={!chatConnected || isUploading}
-            title="Upload image"
-          >
-            {isUploading ? '⏳' : '📷'}
-          </button>
-          <input
-            type="text"
-            className="chat-input"
-            placeholder={chatConnected ? "Type a message to Sarah..." : "Connecting to chat..."}
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            disabled={!chatConnected || isSending}
-          />
-          <button
-            type="submit"
-            className="chat-send-button"
-            disabled={!chatConnected || !chatInput.trim() || isSending}
-          >
-            {isSending ? '...' : '➤'}
-          </button>
-        </form>
-      </div>
+        {/* Approval Queue Section */}
+        <div>
+          <h2 className="text-xl font-bold text-gray-900 mb-4">✅ Approval Queue</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Content created by agents waiting for your review before publishing
+          </p>
 
-      {/* Activity */}
-      <div className="card">
-        <h2>Current Activity</h2>
-        <div className="activity">
-          <div className="activity-icon">😴</div>
-          <div>
-            <p className="activity-text">Sleeping for 1 hour...</p>
-            <p className="activity-time">
-              Next check-in at {new Date(Date.now() + 3600000).toLocaleTimeString()}
-            </p>
-          </div>
+          {approvalQueue.length === 0 ? (
+            <div className="bg-white rounded-xl shadow-sm p-12 text-center border border-gray-200">
+              <div className="text-6xl mb-4">✨</div>
+              <p className="text-lg font-medium text-gray-600">No pending approvals</p>
+              <p className="text-sm text-gray-500 mt-2">
+                Content will appear here when agents create videos or other content
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {approvalQueue.map((item, i) => (
+                <div key={i} className="bg-white rounded-xl shadow-md border border-yellow-200 overflow-hidden">
+                  <div className="p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <h3 className="text-lg font-bold text-gray-900 mb-2">{item.title}</h3>
+                        <p className="text-sm text-gray-600 mb-3">{item.description}</p>
+
+                        {/* Metadata */}
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+                            {item.content_type}
+                          </span>
+                          <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+                            {item.platform}
+                          </span>
+                          <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+                            {item.duration || 'N/A'}
+                          </span>
+                        </div>
+
+                        {/* Script/Caption */}
+                        {item.script && (
+                          <div className="bg-gray-50 rounded-lg p-3 mb-4">
+                            <p className="text-xs font-medium text-gray-600 mb-1">SCRIPT:</p>
+                            <p className="text-sm text-gray-700">{item.script}</p>
+                          </div>
+                        )}
+
+                        {item.caption && (
+                          <div className="bg-blue-50 rounded-lg p-3 mb-4">
+                            <p className="text-xs font-medium text-blue-600 mb-1">CAPTION:</p>
+                            <p className="text-sm text-gray-700">{item.caption}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => approveContent(item.content_id)}
+                        className="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-4 rounded-lg transition"
+                      >
+                        ✅ Approve
+                      </button>
+                      <button
+                        onClick={() => {
+                          const feedback = prompt('Feedback for agent:')
+                          if (feedback) rejectContent(item.content_id, feedback)
+                        }}
+                        className="flex-1 bg-red-600 hover:bg-red-700 text-white font-medium py-3 px-4 rounded-lg transition"
+                      >
+                        ❌ Reject
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
-
-      {/* Identity */}
-      <div className="card">
-        <h2>Sarah&apos;s Identity</h2>
-        <div className="details">
-          <div className="detail">
-            <strong>Location:</strong> {sarah.location}
-          </div>
-          <div className="detail">
-            <strong>Email:</strong> sarah@trybloom.ai
-          </div>
-          <div className="detail">
-            <strong>Specialization:</strong> {sarah.specialization}
-          </div>
-          <div className="detail">
-            <strong>Role:</strong> {sarah.role}
-          </div>
-        </div>
-      </div>
-
-      {/* Daily Routine */}
-      <div className="card">
-        <h2>Daily Routine</h2>
-        <div className="routine">
-          <div className="routine-item complete">
-            <span>📧</span> Check email
-            <span className="routine-check">✓</span>
-          </div>
-          <div className="routine-item complete">
-            <span>💝</span> Manage relationships
-            <span className="routine-check">✓</span>
-          </div>
-          <div className="routine-item complete">
-            <span>✅</span> Update metrics
-            <span className="routine-check">✓</span>
-          </div>
-          <div className="routine-item active">
-            <span>😴</span> Sleep 1 hour
-            <span className="routine-check">⋯</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="footer">
-        <p>🌸 Powered by BLOOM AI Agents • Running 24/7 on Railway</p>
-      </div>
-
-      <style jsx>{`
-        .container {
-          min-height: 100vh;
-          background: linear-gradient(to bottom right, #fdf2f8, #fae8ff);
-          padding: 2rem;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        }
-        .loading {
-          min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 1.5rem;
-          color: #6b7280;
-        }
-        .header {
-          background: white;
-          border-radius: 12px;
-          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-          padding: 1.5rem;
-          margin-bottom: 1.5rem;
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-          flex-wrap: wrap;
-        }
-        .avatar {
-          width: 64px;
-          height: 64px;
-          background: linear-gradient(135deg, #ec4899, #a855f7);
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          font-size: 1.5rem;
-          font-weight: bold;
-        }
-        .header-info h1 {
-          font-size: 2rem;
-          font-weight: bold;
-          color: #111827;
-          margin: 0;
-        }
-        .header-info p {
-          color: #6b7280;
-          margin: 0.25rem 0 0 0;
-        }
-        .status-badge {
-          margin-left: auto;
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          background: #dcfce7;
-          color: #166534;
-          padding: 0.5rem 1rem;
-          border-radius: 9999px;
-          font-weight: 500;
-        }
-        .status-dot {
-          width: 8px;
-          height: 8px;
-          background: #10b981;
-          border-radius: 50%;
-          animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-        .metrics {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 1.5rem;
-          margin-bottom: 1.5rem;
-        }
-        .metric-card {
-          background: white;
-          border-radius: 12px;
-          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-          padding: 1.5rem;
-        }
-        .metric-icon {
-          width: 48px;
-          height: 48px;
-          border-radius: 8px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 1.5rem;
-          margin-bottom: 0.75rem;
-        }
-        .pink .metric-icon { background: linear-gradient(135deg, #ec4899, #db2777); }
-        .blue .metric-icon { background: linear-gradient(135deg, #3b82f6, #2563eb); }
-        .purple .metric-icon { background: linear-gradient(135deg, #a855f7, #9333ea); }
-        .green .metric-icon { background: linear-gradient(135deg, #10b981, #059669); }
-        .metric-label {
-          color: #6b7280;
-          font-size: 0.875rem;
-          margin-bottom: 0.25rem;
-        }
-        .metric-value {
-          font-size: 2rem;
-          font-weight: bold;
-          color: #111827;
-        }
-        .live-screen-card {
-          background: white;
-          border-radius: 12px;
-          box-shadow: 0 6px 12px rgba(236, 72, 153, 0.15);
-          padding: 1.5rem;
-          margin-bottom: 1.5rem;
-          border: 2px solid #fce7f3;
-        }
-        .live-screen-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 1rem;
-        }
-        .live-screen-header h2 {
-          font-size: 1.5rem;
-          font-weight: bold;
-          color: #111827;
-          margin: 0;
-        }
-        .stream-status {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          padding: 0.5rem 1rem;
-          border-radius: 9999px;
-          font-weight: 600;
-          font-size: 0.875rem;
-        }
-        .stream-status.connected {
-          background: #dcfce7;
-          color: #166534;
-        }
-        .stream-status.disconnected {
-          background: #fee2e2;
-          color: #991b1b;
-        }
-        .stream-dot {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background: currentColor;
-        }
-        .stream-status.connected .stream-dot {
-          animation: pulse 2s infinite;
-        }
-        .live-screen-viewer {
-          background: #111827;
-          border-radius: 8px;
-          aspect-ratio: 16 / 9;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          overflow: hidden;
-          position: relative;
-          margin-bottom: 1rem;
-        }
-        .live-screen-image {
-          width: 100%;
-          height: 100%;
-          object-fit: contain;
-        }
-        .no-stream {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 1rem;
-          color: #9ca3af;
-        }
-        .no-stream-icon {
-          font-size: 4rem;
-          opacity: 0.5;
-        }
-        .no-stream p {
-          margin: 0;
-          font-size: 1rem;
-        }
-        .live-screen-info {
-          background: #fef3c7;
-          border-left: 4px solid #f59e0b;
-          padding: 0.75rem;
-          border-radius: 4px;
-        }
-        .live-screen-info p {
-          margin: 0;
-          color: #92400e;
-          font-size: 0.875rem;
-        }
-        .card {
-          background: white;
-          border-radius: 12px;
-          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-          padding: 1.5rem;
-          margin-bottom: 1.5rem;
-        }
-        .card h2 {
-          font-size: 1.5rem;
-          font-weight: bold;
-          color: #111827;
-          margin: 0 0 1rem 0;
-        }
-        .activity {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-        }
-        .activity-icon {
-          font-size: 3rem;
-        }
-        .activity-text {
-          font-size: 1.125rem;
-          font-weight: 500;
-          color: #111827;
-          margin: 0;
-        }
-        .activity-time {
-          color: #6b7280;
-          font-size: 0.875rem;
-          margin: 0.25rem 0 0 0;
-        }
-        .details {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 1rem;
-        }
-        .detail {
-          border-left: 3px solid #ec4899;
-          padding-left: 0.75rem;
-          color: #111827;
-        }
-        .detail strong {
-          color: #6b7280;
-          font-size: 0.875rem;
-          display: block;
-          margin-bottom: 0.25rem;
-        }
-        .routine {
-          display: flex;
-          flex-direction: column;
-          gap: 0.75rem;
-        }
-        .routine-item {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          padding: 0.75rem;
-          background: #f9fafb;
-          border-radius: 8px;
-        }
-        .routine-item span:first-child {
-          font-size: 1.5rem;
-        }
-        .routine-check {
-          margin-left: auto;
-          padding: 0.25rem 0.75rem;
-          border-radius: 9999px;
-          font-size: 0.875rem;
-          font-weight: 500;
-        }
-        .routine-item.complete .routine-check {
-          background: #dcfce7;
-          color: #166534;
-        }
-        .routine-item.active .routine-check {
-          background: #fef3c7;
-          color: #92400e;
-        }
-        .footer {
-          text-align: center;
-          color: #6b7280;
-          margin-top: 2rem;
-        }
-        .chat-card {
-          background: white;
-          border-radius: 12px;
-          box-shadow: 0 6px 12px rgba(168, 85, 247, 0.15);
-          padding: 1.5rem;
-          margin-bottom: 1.5rem;
-          border: 2px solid #f3e8ff;
-          display: flex;
-          flex-direction: column;
-          height: 600px;
-        }
-        .chat-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 1rem;
-          flex-shrink: 0;
-        }
-        .chat-header h2 {
-          font-size: 1.5rem;
-          font-weight: bold;
-          color: #111827;
-          margin: 0;
-        }
-        .chat-messages {
-          flex: 1;
-          overflow-y: auto;
-          padding: 1rem;
-          background: #f9fafb;
-          border-radius: 8px;
-          margin-bottom: 1rem;
-          display: flex;
-          flex-direction: column;
-          gap: 1rem;
-        }
-        .no-messages {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          height: 100%;
-          gap: 0.5rem;
-          color: #9ca3af;
-        }
-        .no-messages-icon {
-          font-size: 4rem;
-          opacity: 0.5;
-        }
-        .no-messages p {
-          margin: 0;
-          font-size: 1rem;
-        }
-        .no-messages-hint {
-          font-size: 0.875rem !important;
-          color: #6b7280;
-        }
-        .message {
-          display: flex;
-          gap: 0.75rem;
-          align-items: flex-start;
-        }
-        .message-sarah {
-          align-self: flex-start;
-        }
-        .message-user {
-          align-self: flex-end;
-          flex-direction: row-reverse;
-        }
-        .message-system {
-          align-self: center;
-          background: #fef3c7;
-          padding: 0.5rem 1rem;
-          border-radius: 8px;
-          font-size: 0.875rem;
-          color: #92400e;
-        }
-        .message-avatar {
-          width: 40px;
-          height: 40px;
-          background: linear-gradient(135deg, #ec4899, #a855f7);
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          font-weight: bold;
-          font-size: 0.875rem;
-          flex-shrink: 0;
-        }
-        .message-avatar-user {
-          width: 40px;
-          height: 40px;
-          background: linear-gradient(135deg, #3b82f6, #2563eb);
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          font-weight: bold;
-          font-size: 0.875rem;
-          flex-shrink: 0;
-        }
-        .message-content {
-          max-width: 70%;
-          background: white;
-          padding: 0.75rem 1rem;
-          border-radius: 12px;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-        }
-        .message-user .message-content {
-          background: #eff6ff;
-        }
-        .message-sender {
-          font-weight: 600;
-          font-size: 0.875rem;
-          color: #6b7280;
-          margin-bottom: 0.25rem;
-        }
-        .message-text {
-          color: #111827;
-          font-size: 0.9375rem;
-          line-height: 1.5;
-          word-wrap: break-word;
-          white-space: pre-wrap;
-        }
-        .message-time {
-          font-size: 0.75rem;
-          color: #9ca3af;
-          margin-top: 0.25rem;
-        }
-        .chat-input-container {
-          display: flex;
-          gap: 0.75rem;
-          flex-shrink: 0;
-        }
-        .chat-input {
-          flex: 1;
-          padding: 0.75rem 1rem;
-          border: 2px solid #e5e7eb;
-          border-radius: 8px;
-          font-size: 0.9375rem;
-          transition: border-color 0.2s;
-        }
-        .chat-input:focus {
-          outline: none;
-          border-color: #a855f7;
-        }
-        .chat-input:disabled {
-          background: #f3f4f6;
-          cursor: not-allowed;
-        }
-        .chat-image-button {
-          padding: 0.75rem 1rem;
-          background: linear-gradient(135deg, #ec4899, #db2777);
-          color: white;
-          border: none;
-          border-radius: 8px;
-          font-size: 1.25rem;
-          cursor: pointer;
-          transition: opacity 0.2s;
-          flex-shrink: 0;
-        }
-        .chat-image-button:hover:not(:disabled) {
-          opacity: 0.9;
-        }
-        .chat-image-button:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-        .chat-send-button {
-          padding: 0.75rem 1.5rem;
-          background: linear-gradient(135deg, #a855f7, #9333ea);
-          color: white;
-          border: none;
-          border-radius: 8px;
-          font-size: 1.25rem;
-          cursor: pointer;
-          transition: opacity 0.2s;
-          flex-shrink: 0;
-        }
-        .chat-send-button:hover:not(:disabled) {
-          opacity: 0.9;
-        }
-        .chat-send-button:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-      `}</style>
     </div>
   )
 }
