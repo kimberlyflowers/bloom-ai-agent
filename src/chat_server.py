@@ -603,8 +603,36 @@ Important:
                             'message': agent_response
                         })
 
-                        logger.info(f"🤖 Orchestrator agent completed: {agent_response[:100]}...")
+                        logger.info(f"🤖 Single agent completed: {agent_response[:100]}...")
                         return  # Done - agent handled everything
+
+                    elif orchestrator_result['type'] == 'multi_agent_result':
+                        # Complex task - multiple agents coordinated!
+                        logger.info(f"✅ Orchestrator coordinated complex workflow")
+                        logger.info(f"   ⏱️  Execution time: {orchestrator_result.get('execution_time', 0):.2f}s")
+
+                        # Add to conversation history
+                        user_msg = self._format_message_for_api('user', content, user_image)
+                        self.conversation_history.append(user_msg)
+
+                        agent_response = orchestrator_result['result']
+                        self.conversation_history.append({
+                            'role': 'assistant',
+                            'content': agent_response
+                        })
+
+                        # Save to memory
+                        self._save_message_to_memory('user', content)
+                        self._save_message_to_memory('assistant', agent_response)
+
+                        # Send response to user
+                        await self.send_message(websocket, {
+                            'type': 'sarah_message',
+                            'message': agent_response
+                        })
+
+                        logger.info(f"🎭 Multi-agent workflow completed: {agent_response[:100]}...")
+                        return  # Done - complex workflow handled everything
 
                     elif orchestrator_result['type'] == 'simple':
                         # Simple task - fall through to existing chat_server logic

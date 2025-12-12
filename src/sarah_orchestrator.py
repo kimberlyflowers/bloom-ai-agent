@@ -82,11 +82,10 @@ class SarahOrchestrator:
         Main entry point - like Claude Code's request processing
 
         Decision flow:
-        1. Pattern match to identify task type (NO LLM!)
-        2. Route to appropriate handler:
-           - Simple → return "delegate_to_chat_server"
-           - Specialized → spawn dedicated agent
-           - Multi-part → spawn multiple agents in parallel
+        1. Detect if task is complex (needs decomposition)
+        2. If complex: Decompose into sub-tasks → coordinate multiple agents
+        3. If simple specialized: Route to single agent
+        4. If trivial: Delegate to chat_server
 
         Args:
             user_message: User's request
@@ -104,11 +103,27 @@ class SarahOrchestrator:
 
         logger.info(f"🎯 Orchestrator processing: {user_message[:50]}...")
 
-        # Step 1: Fast pattern matching (NO LLM call - instant!)
+        # Step 1: Check if task is complex (needs multiple agents or decomposition)
+        is_complex = await self._detect_complex_task(user_message)
+
+        if is_complex:
+            # COMPLEX TASK - Decompose and coordinate multiple agents
+            logger.info("🔀 Complex task detected - decomposing...")
+
+            result = await self._handle_complex_task(user_message, context)
+
+            return {
+                "type": "multi_agent_result",
+                "result": result,
+                "agent_type": "ComplexWorkflow",
+                "execution_time": time.time() - start_time
+            }
+
+        # Step 2: Fast pattern matching for simple specialized tasks
         task_type = self._identify_task_type(user_message)
         logger.info(f"   📊 Task type identified: {task_type}")
 
-        # Step 2: Route based on task type
+        # Step 3: Route based on task type
         if task_type == "simple":
             # Simple task - delegate to existing chat_server logic
             return {
@@ -123,7 +138,7 @@ class SarahOrchestrator:
             return {
                 "type": "agent_result",
                 "result": result,
-                "agent_used": "VideoCreationAgent",
+                "agent_type": "VideoCreationAgent",
                 "execution_time": time.time() - start_time
             }
 
@@ -132,7 +147,7 @@ class SarahOrchestrator:
             return {
                 "type": "agent_result",
                 "result": result,
-                "agent_used": "ResearchAgent",
+                "agent_type": "ResearchAgent",
                 "execution_time": time.time() - start_time
             }
 
@@ -141,7 +156,7 @@ class SarahOrchestrator:
             return {
                 "type": "agent_result",
                 "result": result,
-                "agent_used": "ContentPostingAgent",
+                "agent_type": "ContentPostingAgent",
                 "execution_time": time.time() - start_time
             }
 
@@ -150,7 +165,7 @@ class SarahOrchestrator:
             return {
                 "type": "agent_result",
                 "result": result,
-                "agent_used": "DesignAgent",
+                "agent_type": "DesignAgent",
                 "execution_time": time.time() - start_time
             }
 
@@ -184,6 +199,348 @@ class SarahOrchestrator:
 
         # Default to simple
         return "simple"
+
+    async def _detect_complex_task(self, message: str) -> bool:
+        """
+        Detect if task requires decomposition and multiple agents
+
+        Complex task indicators:
+        - Multiple action types (AND/THEN/ALSO)
+        - Quantities > 1 ("create 10 videos", "post to 5 platforms")
+        - Multi-step workflows ("research then create then post")
+        - Coordination words ("coordinate", "manage", "orchestrate")
+
+        Uses fast heuristics + LLM confirmation for edge cases
+        """
+        message_lower = message.lower()
+
+        # FAST HEURISTICS (no LLM needed)
+
+        # Check for explicit quantities > 1
+        import re
+        quantity_patterns = [
+            r'(\d+)\s+(videos?|posts?|designs?|articles?|campaigns?)',
+            r'(ten|twenty|thirty|forty|fifty|\d+)\s+(videos?|posts?)',
+            r'multiple\s+(videos?|posts?|designs?)',
+            r'several\s+(videos?|posts?|designs?)',
+            r'a bunch of\s+(videos?|posts?)'
+        ]
+
+        for pattern in quantity_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                logger.info(f"🔢 Complex task: Quantity detected ({match.group(0)})")
+                return True
+
+        # Check for multi-step indicators
+        multi_step_words = [
+            ' and then ', ' then ', ' after that', ' next ',
+            ' and also ', ' also ', ' as well as ',
+            ' followed by ', ' and finally '
+        ]
+
+        if any(word in message_lower for word in multi_step_words):
+            logger.info(f"🔀 Complex task: Multi-step workflow detected")
+            return True
+
+        # Check for multiple different task types mentioned
+        task_types_mentioned = []
+        for task_type in self.patterns.keys():
+            if self._identify_task_type(message) == task_type:
+                task_types_mentioned.append(task_type)
+
+        # Check if message contains keywords from MULTIPLE task types
+        types_found = set()
+        for task_type, keywords in self.patterns.items():
+            if any(keyword in message_lower for keyword in keywords):
+                types_found.add(task_type)
+
+        if len(types_found) > 1:
+            logger.info(f"🎭 Complex task: Multiple task types ({types_found})")
+            return True
+
+        # Check for coordination/workflow words
+        workflow_words = [
+            'coordinate', 'manage', 'organize', 'schedule',
+            'campaign', 'workflow', 'process', 'pipeline',
+            'end to end', 'full cycle', 'complete process'
+        ]
+
+        if any(word in message_lower for word in workflow_words):
+            logger.info(f"📋 Complex task: Workflow coordination detected")
+            return True
+
+        # Not complex
+        return False
+
+    async def _handle_complex_task(self, message: str, context: Optional[Dict] = None) -> str:
+        """
+        Handle complex tasks requiring decomposition and coordination
+
+        Process:
+        1. Use LLM to decompose task into sub-tasks
+        2. Identify which agents needed for each sub-task
+        3. Determine execution order (sequential vs parallel)
+        4. Spawn agents dynamically
+        5. Coordinate execution
+        6. Synthesize results
+
+        This is the CORE of multi-agent orchestration
+        """
+        logger.info("🧠 Decomposing complex task using LLM...")
+
+        # Step 1: Decompose task into structured plan
+        plan = await self._decompose_task(message, context)
+
+        if not plan or not plan.get('sub_tasks'):
+            logger.warning("⚠️ Task decomposition failed - falling back to single agent")
+            # Fallback to simple routing
+            task_type = self._identify_task_type(message)
+            if task_type == "video":
+                return await self.spawn_video_agent(message, context)
+            elif task_type == "research":
+                return await self.spawn_research_agent(message, context)
+            elif task_type == "content":
+                return await self.spawn_content_agent(message, context)
+            elif task_type == "design":
+                return await self.spawn_design_agent(message, context)
+            else:
+                return "I'll work on that for you!"
+
+        logger.info(f"📋 Task decomposed into {len(plan['sub_tasks'])} sub-tasks")
+
+        # Step 2: Execute sub-tasks (respecting dependencies)
+        results = await self._execute_task_plan(plan, context)
+
+        # Step 3: Synthesize results into coherent response
+        final_result = await self._synthesize_results(message, plan, results)
+
+        return final_result
+
+    async def _decompose_task(self, message: str, context: Optional[Dict] = None) -> Dict[str, Any]:
+        """
+        Use LLM to decompose complex task into structured plan
+
+        Returns plan with:
+        - sub_tasks: List of sub-tasks to execute
+        - dependencies: Which tasks depend on others
+        - parallel_groups: Which tasks can run in parallel
+        - agent_types: Which agent type for each sub-task
+        """
+        decomposition_prompt = f"""Decompose this complex task into a structured execution plan.
+
+Task: "{message}"
+
+Available agent types:
+- video: Create UGC videos (ComfyUI, HeyGen, CapCut, ElevenLabs)
+- research: Conduct research and analysis
+- content: Social media content creation and posting
+- design: Visual design using Canva
+
+Return JSON only:
+{{
+  "sub_tasks": [
+    {{
+      "id": "task_1",
+      "description": "What to do",
+      "agent_type": "video|research|content|design",
+      "dependencies": ["task_id that must complete first"],
+      "parallel_group": 1
+    }}
+  ],
+  "execution_strategy": "sequential|parallel|mixed",
+  "reasoning": "Why this decomposition"
+}}
+
+Rules:
+- If task says "create 10 videos", create 10 separate video sub-tasks
+- If task has "research then create", research must complete before create
+- Tasks with no dependencies can run in same parallel_group
+- Be specific about what each sub-task should accomplish
+
+Return ONLY valid JSON, no explanation."""
+
+        try:
+            response = await asyncio.to_thread(
+                self.client.messages.create,
+                model="claude-3-5-haiku-20241022",  # Fast model for planning
+                max_tokens=2000,
+                temperature=0,
+                messages=[{
+                    "role": "user",
+                    "content": decomposition_prompt
+                }]
+            )
+
+            # Parse JSON response
+            import json
+            plan_text = response.content[0].text.strip()
+
+            # Remove markdown code blocks if present
+            if plan_text.startswith('```'):
+                plan_text = plan_text.split('```')[1]
+                if plan_text.startswith('json'):
+                    plan_text = plan_text[4:]
+                plan_text = plan_text.strip()
+
+            plan = json.loads(plan_text)
+
+            logger.info(f"✅ Task decomposed: {plan.get('reasoning', 'No reasoning')}")
+            logger.info(f"   📊 Sub-tasks: {len(plan.get('sub_tasks', []))}")
+            logger.info(f"   🔀 Strategy: {plan.get('execution_strategy', 'unknown')}")
+
+            return plan
+
+        except Exception as e:
+            logger.error(f"❌ Task decomposition failed: {e}")
+            return None
+
+    async def _execute_task_plan(self, plan: Dict[str, Any], context: Optional[Dict] = None) -> Dict[str, Any]:
+        """
+        Execute task plan respecting dependencies and parallelization
+
+        Process:
+        1. Group tasks by parallel_group
+        2. Execute each group (all tasks in group run in parallel)
+        3. Wait for group completion before next group
+        4. Pass results between dependent tasks
+        """
+        sub_tasks = plan.get('sub_tasks', [])
+        results = {}
+
+        # Group tasks by parallel_group
+        from collections import defaultdict
+        groups = defaultdict(list)
+
+        for task in sub_tasks:
+            group_id = task.get('parallel_group', 0)
+            groups[group_id].append(task)
+
+        logger.info(f"🎯 Executing {len(sub_tasks)} sub-tasks across {len(groups)} parallel groups")
+
+        # Execute groups in order
+        for group_id in sorted(groups.keys()):
+            group_tasks = groups[group_id]
+            logger.info(f"🔄 Executing parallel group {group_id} ({len(group_tasks)} tasks)...")
+
+            # Build coroutines for this group
+            coroutines = []
+            task_ids = []
+
+            for task in group_tasks:
+                task_id = task['id']
+                description = task['description']
+                agent_type = task['agent_type']
+
+                # Build context including dependency results
+                task_context = dict(context) if context else {}
+                dependencies = task.get('dependencies', [])
+
+                if dependencies:
+                    task_context['dependency_results'] = {
+                        dep_id: results.get(dep_id, 'N/A')
+                        for dep_id in dependencies
+                    }
+
+                # Spawn appropriate agent
+                if agent_type == "video":
+                    coroutines.append(self.spawn_video_agent(description, task_context))
+                elif agent_type == "research":
+                    coroutines.append(self.spawn_research_agent(description, task_context))
+                elif agent_type == "content":
+                    coroutines.append(self.spawn_content_agent(description, task_context))
+                elif agent_type == "design":
+                    coroutines.append(self.spawn_design_agent(description, task_context))
+                else:
+                    logger.warning(f"⚠️ Unknown agent type: {agent_type}")
+                    coroutines.append(self._dummy_agent(description))
+
+                task_ids.append(task_id)
+
+            # Execute all tasks in this group IN PARALLEL
+            group_results = await asyncio.gather(*coroutines, return_exceptions=True)
+
+            # Store results
+            for i, task_id in enumerate(task_ids):
+                result = group_results[i]
+                if isinstance(result, Exception):
+                    logger.error(f"❌ Task {task_id} failed: {result}")
+                    results[task_id] = f"Error: {str(result)}"
+                else:
+                    results[task_id] = result
+                    logger.info(f"✅ Task {task_id} completed")
+
+        logger.info(f"🎉 All {len(sub_tasks)} sub-tasks completed!")
+
+        return results
+
+    async def _synthesize_results(
+        self,
+        original_request: str,
+        plan: Dict[str, Any],
+        results: Dict[str, Any]
+    ) -> str:
+        """
+        Synthesize multiple agent results into coherent final response
+
+        Uses LLM to:
+        - Combine all sub-task results
+        - Create cohesive narrative
+        - Highlight key accomplishments
+        - Present actionable next steps
+        """
+        logger.info("🔮 Synthesizing results from all agents...")
+
+        # Build results summary
+        results_summary = []
+        for task in plan.get('sub_tasks', []):
+            task_id = task['id']
+            task_desc = task['description']
+            task_result = results.get(task_id, 'No result')
+
+            results_summary.append(f"**{task_desc}**\n{task_result}\n")
+
+        synthesis_prompt = f"""Synthesize these multi-agent results into a cohesive response.
+
+Original request: "{original_request}"
+
+Sub-task results:
+{chr(10).join(results_summary)}
+
+Create a professional, cohesive summary that:
+1. Confirms all tasks completed
+2. Highlights key accomplishments
+3. Presents results in logical order
+4. Includes actionable next steps if relevant
+5. Maintains Sarah's friendly, enthusiastic tone
+
+Be concise but complete. Use emojis naturally: ✨ 🎯 💡 🚀"""
+
+        try:
+            response = await asyncio.to_thread(
+                self.client.messages.create,
+                model="claude-3-5-haiku-20241022",  # Fast model for synthesis
+                max_tokens=2000,
+                messages=[{
+                    "role": "user",
+                    "content": synthesis_prompt
+                }]
+            )
+
+            synthesis = response.content[0].text if response.content else "Tasks completed!"
+
+            logger.info("✅ Results synthesized")
+
+            return synthesis
+
+        except Exception as e:
+            logger.error(f"❌ Result synthesis failed: {e}")
+            # Fallback to simple concatenation
+            return "\n\n".join(results_summary)
+
+    async def _dummy_agent(self, request: str) -> str:
+        """Fallback dummy agent for unknown types"""
+        return f"Task noted: {request}"
 
     async def spawn_video_agent(self, request: str, context: Optional[Dict] = None) -> str:
         """
