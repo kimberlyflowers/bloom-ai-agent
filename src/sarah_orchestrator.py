@@ -61,7 +61,11 @@ class SarahOrchestrator:
                 "create video", "make video", "generate video", "produce video",
                 "ugc video", "video content", "record video", "film video",
                 "video of yourself", "talking video", "avatar video",
-                "heygenai", "comfyui video", "capcut"
+                "heygenai", "comfyui video", "capcut",
+                # IMAGE GENERATION (uses same video agent tools)
+                "generate image", "create image", "make image", "generate picture",
+                "create picture", "ai image", "generate character", "create character",
+                "photo of", "picture of", "image of", "ai art", "generate art"
             ],
             "research": [
                 "research", "analyze", "investigate", "find out about",
