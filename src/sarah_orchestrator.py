@@ -21,6 +21,14 @@ import logging
 from typing import Dict, List, Optional, Any
 import os
 
+# Import tool registry for agent capabilities
+from src.capabilities.registry import (
+    get_video_creation_tools,
+    get_research_agent_tools,
+    get_content_agent_tools,
+    execute_tool
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -542,6 +550,130 @@ Be concise but complete. Use emojis naturally: ✨ 🎯 💡 🚀"""
         """Fallback dummy agent for unknown types"""
         return f"Task noted: {request}"
 
+    async def _execute_agent_with_tools(
+        self,
+        model: str,
+        system_prompt: str,
+        initial_message: str,
+        tools: List[Dict[str, Any]],
+        max_tokens: int = 8000,
+        agent_name: str = "Agent"
+    ) -> str:
+        """
+        Execute agent conversation with tool use support
+
+        Handles the full tool use loop:
+        1. Send message to agent
+        2. If agent uses tools, execute them
+        3. Send tool results back to agent
+        4. Repeat until agent returns final text response
+
+        Args:
+            model: Claude model to use
+            system_prompt: System prompt for the agent
+            initial_message: Initial user message
+            tools: List of tool definitions
+            max_tokens: Max tokens for responses
+            agent_name: Agent name for logging
+
+        Returns:
+            Final text response from agent
+        """
+        try:
+            messages = [{
+                "role": "user",
+                "content": initial_message
+            }]
+
+            # Tool use loop - keep going until agent stops using tools
+            iteration = 0
+            max_iterations = 20  # Prevent infinite loops
+
+            while iteration < max_iterations:
+                iteration += 1
+
+                # Call Claude API
+                response = await asyncio.to_thread(
+                    self.client.messages.create,
+                    model=model,
+                    max_tokens=max_tokens,
+                    system=system_prompt,
+                    tools=tools,
+                    messages=messages
+                )
+
+                logger.info(f"   🔄 {agent_name} iteration {iteration} - {response.usage.input_tokens} in, {response.usage.output_tokens} out")
+
+                # Check stop reason
+                if response.stop_reason == "end_turn":
+                    # Agent finished - extract final text
+                    final_text = ""
+                    for block in response.content:
+                        if block.type == "text":
+                            final_text += block.text
+
+                    logger.info(f"✅ {agent_name} completed after {iteration} iterations")
+                    return final_text if final_text else "Task completed successfully"
+
+                elif response.stop_reason == "tool_use":
+                    # Agent wants to use tools - execute them
+                    logger.info(f"   🔧 {agent_name} using tools...")
+
+                    # Add assistant message to conversation
+                    messages.append({
+                        "role": "assistant",
+                        "content": response.content
+                    })
+
+                    # Execute each tool call
+                    tool_results = []
+                    for block in response.content:
+                        if block.type == "tool_use":
+                            tool_name = block.name
+                            tool_input = block.input
+                            tool_use_id = block.id
+
+                            logger.info(f"      🛠️  Executing: {tool_name}")
+
+                            # Execute tool
+                            try:
+                                result = await execute_tool(tool_name, tool_input)
+                                tool_results.append({
+                                    "type": "tool_result",
+                                    "tool_use_id": tool_use_id,
+                                    "content": str(result)
+                                })
+                                logger.info(f"      ✅ {tool_name} succeeded")
+                            except Exception as e:
+                                logger.error(f"      ❌ {tool_name} failed: {e}")
+                                tool_results.append({
+                                    "type": "tool_result",
+                                    "tool_use_id": tool_use_id,
+                                    "content": f"Error: {str(e)}",
+                                    "is_error": True
+                                })
+
+                    # Add tool results to conversation
+                    messages.append({
+                        "role": "user",
+                        "content": tool_results
+                    })
+
+                    # Continue loop to get agent's next response
+
+                else:
+                    # Unexpected stop reason
+                    logger.warning(f"⚠️ Unexpected stop reason: {response.stop_reason}")
+                    return f"Agent stopped unexpectedly: {response.stop_reason}"
+
+            # Max iterations reached
+            logger.warning(f"⚠️ {agent_name} reached max iterations ({max_iterations})")
+            return f"Task incomplete - reached maximum iterations"
+
+        except Exception as e:
+            logger.error(f"❌ {agent_name} execution failed: {e}")
+            return f"Error: {str(e)}"
+
     async def spawn_video_agent(self, request: str, context: Optional[Dict] = None) -> str:
         """
         Spawn dedicated video creation agent
@@ -564,65 +696,78 @@ Be concise but complete. Use emojis naturally: ✨ 🎯 💡 🚀"""
 
 **Your Mission:** Create professional UGC (user-generated content) videos autonomously.
 
-**Available Tools & Capabilities:**
-- ComfyUI: Generate consistent character images using LoRA models
-- HeyGenAI: Create talking avatar videos with realistic speech
-- CapCut: Edit and enhance videos professionally
-- ElevenLabs: Generate natural-sounding voiceovers
-- Sarah's face/identity: Available for avatar generation
+**Your Capabilities:**
+You have access to powerful tools for complete video production:
+
+PERSONA TOOLS:
+- persona_database_query: Get persona data, reference images, voice ID
+- load_persona_assets: Load all persona assets at once
+
+SCRIPTWRITING TOOLS:
+- write_video_script: Generate complete UGC-style scripts
+- create_hook: Create attention-grabbing hooks (first 3 seconds)
+
+AVATAR GENERATION TOOLS:
+- nanobanna_generate_character_image: Generate photo-realistic character images
+- nanobanna_batch_generate_poses: Generate 3 poses for 45-second videos
+- elevenlabs_generate_voice: Text-to-speech with natural voices
+- seaweed_image_to_video: Convert image + audio to talking head video
+
+VIDEO EDITING TOOLS:
+- moviepy_composite_video: Combine clips into complete video
+- whisper_generate_captions: Auto-generate captions from audio
+- moviepy_add_hardcoded_captions: Burn captions into video
+- ffmpeg_optimize_for_tiktok: Optimize for TikTok (1080x1920)
+- ffmpeg_add_background_music: Add background music
+
+PUBLISHING TOOLS:
+- tiktok_api_upload_video: Upload to TikTok
+- tiktok_generate_ugc_caption: Generate TikTok captions with hashtags
+- update_persona_content_library: Track created videos
 
 **Your Process:**
-1. Analyze video requirements (duration, style, message, product)
-2. Plan the video structure (scenes, transitions, timing)
-3. Generate or retrieve necessary visual assets
-4. Create video using appropriate tools:
-   - For talking videos: Use HeyGenAI with Sarah's avatar
-   - For image sequences: Use ComfyUI + CapCut
-   - For voiceover: Use ElevenLabs with Sarah's voice
-5. Add professional touches (captions, transitions, music)
-6. Return final video URL, description, and metadata
+1. Load persona assets (reference images, voice ID)
+2. Write engaging UGC script
+3. Generate voice audio from script
+4. Generate character image(s) using persona reference images
+5. Create talking video from image + audio
+6. Add captions and optimize for platform
+7. Upload to platform
+8. Update content library
 
 **Guidelines:**
-- Be creative but professional
-- Match brand voice and style
-- Optimize for target platform (TikTok, Instagram, etc.)
-- Include accessibility features (captions)
-- Work autonomously - make decisions without asking
+- Work autonomously - use tools to actually create content
+- Be creative but stay on-brand
+- Optimize for target platform
+- Include captions for accessibility
+- Track all created content
 
 **Output Format:**
-Return a detailed summary including:
-- Video URL (when created)
-- Duration and format
+Return a summary with:
+- Video URL/path
+- Duration and platform
 - Tools used
-- Creative decisions made
-- Any recommendations for posting
+- Performance predictions
+- Posting recommendations
 
-Work thoroughly. You have Sarah's full trust to create excellent content."""
+Use tools proactively. You have full authority to create content."""
 
-        try:
-            # Spawn NEW Claude instance (fresh context!)
-            response = await asyncio.to_thread(
-                self.client.messages.create,
-                model="claude-sonnet-4-5-20250929",
-                max_tokens=8000,
-                system=system_prompt,
-                messages=[{
-                    "role": "user",
-                    "content": f"{request}\n\nContext: {context if context else 'No additional context'}"
-                }]
-            )
+        # Get video creation tools
+        tools = get_video_creation_tools()
 
-            # Extract text content
-            result = response.content[0].text if response.content else "No response"
+        # Execute agent with tools
+        message = f"{request}\n\nContext: {context if context else 'No additional context'}"
 
-            logger.info(f"✅ VideoCreationAgent completed")
-            logger.info(f"   📊 Tokens used: {response.usage.input_tokens} in, {response.usage.output_tokens} out")
+        result = await self._execute_agent_with_tools(
+            model="claude-sonnet-4-5-20250929",
+            system_prompt=system_prompt,
+            initial_message=message,
+            tools=tools,
+            max_tokens=8000,
+            agent_name="VideoCreationAgent"
+        )
 
-            return result
-
-        except Exception as e:
-            logger.error(f"❌ VideoCreationAgent failed: {e}")
-            return f"Error creating video: {str(e)}"
+        return result
 
     async def spawn_research_agent(self, request: str, context: Optional[Dict] = None) -> str:
         """
@@ -639,63 +784,65 @@ Work thoroughly. You have Sarah's full trust to create excellent content."""
 
 **Your Mission:** Conduct thorough research and deliver actionable insights.
 
-**Available Capabilities:**
-- Web search and browsing
-- Competitive analysis
-- Trend identification
-- Market research
-- Best practices analysis
-- Content analysis
+**Your Capabilities:**
+You have access to powerful research tools:
+
+RESEARCH TOOLS:
+- trending_topics_research: Research trending topics in any niche
+  * Analyzes what's gaining traction on TikTok/YouTube/Instagram
+  * Returns trend scores, volume estimates, content angles
+  * Identifies emerging opportunities
+
+- competitor_analysis: Analyze top-performing competitor content
+  * Studies content themes, posting frequency, formats
+  * Identifies engagement patterns and winning strategies
+  * Finds content gaps and opportunities
+
+- generate_video_ideas: Generate 10+ viral video ideas
+  * Creates ideas based on trends and topics
+  * Includes hooks, hashtags, performance estimates
+  * Tailored for specific platforms
 
 **Your Process:**
-1. Understand research objectives clearly
-2. Conduct comprehensive search across multiple sources
-3. Analyze findings objectively
-4. Identify patterns and trends
-5. Synthesize key insights
-6. Deliver actionable recommendations
+1. Use research tools to gather data
+2. Analyze findings objectively
+3. Identify patterns and opportunities
+4. Synthesize actionable insights
+5. Generate specific recommendations
 
 **Guidelines:**
-- Be thorough but concise
-- Cite sources when possible
-- Look for recent information (2024-2025)
+- Use tools to conduct actual research
+- Focus on recent trends (2024-2025)
+- Provide data-driven insights
 - Identify both opportunities and risks
-- Focus on actionable insights
-- Present findings clearly
+- Generate actionable recommendations
 
 **Output Format:**
 Provide:
 - Executive summary (2-3 sentences)
-- Key findings (bullet points)
-- Supporting data/examples
-- Recommendations
-- Sources cited
+- Key findings from research tools
+- Data and examples
+- Specific recommendations
+- Generated video ideas (when relevant)
 
-Work autonomously and deliver comprehensive results."""
+Work autonomously using tools."""
 
-        try:
-            # Spawn NEW Claude instance (Haiku - cheaper for research!)
-            response = await asyncio.to_thread(
-                self.client.messages.create,
-                model="claude-3-5-haiku-20241022",  # Cheaper model for research
-                max_tokens=4000,
-                system=system_prompt,
-                messages=[{
-                    "role": "user",
-                    "content": f"{request}\n\nContext: {context if context else 'No additional context'}"
-                }]
-            )
+        # Get research tools
+        tools = get_research_agent_tools()
 
-            result = response.content[0].text if response.content else "No response"
+        # Execute agent with tools
+        message = f"{request}\n\nContext: {context if context else 'No additional context'}"
 
-            logger.info(f"✅ ResearchAgent completed")
-            logger.info(f"   📊 Tokens used: {response.usage.input_tokens} in, {response.usage.output_tokens} out")
+        result = await self._execute_agent_with_tools(
+            model="claude-3-5-haiku-20241022",  # Cheaper model for research
+            system_prompt=system_prompt,
+            initial_message=message,
+            tools=tools,
+            max_tokens=4000,
+            agent_name="ResearchAgent"
+        )
 
-            return result
-
-        except Exception as e:
-            logger.error(f"❌ ResearchAgent failed: {e}")
-            return f"Error conducting research: {str(e)}"
+        return result
 
     async def spawn_content_agent(self, request: str, context: Optional[Dict] = None) -> str:
         """
@@ -709,74 +856,64 @@ Work autonomously and deliver comprehensive results."""
         """
         logger.info("📱 Spawning ContentPostingAgent...")
 
-        system_prompt = """You are ContentPostingAgent - Sarah's social media specialist.
+        system_prompt = """You are ContentPostingAgent - Sarah's social media publishing specialist.
 
-**Your Mission:** Create and manage social media content professionally.
+**Your Mission:** Publish and manage content across social platforms.
 
-**Available Platforms:**
-- Instagram (posts, stories, reels)
-- TikTok (videos, trends)
-- Twitter/X (tweets, threads)
-- Facebook (posts, stories)
-- LinkedIn (professional content)
+**Your Capabilities:**
+You have access to powerful publishing tools:
+
+PUBLISHING TOOLS:
+- tiktok_api_upload_video: Upload videos to TikTok
+  * Handles video file upload
+  * Accepts caption and privacy settings
+  * Returns video URL and post ID
+
+- instagram_api_upload_reel: Upload Reels to Instagram
+  * Publishes vertical videos
+  * Adds captions and hashtags
+  * Returns post URL and media ID
 
 **Your Process:**
-1. Understand content requirements and target platform
-2. Create optimized content for each platform:
-   - Instagram: Visual-first, hashtags, captions
-   - TikTok: Trend-aware, music, hooks
-   - Twitter: Concise, engaging, threaded
-   - LinkedIn: Professional, value-driven
-3. Optimize for engagement:
-   - Best posting times
-   - Hashtag strategy
-   - Call-to-action
-   - Accessibility features
-4. Schedule or post immediately
-5. Track performance metrics
+1. Understand what needs to be published
+2. Use appropriate publishing tool for platform
+3. Include optimized captions with hashtags
+4. Verify successful upload
+5. Return post URLs and metadata
 
 **Guidelines:**
-- Be platform-aware (different voice for each)
-- Optimize for algorithms
-- Include accessibility (alt text, captions)
-- Use trending topics when relevant
-- Maintain brand consistency
-- Drive engagement
+- Use tools to actually publish content
+- Ensure videos meet platform requirements
+- Optimize captions for each platform
+- Include relevant hashtags
+- Track all published content
 
 **Output Format:**
 Provide:
-- Content ready to post
-- Platform-specific optimizations
-- Recommended posting time
-- Hashtags and tags
-- Expected engagement insights
-- Any captions/descriptions needed
+- Published video URLs
+- Platform and post IDs
+- Caption used
+- Engagement predictions
+- Next steps
 
-Work autonomously and create scroll-stopping content."""
+Work autonomously using tools to publish content."""
 
-        try:
-            # Spawn NEW Claude instance
-            response = await asyncio.to_thread(
-                self.client.messages.create,
-                model="claude-sonnet-4-5-20250929",
-                max_tokens=4000,
-                system=system_prompt,
-                messages=[{
-                    "role": "user",
-                    "content": f"{request}\n\nContext: {context if context else 'No additional context'}"
-                }]
-            )
+        # Get content agent tools
+        tools = get_content_agent_tools()
 
-            result = response.content[0].text if response.content else "No response"
+        # Execute agent with tools
+        message = f"{request}\n\nContext: {context if context else 'No additional context'}"
 
-            logger.info(f"✅ ContentPostingAgent completed")
-            logger.info(f"   📊 Tokens used: {response.usage.input_tokens} in, {response.usage.output_tokens} out")
+        result = await self._execute_agent_with_tools(
+            model="claude-sonnet-4-5-20250929",
+            system_prompt=system_prompt,
+            initial_message=message,
+            tools=tools,
+            max_tokens=4000,
+            agent_name="ContentPostingAgent"
+        )
 
-            return result
-
-        except Exception as e:
-            logger.error(f"❌ ContentPostingAgent failed: {e}")
-            return f"Error creating content: {str(e)}"
+        return result
 
     async def spawn_design_agent(self, request: str, context: Optional[Dict] = None) -> str:
         """
