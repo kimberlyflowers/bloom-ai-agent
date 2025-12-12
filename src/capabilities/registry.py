@@ -311,6 +311,7 @@ def get_research_agent_tools() -> List[Dict[str, Any]]:
 def get_content_agent_tools() -> List[Dict[str, Any]]:
     """Tools for ContentPostingAgent"""
     return [
+        # PUBLISHING TOOLS
         {
             "name": "tiktok_api_upload_video",
             "description": "Upload video to TikTok",
@@ -336,6 +337,47 @@ def get_content_agent_tools() -> List[Dict[str, Any]]:
                     "instagram_account_id": {"type": "string"}
                 },
                 "required": ["video_path", "caption", "access_token", "instagram_account_id"]
+            }
+        },
+        # CAPTION GENERATION TOOLS
+        {
+            "name": "tiktok_generate_ugc_caption",
+            "description": "Generate TikTok-style caption with hashtags",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "video_topic": {"type": "string"},
+                    "product_name": {"type": "string"}
+                },
+                "required": ["video_topic"]
+            }
+        },
+        # CONTENT TRACKING TOOLS
+        {
+            "name": "update_persona_content_library",
+            "description": "Save video metadata to persona's content library",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "persona_id": {"type": "string"},
+                    "video_url": {"type": "string"},
+                    "title": {"type": "string"},
+                    "platform": {"type": "string"}
+                },
+                "required": ["persona_id", "video_url"]
+            }
+        },
+        # PERSONA TOOLS (for loading persona data)
+        {
+            "name": "persona_database_query",
+            "description": "Query persona database for details",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "persona_id": {"type": "string"},
+                    "query_type": {"type": "string", "enum": ["basic_info", "voice_id", "reference_images", "all"]}
+                },
+                "required": ["persona_id"]
             }
         }
     ]
