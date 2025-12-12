@@ -29,6 +29,7 @@ from src.foundation.realtime_response_streamer import RealtimeResponseStreamer
 from src.capability_registry import CapabilityRegistry
 from src.intelligent_selector import IntelligentSelector
 from src.platform_aware_clicking import IntelligentClickRouter, YouTubeNavigator
+from src.sarah_orchestrator import get_orchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,9 @@ class SarahChatServer:
         self.identity_manager = identity_manager
         self.browser = browser
 
+        # Store API key for later use
+        self.anthropic_api_key = anthropic_api_key
+
         # Initialize Anthropic client
         self.anthropic = Anthropic(api_key=anthropic_api_key)
 
@@ -87,6 +91,12 @@ class SarahChatServer:
         # Replaces hardcoded routing with LLM-powered capability selection
         # Will be initialized async in start_server()
         self.intelligent_selector: Optional[IntelligentSelector] = None
+
+        # Initialize Sarah Orchestrator - MULTI-AGENT ARCHITECTURE
+        # Routes complex tasks to specialized agents (like Claude Code's Task tool)
+        # Uses pattern matching for fast routing without LLM overhead
+        self.orchestrator = get_orchestrator(anthropic_api_key)
+        logger.info("🤖 Sarah Orchestrator initialized - multi-agent architecture active")
 
         # Track current activity for skill extraction
         self.current_action = None
@@ -555,6 +565,54 @@ Important:
 
                 # 🚀 NEW: Immediate acknowledgment (eliminates silent waiting)
                 await self._stream_immediate_response("Got it! Let me work on that...")
+
+                # 🤖 ORCHESTRATOR ROUTING - Check if specialized agent should handle this
+                # This is Sarah's multi-agent architecture (like Claude Code's Task tool)
+                # Uses pattern matching for instant routing to specialized agents
+                try:
+                    orchestrator_result = await self.orchestrator.process_request(
+                        user_message=content,
+                        context={
+                            'browser': self.browser,
+                            'current_url': self.browser.page.url if self.browser and self.browser.page else "unknown",
+                            'user_image': user_image  # Pass uploaded image if available
+                        }
+                    )
+
+                    if orchestrator_result['type'] == 'agent_result':
+                        # Specialized agent handled the request!
+                        logger.info(f"✅ Orchestrator routed to: {orchestrator_result.get('agent_type', 'unknown')}")
+
+                        # Add to conversation history
+                        user_msg = self._format_message_for_api('user', content, user_image)
+                        self.conversation_history.append(user_msg)
+
+                        agent_response = orchestrator_result['result']
+                        self.conversation_history.append({
+                            'role': 'assistant',
+                            'content': agent_response
+                        })
+
+                        # Save to memory
+                        self._save_message_to_memory('user', content)
+                        self._save_message_to_memory('assistant', agent_response)
+
+                        # Send response to user
+                        await self.send_message(websocket, {
+                            'type': 'sarah_message',
+                            'message': agent_response
+                        })
+
+                        logger.info(f"🤖 Orchestrator agent completed: {agent_response[:100]}...")
+                        return  # Done - agent handled everything
+
+                    elif orchestrator_result['type'] == 'simple':
+                        # Simple task - fall through to existing chat_server logic
+                        logger.info("💬 Orchestrator: Simple task, using standard chat flow")
+
+                except Exception as orchestrator_error:
+                    # Orchestrator failed - fall through to legacy systems
+                    logger.warning(f"⚠️ Orchestrator error (non-blocking): {orchestrator_error}")
 
                 # 🧠 AUTONOMOUS EXECUTOR DETECTION - Check if user wants autonomous mission execution
                 content_lower = content.lower()
