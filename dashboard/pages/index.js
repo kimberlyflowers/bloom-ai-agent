@@ -311,18 +311,27 @@ export default function Dashboard() {
         </form>
       </div>
 
-      {/* Activity */}
+      {/* Active Tasks - Dynamically spawned agents currently working */}
       <div className="card">
-        <h2>Current Activity</h2>
-        <div className="activity">
-          <div className="activity-icon">😴</div>
-          <div>
-            <p className="activity-text">Sleeping for 1 hour...</p>
-            <p className="activity-time">
-              Next check-in at {new Date(Date.now() + 3600000).toLocaleTimeString()}
-            </p>
+        <h2>🚀 Active Tasks</h2>
+        <div className="tasks-empty">
+          <div className="tasks-empty-icon">🤖</div>
+          <p className="tasks-empty-text">No agents currently running</p>
+          <p className="tasks-empty-hint">Agents are spawned dynamically when Sarah needs help with complex tasks</p>
+        </div>
+        {/* Task items will appear here when agents are spawned:
+        <div className="task-item">
+          <div className="task-agent-icon">✂️</div>
+          <div className="task-details">
+            <p className="task-name">Video Editing Agent</p>
+            <p className="task-description">Editing TikTok video #1234</p>
+            <div className="task-progress-bar">
+              <div className="task-progress-fill" style={{width: '65%'}}></div>
+            </div>
+            <p className="task-progress-text">65% complete</p>
           </div>
         </div>
+        */}
       </div>
 
       {/* Identity */}
@@ -344,27 +353,29 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Daily Routine */}
+      {/* Approval Queue - Content created by agents waiting for review */}
       <div className="card">
-        <h2>Daily Routine</h2>
-        <div className="routine">
-          <div className="routine-item complete">
-            <span>📧</span> Check email
-            <span className="routine-check">✓</span>
+        <h2>📋 Approval Queue</h2>
+        <div className="approval-empty">
+          <div className="approval-empty-icon">✅</div>
+          <p className="approval-empty-text">No content waiting for approval</p>
+          <p className="approval-empty-hint">Videos, scripts, and posts created by Sarah will appear here for your review</p>
+        </div>
+        {/* Approval items will appear here when agents create content:
+        <div className="approval-item">
+          <div className="approval-header">
+            <span className="approval-type">🎥 TikTok Video</span>
+            <span className="approval-status pending">Pending Review</span>
           </div>
-          <div className="routine-item complete">
-            <span>💝</span> Manage relationships
-            <span className="routine-check">✓</span>
-          </div>
-          <div className="routine-item complete">
-            <span>✅</span> Update metrics
-            <span className="routine-check">✓</span>
-          </div>
-          <div className="routine-item active">
-            <span>😴</span> Sleep 1 hour
-            <span className="routine-check">⋯</span>
+          <p className="approval-title">Product Launch Video - Draft 1</p>
+          <p className="approval-description">30-second video showcasing new features</p>
+          <div className="approval-actions">
+            <button className="approval-btn approve">✓ Approve</button>
+            <button className="approval-btn reject">✗ Reject</button>
+            <button className="approval-btn view">👁 Preview</button>
           </div>
         </div>
+        */}
       </div>
 
       <div className="footer">
@@ -649,6 +660,139 @@ export default function Dashboard() {
           text-align: center;
           color: #6b7280;
           margin-top: 2rem;
+        }
+        .tasks-empty, .approval-empty {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 2rem;
+          gap: 0.75rem;
+          color: #9ca3af;
+        }
+        .tasks-empty-icon, .approval-empty-icon {
+          font-size: 3.5rem;
+          opacity: 0.5;
+        }
+        .tasks-empty-text, .approval-empty-text {
+          margin: 0;
+          font-size: 1.125rem;
+          font-weight: 600;
+          color: #6b7280;
+        }
+        .tasks-empty-hint, .approval-empty-hint {
+          margin: 0;
+          font-size: 0.875rem;
+          color: #9ca3af;
+          text-align: center;
+          max-width: 400px;
+        }
+        .task-item, .approval-item {
+          display: flex;
+          gap: 1rem;
+          padding: 1rem;
+          background: #f9fafb;
+          border-radius: 8px;
+          border-left: 4px solid #8b5cf6;
+          margin-bottom: 0.75rem;
+        }
+        .task-agent-icon {
+          font-size: 2rem;
+          flex-shrink: 0;
+        }
+        .task-details {
+          flex: 1;
+        }
+        .task-name {
+          font-weight: 600;
+          color: #111827;
+          margin: 0 0 0.25rem 0;
+        }
+        .task-description {
+          color: #6b7280;
+          font-size: 0.875rem;
+          margin: 0 0 0.5rem 0;
+        }
+        .task-progress-bar {
+          width: 100%;
+          height: 8px;
+          background: #e5e7eb;
+          border-radius: 4px;
+          overflow: hidden;
+          margin-bottom: 0.25rem;
+        }
+        .task-progress-fill {
+          height: 100%;
+          background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+          transition: width 0.3s ease;
+        }
+        .task-progress-text {
+          font-size: 0.75rem;
+          color: #6b7280;
+          margin: 0;
+        }
+        .approval-item {
+          flex-direction: column;
+          border-left-color: #ec4899;
+        }
+        .approval-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 0.5rem;
+        }
+        .approval-type {
+          font-weight: 600;
+          color: #6b7280;
+          font-size: 0.875rem;
+        }
+        .approval-status {
+          padding: 0.25rem 0.75rem;
+          border-radius: 9999px;
+          font-size: 0.75rem;
+          font-weight: 600;
+        }
+        .approval-status.pending {
+          background: #fef3c7;
+          color: #92400e;
+        }
+        .approval-title {
+          font-weight: 600;
+          color: #111827;
+          margin: 0 0 0.25rem 0;
+        }
+        .approval-description {
+          color: #6b7280;
+          font-size: 0.875rem;
+          margin: 0 0 0.75rem 0;
+        }
+        .approval-actions {
+          display: flex;
+          gap: 0.5rem;
+        }
+        .approval-btn {
+          padding: 0.5rem 1rem;
+          border: none;
+          border-radius: 6px;
+          font-size: 0.875rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: opacity 0.2s;
+        }
+        .approval-btn:hover {
+          opacity: 0.9;
+        }
+        .approval-btn.approve {
+          background: #dcfce7;
+          color: #166534;
+        }
+        .approval-btn.reject {
+          background: #fee2e2;
+          color: #991b1b;
+        }
+        .approval-btn.view {
+          background: #eff6ff;
+          color: #1e40af;
         }
         .chat-card {
           background: white;
