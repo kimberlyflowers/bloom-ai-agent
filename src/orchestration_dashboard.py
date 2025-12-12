@@ -162,6 +162,11 @@ class OrchestrationDashboard:
         self.agents_needing_attention: List[str] = []
         self.critical_alerts: List[Dict] = []
 
+        # Content approval system (NEW for command center!)
+        self.pending_approvals: Dict[str, Dict] = {}  # content_id -> content data
+        self.approved_content: Dict[str, Dict] = {}   # content_id -> content data
+        self.rejected_content: Dict[str, Dict] = {}   # content_id -> content data
+
     def register_agent(self, agent_id: str, agent_name: str) -> AgentMetrics:
         """Register new agent for tracking"""
         metrics = AgentMetrics(
@@ -173,6 +178,137 @@ class OrchestrationDashboard:
         print(f"✅ Registered agent for orchestration: {agent_name}")
 
         return metrics
+
+    # ========================================================================
+    # CONTENT APPROVAL SYSTEM (NEW for command center!)
+    # ========================================================================
+
+    def submit_content_for_approval(self, content: Dict) -> str:
+        """
+        Submit content for approval (called by agents)
+
+        Args:
+            content: Dict with:
+                - agent_id: Agent who created it
+                - content_type: "video", "image", "post", etc.
+                - title: Content title
+                - video_path: Path to video file (if video)
+                - thumbnail_path: Path to thumbnail (if video)
+                - script: Script text (if video)
+                - caption: Caption text
+                - platform: Target platform
+                - ... other metadata
+
+        Returns:
+            content_id: Unique ID for this submission
+        """
+        import secrets
+        content_id = f"content_{secrets.token_urlsafe(8)}"
+
+        # Add metadata
+        content["content_id"] = content_id
+        content["status"] = "pending"
+        content["submitted_at"] = datetime.utcnow().isoformat()
+
+        # Add to pending approvals
+        self.pending_approvals[content_id] = content
+
+        print(f"📥 Content submitted for approval: {content.get('title', 'untitled')} (ID: {content_id})")
+
+        return content_id
+
+    def get_pending_approvals(self) -> List[Dict]:
+        """Get all pending approvals"""
+        return list(self.pending_approvals.values())
+
+    def get_all_agents_data(self) -> Dict[str, Dict]:
+        """Get all agent data for dashboard"""
+        agents_data = {}
+
+        for agent_id, metrics in self.agent_metrics.items():
+            # Get current task (if any)
+            current_task = "Idle"
+            if agent_id in self.active_agents:
+                current_task = "Working"
+
+            # Count pending approvals for this agent
+            pending_count = len([
+                c for c in self.pending_approvals.values()
+                if c.get("agent_id") == agent_id
+            ])
+
+            agents_data[agent_id] = {
+                "agent_id": agent_id,
+                "name": metrics.agent_name,
+                "status": "active" if agent_id in self.active_agents else "idle",
+                "trust_score": metrics.trust_score,
+                "current_task": current_task,
+                "pending_approvals": pending_count,
+                "total_interactions": metrics.total_interactions,
+                "revenue_generated": metrics.revenue_generated,
+                "friend_test_pass_rate": metrics.friend_test_pass_rate
+            }
+
+        return agents_data
+
+    async def approve_content(self, content_id: str, feedback: str = "") -> bool:
+        """
+        Approve content
+
+        Args:
+            content_id: Content ID
+            feedback: Optional feedback/notes
+
+        Returns:
+            True if approved, False if not found
+        """
+        if content_id not in self.pending_approvals:
+            print(f"⚠️ Content not found: {content_id}")
+            return False
+
+        # Move from pending to approved
+        content = self.pending_approvals.pop(content_id)
+        content["status"] = "approved"
+        content["approved_at"] = datetime.utcnow().isoformat()
+        content["feedback"] = feedback
+
+        self.approved_content[content_id] = content
+
+        print(f"✅ Content approved: {content.get('title', 'untitled')}")
+
+        return True
+
+    async def reject_content(self, content_id: str, feedback: str = "Please make changes") -> bool:
+        """
+        Reject content with feedback
+
+        Args:
+            content_id: Content ID
+            feedback: Feedback for agent
+
+        Returns:
+            True if rejected, False if not found
+        """
+        if content_id not in self.pending_approvals:
+            print(f"⚠️ Content not found: {content_id}")
+            return False
+
+        # Move from pending to rejected
+        content = self.pending_approvals.pop(content_id)
+        content["status"] = "rejected"
+        content["rejected_at"] = datetime.utcnow().isoformat()
+        content["feedback"] = feedback
+
+        self.rejected_content[content_id] = content
+
+        print(f"❌ Content rejected: {content.get('title', 'untitled')}")
+        print(f"   Feedback: {feedback}")
+
+        return True
+
+    # ========================================================================
+    # END CONTENT APPROVAL SYSTEM
+    # ========================================================================
 
     def update_trust_metrics(
         self,

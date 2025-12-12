@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BLOOM AI Agent - Dashboard</title>
+    <title>BLOOM Command Center</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -38,72 +38,132 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
 
-        // Mock Data
-        const mockAgents = [
-            { id: '001', name: 'Social Media Pro', status: 'running', roi: 3.5, revenue: 15000, cost: 4300, actions: 245 },
-            { id: '002', name: 'Content Wizard', status: 'running', roi: 2.8, revenue: 8400, cost: 3000, actions: 189 },
-            { id: '003', name: 'Email Ninja', status: 'paused', roi: 1.9, revenue: 3800, cost: 2000, actions: 92 }
-        ];
-
-        const mockCampaigns = [
-            { id: '001', name: 'Black Friday Sale', phase: 'conversion', progress: 75, roi: 4.2, tasks: '15/20' },
-            { id: '002', name: 'Product Launch', phase: 'awareness', progress: 45, roi: 2.1, tasks: '9/20' }
-        ];
-
-        const mockInsights = [
-            {
-                id: '001',
-                type: 'opportunity',
-                priority: 'critical',
-                title: '🚀 SCALE OPPORTUNITY: Agent 001',
-                summary: 'ROI: 3.5x with upward trend. Ready to scale!',
-                recommendations: ['Increase budget by 2x', 'Clone agent DNA', 'Expand audience']
-            },
-            {
-                id: '002',
-                type: 'prediction',
-                priority: 'high',
-                title: '📈 Growth Prediction',
-                summary: 'Agent 002 predicted to reach 3.2x ROI in 7 days',
-                recommendations: ['Monitor closely', 'Prepare scaling plan']
-            }
-        ];
-
-        function Dashboard() {
-            const [agents, setAgents] = useState(mockAgents);
-            const [campaigns, setCampaigns] = useState(mockCampaigns);
-            const [insights, setInsights] = useState(mockInsights);
+        function CommandCenter() {
+            const [view, setView] = useState('agents'); // 'agents' or 'approvals'
+            const [agents, setAgents] = useState({});
+            const [pending, setPending] = useState([]);
+            const [connected, setConnected] = useState(false);
             const [liveUpdate, setLiveUpdate] = useState(null);
+            const wsRef = useRef(null);
 
-            // Simulate live updates
+            // Connect to command center WebSocket
             useEffect(() => {
-                const interval = setInterval(() => {
-                    const updates = [
-                        'Agent 001 completed action #246',
-                        'Campaign ROI increased to 4.3x',
-                        'New insight generated',
-                        'Budget alert: 80% consumed',
-                        'Agent 002 running optimization'
-                    ];
-                    setLiveUpdate(updates[Math.floor(Math.random() * updates.length)]);
-                }, 3000);
+                // Determine WebSocket URL (Railway or localhost)
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsHost = window.location.host;
+                const wsUrl = `${wsProtocol}//${wsHost}/command`;
 
-                return () => clearInterval(interval);
+                console.log('Connecting to command center:', wsUrl);
+
+                const ws = new WebSocket(wsUrl);
+                wsRef.current = ws;
+
+                ws.onopen = () => {
+                    console.log('✅ Connected to command center');
+                    setConnected(true);
+                    setLiveUpdate('Connected to command center');
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log('📥 Command center message:', data.type);
+
+                        if (data.type === 'initial_data') {
+                            setAgents(data.agents || {});
+                            setPending(data.pending_approvals || []);
+                            setLiveUpdate('Received initial data');
+                        } else if (data.type === 'agent_update') {
+                            setAgents(data.agents || {});
+                            setLiveUpdate('Agent data updated');
+                        } else if (data.type === 'pending_update') {
+                            setPending(data.pending_approvals || []);
+                            setLiveUpdate('Approval queue updated');
+                        } else if (data.type === 'new_content') {
+                            setPending(prev => [...prev, data.content]);
+                            setLiveUpdate(`New content: ${data.content.title}`);
+                        } else if (data.type === 'approval_action') {
+                            setPending(prev => prev.filter(c => c.content_id !== data.content_id));
+                            setLiveUpdate(`Content ${data.action}: ${data.content_id}`);
+                        }
+                    } catch (e) {
+                        console.error('Error parsing message:', e);
+                    }
+                };
+
+                ws.onclose = () => {
+                    console.log('🔌 Disconnected from command center');
+                    setConnected(false);
+                    setLiveUpdate('Disconnected from command center');
+                };
+
+                ws.onerror = (error) => {
+                    console.error('❌ WebSocket error:', error);
+                    setLiveUpdate('Connection error');
+                };
+
+                return () => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.close();
+                    }
+                };
             }, []);
 
-            const totalRevenue = agents.reduce((sum, a) => sum + a.revenue, 0);
-            const totalCost = agents.reduce((sum, a) => sum + a.cost, 0);
-            const avgROI = totalRevenue / totalCost;
+            const sendCommand = (command) => {
+                if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                    wsRef.current.send(JSON.stringify(command));
+                    console.log('📤 Sent command:', command.type);
+                }
+            };
+
+            const approveContent = (contentId) => {
+                sendCommand({
+                    type: 'approve_content',
+                    content_id: contentId,
+                    feedback: 'Looks great!'
+                });
+            };
+
+            const rejectContent = (contentId) => {
+                const feedback = prompt('Feedback for agent:');
+                if (feedback) {
+                    sendCommand({
+                        type: 'reject_content',
+                        content_id: contentId,
+                        feedback: feedback
+                    });
+                }
+            };
+
+            const openAgentScreen = (agentId) => {
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsHost = window.location.host;
+                window.open(`/screen.html?agent=${agentId}`, '_blank');
+            };
+
+            const agentCount = Object.keys(agents).length;
+            const activeCount = Object.values(agents).filter(a => a.status === 'active').length;
+            const pendingCount = pending.length;
 
             return (
                 <div className="min-h-screen bg-gray-50">
                     {/* Header */}
                     <div className="gradient-bg text-white p-6 shadow-lg">
                         <div className="max-w-7xl mx-auto">
-                            <h1 className="text-4xl font-bold mb-2">🌸 BLOOM AI Agent</h1>
-                            <p className="text-purple-200">Enterprise Marketing Intelligence Platform</p>
+                            <h1 className="text-4xl font-bold mb-2">🎛️  BLOOM Command Center</h1>
+                            <p className="text-purple-200">Multi-Agent Dashboard</p>
+                            <div className="mt-2 flex items-center space-x-4">
+                                <span className={`flex items-center ${connected ? 'text-green-200' : 'text-red-200'}`}>
+                                    <span className={`mr-2 ${connected ? 'pulse-slow' : ''}`}>●</span>
+                                    {connected ? 'Connected' : 'Disconnected'}
+                                </span>
+                                <span className="text-purple-200">|</span>
+                                <span>{agentCount} agents</span>
+                                <span className="text-purple-200">|</span>
+                                <span>{pendingCount} pending approvals</span>
+                            </div>
                         </div>
                     </div>
 
@@ -118,157 +178,175 @@
                         </div>
                     )}
 
-                    <div className="max-w-7xl mx-auto p-6">
-                        {/* KPI Cards */}
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-                            <div className="bg-white rounded-lg shadow-md p-6 card-hover">
-                                <div className="text-gray-500 text-sm font-medium mb-1">Total Revenue</div>
-                                <div className="text-3xl font-bold text-green-600">${(totalRevenue/1000).toFixed(1)}K</div>
-                                <div className="text-xs text-gray-400 mt-1">↑ 24% from last week</div>
-                            </div>
-
-                            <div className="bg-white rounded-lg shadow-md p-6 card-hover">
-                                <div className="text-gray-500 text-sm font-medium mb-1">Total Cost</div>
-                                <div className="text-3xl font-bold text-orange-600">${(totalCost/1000).toFixed(1)}K</div>
-                                <div className="text-xs text-gray-400 mt-1">Within budget</div>
-                            </div>
-
-                            <div className="bg-white rounded-lg shadow-md p-6 card-hover">
-                                <div className="text-gray-500 text-sm font-medium mb-1">Average ROI</div>
-                                <div className="text-3xl font-bold text-purple-600">{avgROI.toFixed(2)}x</div>
-                                <div className="text-xs text-gray-400 mt-1">Above 2.5x target</div>
-                            </div>
-
-                            <div className="bg-white rounded-lg shadow-md p-6 card-hover">
-                                <div className="text-gray-500 text-sm font-medium mb-1">Active Agents</div>
-                                <div className="text-3xl font-bold text-blue-600">{agents.filter(a => a.status === 'running').length}/{agents.length}</div>
-                                <div className="text-xs text-gray-400 mt-1">All systems healthy</div>
-                            </div>
+                    {/* Navigation */}
+                    <div className="max-w-7xl mx-auto px-6 py-4">
+                        <div className="flex space-x-4">
+                            <button
+                                onClick={() => setView('agents')}
+                                className={`px-6 py-2 rounded-lg font-medium transition ${
+                                    view === 'agents'
+                                        ? 'bg-purple-600 text-white'
+                                        : 'bg-white text-gray-700 hover:bg-gray-100'
+                                }`}
+                            >
+                                🤖 Agents ({agentCount})
+                            </button>
+                            <button
+                                onClick={() => setView('approvals')}
+                                className={`px-6 py-2 rounded-lg font-medium transition ${
+                                    view === 'approvals'
+                                        ? 'bg-purple-600 text-white'
+                                        : 'bg-white text-gray-700 hover:bg-gray-100'
+                                }`}
+                            >
+                                ✅ Approvals ({pendingCount})
+                            </button>
                         </div>
+                    </div>
 
-                        {/* Critical Insights */}
-                        <div className="mb-6">
-                            <h2 className="text-2xl font-bold mb-4">🔴 Critical Insights</h2>
-                            <div className="space-y-4">
-                                {insights.filter(i => i.priority === 'critical').map(insight => (
-                                    <div key={insight.id} className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg card-hover">
-                                        <h3 className="font-bold text-red-900 mb-2">{insight.title}</h3>
-                                        <p className="text-red-700 mb-3">{insight.summary}</p>
-                                        <div className="space-y-1">
-                                            <div className="text-sm font-semibold text-red-900">💡 Recommendations:</div>
-                                            {insight.recommendations.map((rec, idx) => (
-                                                <div key={idx} className="text-sm text-red-700 ml-4">• {rec}</div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Agents */}
-                        <div className="mb-6">
-                            <h2 className="text-2xl font-bold mb-4">🤖 AI Agents</h2>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                {agents.map(agent => (
-                                    <div key={agent.id} className="bg-white rounded-lg shadow-md p-6 card-hover">
+                    <div className="max-w-7xl mx-auto px-6 pb-6">
+                        {/* Agents View */}
+                        {view === 'agents' && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {Object.values(agents).map(agent => (
+                                    <div key={agent.agent_id} className="bg-white rounded-lg shadow-md p-6 card-hover">
                                         <div className="flex justify-between items-start mb-4">
                                             <div>
                                                 <h3 className="font-bold text-lg">{agent.name}</h3>
-                                                <span className={`inline-block px-2 py-1 text-xs font-semibold rounded ${
-                                                    agent.status === 'running' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                                                <span className={`inline-block px-2 py-1 text-xs font-semibold rounded mt-1 ${
+                                                    agent.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                                                 }`}>
                                                     {agent.status.toUpperCase()}
                                                 </span>
                                             </div>
-                                            <div className="text-2xl font-bold text-purple-600">{agent.roi}x</div>
-                                        </div>
-
-                                        <div className="space-y-2 text-sm">
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-600">Revenue:</span>
-                                                <span className="font-semibold text-green-600">${agent.revenue.toLocaleString()}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-600">Cost:</span>
-                                                <span className="font-semibold text-orange-600">${agent.cost.toLocaleString()}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-600">Actions:</span>
-                                                <span className="font-semibold">{agent.actions}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Campaigns */}
-                        <div className="mb-6">
-                            <h2 className="text-2xl font-bold mb-4">🎯 Active Campaigns</h2>
-                            <div className="space-y-4">
-                                {campaigns.map(campaign => (
-                                    <div key={campaign.id} className="bg-white rounded-lg shadow-md p-6 card-hover">
-                                        <div className="flex justify-between items-start mb-4">
-                                            <div>
-                                                <h3 className="font-bold text-lg">{campaign.name}</h3>
-                                                <span className="text-sm text-gray-600">Phase: {campaign.phase}</span>
-                                            </div>
                                             <div className="text-right">
-                                                <div className="text-2xl font-bold text-purple-600">{campaign.roi}x</div>
-                                                <div className="text-xs text-gray-500">ROI</div>
+                                                <div className="text-2xl font-bold text-purple-600">{agent.trust_score}</div>
+                                                <div className="text-xs text-gray-500">Trust</div>
                                             </div>
                                         </div>
 
-                                        <div className="mb-2">
-                                            <div className="flex justify-between text-sm mb-1">
-                                                <span>Progress</span>
-                                                <span className="font-semibold">{campaign.progress}%</span>
+                                        <div className="space-y-2 text-sm mb-4">
+                                            <div className="flex justify-between">
+                                                <span className="text-gray-600">Current task:</span>
+                                                <span className="font-semibold">{agent.current_task}</span>
                                             </div>
-                                            <div className="w-full bg-gray-200 rounded-full h-2">
-                                                <div className="bg-purple-600 h-2 rounded-full transition-all duration-500" style={{width: `${campaign.progress}%`}}></div>
+                                            <div className="flex justify-between">
+                                                <span className="text-gray-600">Pending:</span>
+                                                <span className="font-semibold">{agent.pending_approvals}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-gray-600">Friend Test:</span>
+                                                <span className="font-semibold">{agent.friend_test_pass_rate}%</span>
                                             </div>
                                         </div>
 
-                                        <div className="text-sm text-gray-600">
-                                            Tasks completed: {campaign.tasks}
-                                        </div>
+                                        <button
+                                            onClick={() => openAgentScreen(agent.agent_id)}
+                                            className="w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition"
+                                        >
+                                            🎥 View Screen
+                                        </button>
                                     </div>
                                 ))}
-                            </div>
-                        </div>
 
-                        {/* High Priority Insights */}
-                        <div className="mb-6">
-                            <h2 className="text-2xl font-bold mb-4">🟠 High Priority Insights</h2>
+                                {agentCount === 0 && (
+                                    <div className="col-span-3 text-center py-12 text-gray-500">
+                                        No agents registered yet
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Approvals View */}
+                        {view === 'approvals' && (
                             <div className="space-y-4">
-                                {insights.filter(i => i.priority === 'high').map(insight => (
-                                    <div key={insight.id} className="bg-orange-50 border-l-4 border-orange-500 p-4 rounded-r-lg card-hover">
-                                        <h3 className="font-bold text-orange-900 mb-2">{insight.title}</h3>
-                                        <p className="text-orange-700 mb-3">{insight.summary}</p>
-                                        <div className="space-y-1">
-                                            <div className="text-sm font-semibold text-orange-900">💡 Recommendations:</div>
-                                            {insight.recommendations.map((rec, idx) => (
-                                                <div key={idx} className="text-sm text-orange-700 ml-4">• {rec}</div>
-                                            ))}
+                                {pending.map(content => (
+                                    <div key={content.content_id} className="bg-white rounded-lg shadow-md p-6 card-hover">
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div className="flex-1">
+                                                <h3 className="font-bold text-lg mb-1">{content.title || 'Untitled'}</h3>
+                                                <p className="text-sm text-gray-600">
+                                                    Agent: {agents[content.agent_id]?.name || content.agent_id}
+                                                </p>
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    Platform: {content.platform} | Type: {content.content_type}
+                                                </p>
+                                            </div>
+                                            <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-semibold">
+                                                Pending
+                                            </span>
+                                        </div>
+
+                                        {/* Video Preview */}
+                                        {content.video_path && (
+                                            <div className="mb-4">
+                                                <video
+                                                    src={`/videos/${content.video_path.split('/').pop()}`}
+                                                    controls
+                                                    className="w-full max-w-md rounded-lg"
+                                                >
+                                                    Your browser does not support video playback.
+                                                </video>
+                                            </div>
+                                        )}
+
+                                        {/* Script */}
+                                        {content.script && (
+                                            <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                                                <div className="text-sm font-semibold text-gray-700 mb-2">Script:</div>
+                                                <div className="text-sm text-gray-600 whitespace-pre-wrap">{content.script}</div>
+                                            </div>
+                                        )}
+
+                                        {/* Caption */}
+                                        {content.caption && (
+                                            <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                                                <div className="text-sm font-semibold text-gray-700 mb-2">Caption:</div>
+                                                <div className="text-sm text-gray-600">{content.caption}</div>
+                                            </div>
+                                        )}
+
+                                        {/* Actions */}
+                                        <div className="flex space-x-4">
+                                            <button
+                                                onClick={() => approveContent(content.content_id)}
+                                                className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition font-medium"
+                                            >
+                                                ✅ Approve
+                                            </button>
+                                            <button
+                                                onClick={() => rejectContent(content.content_id)}
+                                                className="flex-1 bg-red-600 text-white py-2 rounded-lg hover:bg-red-700 transition font-medium"
+                                            >
+                                                ❌ Reject
+                                            </button>
                                         </div>
                                     </div>
                                 ))}
+
+                                {pendingCount === 0 && (
+                                    <div className="text-center py-12 text-gray-500">
+                                        <div className="text-4xl mb-2">✨</div>
+                                        <div className="text-lg font-medium">No pending approvals</div>
+                                        <div className="text-sm">All caught up!</div>
+                                    </div>
+                                )}
                             </div>
-                        </div>
+                        )}
                     </div>
 
                     {/* Footer */}
                     <div className="bg-gray-800 text-gray-300 p-6 mt-12">
                         <div className="max-w-7xl mx-auto text-center">
-                            <p className="text-sm">Built with ❤️ by Claude • BLOOM AI Agent • Enterprise-Grade Marketing Intelligence</p>
-                            <p className="text-xs text-gray-500 mt-2">Production-Ready • Scalable • Secure • GDPR Compliant</p>
+                            <p className="text-sm">BLOOM Command Center • Real-Time Multi-Agent Management</p>
+                            <p className="text-xs text-gray-500 mt-2">NO FASTAPI • Pure WebSocket • Production Ready</p>
                         </div>
                     </div>
                 </div>
             );
         }
 
-        ReactDOM.render(<Dashboard />, document.getElementById('root'));
+        ReactDOM.render(<CommandCenter />, document.getElementById('root'));
     </script>
 </body>
 </html>

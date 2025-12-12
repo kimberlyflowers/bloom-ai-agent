@@ -16,6 +16,8 @@ from src.ethical_framework import EthicalFramework
 from src.chat_server import SarahChatServer
 from src.sarah_browser import SarahBrowser
 from src.unified_websocket_server import UnifiedWebSocketServer
+from src.orchestration_dashboard import OrchestrationDashboard
+from src.command_center_handler import CommandCenterHandler
 
 # Setup logging
 logging.basicConfig(
@@ -66,12 +68,22 @@ class Sarah:
             logger.warning("⚠️ No ANTHROPIC_API_KEY - chat will not be available")
             self.chat_server = None
 
-        # Initialize unified WebSocket server (combines chat + screen streaming)
+        # Initialize orchestration dashboard (command center backend)
+        self.dashboard = OrchestrationDashboard()
+        self.dashboard.register_agent(self.agent_id, "Sarah Rodriguez")
+        logger.info("✅ Orchestration dashboard initialized")
+
+        # Initialize command center handler (WebSocket for dashboard)
+        self.command_center = CommandCenterHandler(self.dashboard)
+        logger.info("✅ Command center handler initialized")
+
+        # Initialize unified WebSocket server (combines chat + screen streaming + command center)
         if self.chat_server:
             self.unified_server = UnifiedWebSocketServer(
                 port=websocket_port,
                 chat_server=self.chat_server,
-                screen_streamer=self.browser.streamer
+                screen_streamer=self.browser.streamer,
+                command_center_handler=self.command_center
             )
             logger.info("✅ Unified WebSocket server initialized")
         else:
