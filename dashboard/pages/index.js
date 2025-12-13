@@ -14,17 +14,9 @@ export default function Dashboard() {
   const chatWsRef = useRef(null)
   const messagesEndRef = useRef(null)
 
-  // WebSocket URLs - use environment variable or localhost for development
-  const getWebSocketUrl = (port) => {
-    // Check if we have a Railway URL from environment variable
-    const railwayUrl = process.env.NEXT_PUBLIC_RAILWAY_WS_URL
-    if (railwayUrl) {
-      // Use Railway WebSocket URL (wss:// for secure connection)
-      return railwayUrl.replace(':8000', `:${port}`)
-    }
-    // Fallback to localhost for development
-    return `ws://localhost:${port}`
-  }
+  // Command Center state
+  const [activeTasks, setActiveTasks] = useState([])
+  const [approvalQueue, setApprovalQueue] = useState([])
 
   useEffect(() => {
     setSarah({
@@ -58,9 +50,8 @@ export default function Dashboard() {
   function connectToLiveScreen() {
     try {
       // Connect to Railway WebSocket server
-      const wsUrl = getWebSocketUrl(8765)
-      console.log('🎥 Connecting to screen stream:', wsUrl)
-      const ws = new WebSocket(wsUrl)
+      // In production, replace with actual Railway URL
+      const ws = new WebSocket('ws://localhost:8765')
 
       ws.onopen = () => {
         console.log('📺 Connected to Sarah\'s screen!')
@@ -101,9 +92,7 @@ export default function Dashboard() {
   function connectToChat() {
     try {
       // Connect to chat WebSocket server (different port from screen stream)
-      const wsUrl = getWebSocketUrl(8766)
-      console.log('💬 Connecting to chat:', wsUrl)
-      const ws = new WebSocket(wsUrl)
+      const ws = new WebSocket('ws://localhost:8766')
 
       ws.onopen = () => {
         console.log('💬 Connected to Sarah\'s chat!')
@@ -181,6 +170,30 @@ export default function Dashboard() {
     // Clear input and set sending state
     setChatInput('')
     setIsSending(true)
+  }
+
+  function handleApprove(contentId) {
+    if (chatWsRef.current && chatConnected) {
+      chatWsRef.current.send(JSON.stringify({
+        type: 'approve_content',
+        content_id: contentId,
+        approved: true
+      }))
+      // Remove from queue
+      setApprovalQueue(prev => prev.filter(item => item.id !== contentId))
+    }
+  }
+
+  function handleReject(contentId) {
+    if (chatWsRef.current && chatConnected) {
+      chatWsRef.current.send(JSON.stringify({
+        type: 'approve_content',
+        content_id: contentId,
+        approved: false
+      }))
+      // Remove from queue
+      setApprovalQueue(prev => prev.filter(item => item.id !== contentId))
+    }
   }
 
   if (!sarah) {
@@ -311,18 +324,32 @@ export default function Dashboard() {
         </form>
       </div>
 
-      {/* Activity */}
+      {/* Active Tasks - Agents currently working */}
       <div className="card">
-        <h2>Current Activity</h2>
-        <div className="activity">
-          <div className="activity-icon">😴</div>
-          <div>
-            <p className="activity-text">Sleeping for 1 hour...</p>
-            <p className="activity-time">
-              Next check-in at {new Date(Date.now() + 3600000).toLocaleTimeString()}
-            </p>
+        <h2>🚀 Active Tasks</h2>
+        {activeTasks.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">🤖</div>
+            <p className="empty-text">No agents currently running</p>
+            <p className="empty-hint">Agents are spawned dynamically when Sarah needs help with complex tasks</p>
           </div>
-        </div>
+        ) : (
+          <div className="tasks-list">
+            {activeTasks.map(task => (
+              <div key={task.id} className="task-item">
+                <div className="task-icon">{task.icon}</div>
+                <div className="task-info">
+                  <p className="task-name">{task.agent_name}</p>
+                  <p className="task-description">{task.description}</p>
+                  <div className="task-progress">
+                    <div className="task-progress-bar" style={{width: `${task.progress}%`}}></div>
+                  </div>
+                </div>
+                <span className="task-status">{task.status}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Identity */}
@@ -344,27 +371,54 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Daily Routine */}
+      {/* Approval Queue - Content waiting for review */}
       <div className="card">
-        <h2>Daily Routine</h2>
-        <div className="routine">
-          <div className="routine-item complete">
-            <span>📧</span> Check email
-            <span className="routine-check">✓</span>
+        <h2>📋 Approval Queue</h2>
+        {approvalQueue.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">✅</div>
+            <p className="empty-text">No content waiting for approval</p>
+            <p className="empty-hint">Videos created by Sarah will appear here for your review</p>
           </div>
-          <div className="routine-item complete">
-            <span>💝</span> Manage relationships
-            <span className="routine-check">✓</span>
+        ) : (
+          <div className="approval-list">
+            {approvalQueue.map(content => (
+              <div key={content.id} className="approval-item">
+                <div className="approval-preview">
+                  {content.type === 'video' && content.url && (
+                    <video src={content.url} controls className="approval-video" />
+                  )}
+                  {content.thumbnail_url && (
+                    <img src={content.thumbnail_url} className="approval-thumbnail" alt="Content preview" />
+                  )}
+                </div>
+                <div className="approval-details">
+                  <h3>{content.title}</h3>
+                  <p className="approval-platform">Platform: {content.platform}</p>
+                  <p className="approval-caption">{content.caption}</p>
+                  <div className="approval-meta">
+                    <span>📊 {content.estimated_views} est. views</span>
+                    <span>⏱️ {content.duration}s</span>
+                  </div>
+                </div>
+                <div className="approval-actions">
+                  <button
+                    className="btn-approve"
+                    onClick={() => handleApprove(content.id)}
+                  >
+                    ✅ Approve
+                  </button>
+                  <button
+                    className="btn-reject"
+                    onClick={() => handleReject(content.id)}
+                  >
+                    ❌ Reject
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
-          <div className="routine-item complete">
-            <span>✅</span> Update metrics
-            <span className="routine-check">✓</span>
-          </div>
-          <div className="routine-item active">
-            <span>😴</span> Sleep 1 hour
-            <span className="routine-check">⋯</span>
-          </div>
-        </div>
+        )}
       </div>
 
       <div className="footer">
@@ -817,6 +871,174 @@ export default function Dashboard() {
         .chat-send-button:disabled {
           opacity: 0.5;
           cursor: not-allowed;
+        }
+
+        /* Empty State Styles */
+        .empty-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 2.5rem;
+          gap: 0.75rem;
+        }
+        .empty-icon {
+          font-size: 3.5rem;
+          opacity: 0.5;
+        }
+        .empty-text {
+          margin: 0;
+          font-size: 1.125rem;
+          font-weight: 600;
+          color: #6b7280;
+        }
+        .empty-hint {
+          margin: 0;
+          font-size: 0.875rem;
+          color: #9ca3af;
+          text-align: center;
+        }
+
+        /* Tasks List Styles */
+        .tasks-list {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
+        .task-item {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          padding: 1rem;
+          background: #f9fafb;
+          border-radius: 8px;
+          border: 1px solid #e5e7eb;
+          transition: all 0.2s;
+        }
+        .task-item:hover {
+          background: #f3f4f6;
+          border-color: #d1d5db;
+        }
+        .task-icon {
+          font-size: 2rem;
+          flex-shrink: 0;
+        }
+        .task-info {
+          flex: 1;
+          min-width: 0;
+        }
+        .task-name {
+          font-weight: 600;
+          margin: 0 0 0.25rem 0;
+          color: #111827;
+        }
+        .task-description {
+          font-size: 0.875rem;
+          color: #6b7280;
+          margin: 0 0 0.5rem 0;
+        }
+        .task-progress {
+          height: 4px;
+          background: #e5e7eb;
+          border-radius: 2px;
+          overflow: hidden;
+        }
+        .task-progress-bar {
+          height: 100%;
+          background: linear-gradient(to right, #ec4899, #8b5cf6);
+          transition: width 0.3s ease;
+        }
+        .task-status {
+          font-size: 0.875rem;
+          color: #10b981;
+          font-weight: 500;
+          flex-shrink: 0;
+        }
+
+        /* Approval Queue Styles */
+        .approval-list {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
+        .approval-item {
+          display: grid;
+          grid-template-columns: 200px 1fr auto;
+          gap: 1rem;
+          padding: 1rem;
+          background: #f9fafb;
+          border-radius: 8px;
+          border: 1px solid #e5e7eb;
+        }
+        .approval-preview {
+          width: 200px;
+          height: 112px;
+          border-radius: 6px;
+          overflow: hidden;
+          background: #e5e7eb;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .approval-video,
+        .approval-thumbnail {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        .approval-details h3 {
+          margin: 0 0 0.5rem 0;
+          font-size: 1.125rem;
+          color: #111827;
+        }
+        .approval-platform {
+          font-size: 0.875rem;
+          color: #ec4899;
+          font-weight: 600;
+          margin: 0 0 0.5rem 0;
+        }
+        .approval-caption {
+          font-size: 0.875rem;
+          color: #6b7280;
+          margin: 0 0 0.75rem 0;
+          line-height: 1.5;
+        }
+        .approval-meta {
+          display: flex;
+          gap: 1rem;
+          font-size: 0.875rem;
+          color: #9ca3af;
+        }
+        .approval-actions {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+          align-items: flex-end;
+        }
+        .btn-approve,
+        .btn-reject {
+          padding: 0.5rem 1rem;
+          border: none;
+          border-radius: 6px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+          font-size: 0.875rem;
+          white-space: nowrap;
+        }
+        .btn-approve {
+          background: #10b981;
+          color: white;
+        }
+        .btn-approve:hover {
+          background: #059669;
+        }
+        .btn-reject {
+          background: #ef4444;
+          color: white;
+        }
+        .btn-reject:hover {
+          background: #dc2626;
         }
       `}</style>
     </div>
