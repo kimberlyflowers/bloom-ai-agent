@@ -49,9 +49,15 @@ export default function Dashboard() {
 
   function connectToLiveScreen() {
     try {
-      // Connect to Railway WebSocket server
-      // In production, replace with actual Railway URL
-      const ws = new WebSocket('ws://localhost:8765')
+      // Determine WebSocket URL based on environment
+      const isProduction = window.location.hostname !== 'localhost'
+      const railwayUrl = process.env.NEXT_PUBLIC_RAILWAY_URL || 'bloom-ai-agent-production.up.railway.app'
+      const wsUrl = isProduction
+        ? `wss://${railwayUrl}/screen`  // Production: Use Railway URL with /screen path
+        : 'ws://localhost:8765'          // Local dev: Use local WebSocket
+
+      console.log('🎥 Connecting to screen stream:', wsUrl)
+      const ws = new WebSocket(wsUrl)
 
       ws.onopen = () => {
         console.log('📺 Connected to Sarah\'s screen!')
@@ -91,8 +97,15 @@ export default function Dashboard() {
 
   function connectToChat() {
     try {
-      // Connect to chat WebSocket server (different port from screen stream)
-      const ws = new WebSocket('ws://localhost:8766')
+      // Determine WebSocket URL based on environment
+      const isProduction = window.location.hostname !== 'localhost'
+      const railwayUrl = process.env.NEXT_PUBLIC_RAILWAY_URL || 'bloom-ai-agent-production.up.railway.app'
+      const wsUrl = isProduction
+        ? `wss://${railwayUrl}/chat`     // Production: Use Railway URL with /chat path
+        : 'ws://localhost:8766'          // Local dev: Use local WebSocket
+
+      console.log('💬 Connecting to chat:', wsUrl)
+      const ws = new WebSocket(wsUrl)
 
       ws.onopen = () => {
         console.log('💬 Connected to Sarah\'s chat!')
@@ -120,6 +133,14 @@ export default function Dashboard() {
               timestamp: new Date()
             }])
             setIsSending(false)
+          } else if (data.type === 'agent_update') {
+            // Update active agents for dashboard
+            console.log('🤖 Agent update:', data.agents)
+            setActiveTasks(data.agents || [])
+          } else if (data.type === 'new_content') {
+            // New content submitted for approval
+            console.log('📋 New content for approval:', data.content)
+            setApprovalQueue(prev => [...prev, data.content])
           }
         } catch (error) {
           console.error('Error parsing chat message:', error)
