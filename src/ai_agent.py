@@ -1,6 +1,6 @@
 """
 BLOOM AI Agent - Core Agent Class
-Verified for Railway deployment stability.
+Verified for Railway Stability & Rate-Limited Logging.
 """
 
 import json
@@ -13,14 +13,14 @@ from enum import Enum
 from typing import List, Dict, Optional, Tuple
 from anthropic import Anthropic
 
-# CRASH FIX 1: Ensure directory exists BEFORE logger initialization
+# CRASH FIX: Ensure directory exists BEFORE logging starts
 os.makedirs('logs', exist_ok=True)
 os.makedirs('data', exist_ok=True)
 
-# Configure logging
+# Configure logging to be less "chatty" for Railway
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format='%(levelname)s: %(message)s', # Stripped down format to save log bandwidth
     handlers=[
         logging.FileHandler('logs/agent.log'),
         logging.StreamHandler()
@@ -28,18 +28,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# SILENCE NOISY LIBRARIES (Prevents the 500 logs/sec crash)
+logging.getLogger("anthropic").setLevel(logging.ERROR)
+logging.getLogger("urllib3").setLevel(logging.ERROR)
 
 class Platform(Enum):
     REDDIT = "reddit"
     TWITTER = "twitter"
     CANVA = "canva"
 
-
 class OperatingMode(Enum):
     SURVIVAL = "survival"
     GROWTH = "growth"
     SCALE = "scale"
-
 
 class Specialization(Enum):
     GENERALIST = "generalist"
@@ -50,7 +51,6 @@ class Specialization(Enum):
     PAID_ADVERTISER = "paid_advertiser"
     ENTERPRISE_HUNTER = "enterprise_hunter"
 
-
 @dataclass
 class CommissionEvent:
     timestamp: str
@@ -60,7 +60,6 @@ class CommissionEvent:
     source_strategy: str
     source_platform: str
     conversion_path: str
-
 
 @dataclass
 class Strategy:
@@ -93,7 +92,6 @@ class Strategy:
 
     @staticmethod
     def from_dict(data: dict) -> 'Strategy':
-        # CRASH FIX 2: Handle missing keys in old save files
         return Strategy(
             name=data.get('name', 'unknown'),
             platform=Platform(data.get('platform', 'reddit')),
@@ -105,7 +103,6 @@ class Strategy:
             failure_count=data.get('failure_count', 0),
             enabled=data.get('enabled', True)
         )
-
 
 class BloomAIAgent:
     """AI Agent for BLOOM growth marketing with integrated orchestration."""
@@ -129,15 +126,17 @@ class BloomAIAgent:
         self.creation_date = datetime.now()
         self.strategies: Dict[str, Strategy] = self._initialize_strategies()
         
-        # CRASH FIX 3: Dynamic import to prevent circular dependency
+        # Dashboard Bridge - Dynamic Import to prevent circular crashes
         try:
-            from .orchestration_dashboard import OrchestrationDashboard
+            from src.orchestration_dashboard import OrchestrationDashboard
             self.command_center = OrchestrationDashboard()
-        except (ImportError, ValueError):
+        except:
             self.command_center = None
 
         api_key = os.getenv('ANTHROPIC_API_KEY')
         self.anthropic_client = Anthropic(api_key=api_key) if api_key else None
+        
+        logger.info(f"Agent {agent_id} Ready. Mode: {self.get_operating_mode().value}")
 
     def _initialize_strategies(self) -> Dict[str, Strategy]:
         return {
@@ -161,17 +160,19 @@ class BloomAIAgent:
         return True
 
     def record_action_result(self, strategy_name: str, success: bool, reward: float = 0.0):
-        """Learns and reports success/failure to the Dashboard."""
+        """Sarah's Learning Engine. Updates local stats and global dashboard."""
         if strategy_name not in self.strategies: return
         strat = self.strategies[strategy_name]
         
         if success:
             strat.success_count += 1
             strat.total_earned += reward
+            logger.info(f"SUCCESS: {strategy_name} | Balance: ${self.commission_balance:.2f}")
             if self.command_center:
                 self.command_center.update_trust_metrics(self.agent_id, trust_score=1)
         else:
             strat.failure_count += 1
+            logger.error(f"FAILURE: {strategy_name} | Logged to Intel dashboard")
             if self.command_center:
                 self.command_center.log_product_intelligence(self.agent_id, "technical_blocked", f"Failed: {strategy_name}")
 
@@ -189,7 +190,7 @@ class BloomAIAgent:
             'strategies': {n: s.to_dict() for n, s in self.strategies.items()}
         }
         with open(filepath, 'w') as f:
-            json.dump(state, f, indent=2)
+            json.dump(state, f) # Removed indent=2 to save log rate limits
 
     @staticmethod
     def load_state(filepath: str) -> 'BloomAIAgent':
@@ -200,9 +201,6 @@ class BloomAIAgent:
         agent = BloomAIAgent(s.get('agent_id', 'sarah_001'), s.get('commission_balance', 50.0))
         agent.total_earned = s.get('total_earned', 0.0)
         agent.total_spent = s.get('total_spent', 0.0)
-        
-        # Reload history with fallback for empty lists
         history = s.get('commission_history', [])
         agent.commission_history = [CommissionEvent(**e) for e in history]
-        
         return agent
