@@ -1,6 +1,6 @@
 """
 BLOOM AI Agent - Core Agent Class
-Verified for Railway Stability.
+Verified for Railway Stability and Feedback Loops.
 """
 
 import json
@@ -13,12 +13,11 @@ from enum import Enum
 from typing import List, Dict, Optional, Tuple
 from anthropic import Anthropic
 
-# CRASH FIX: Create directories before logging initializes
-# This prevents FileNotFoundError on Railway's strict file system
+# Ensure directory exists BEFORE logging starts to prevent FileNotFoundError
 os.makedirs('logs', exist_ok=True)
 os.makedirs('data', exist_ok=True)
 
-# Configure logging to be Railway-friendly
+# Configure logging to be minimal for Railway's rate limits
 logging.basicConfig(
     level=logging.INFO,
     format='%(levelname)s: %(message)s',
@@ -29,7 +28,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# SILENCE NOISY LIBRARIES to prevent 500 logs/sec rate limit crashes
+# Silent third-party noise to prevent log overflow
 logging.getLogger("anthropic").setLevel(logging.ERROR)
 logging.getLogger("urllib3").setLevel(logging.ERROR)
 
@@ -87,7 +86,6 @@ class Strategy:
 
     @staticmethod
     def from_dict(data: dict) -> 'Strategy':
-        # Self-healing loader handles missing keys in old save files
         return Strategy(
             name=data.get('name', 'unknown'),
             platform=Platform(data.get('platform', 'reddit')),
@@ -101,37 +99,19 @@ class Strategy:
         )
 
 class BloomAIAgent:
-    """AI Agent for BLOOM growth marketing with integrated orchestration."""
-
-    DAILY_SPENDING_LIMITS = {
-        OperatingMode.SURVIVAL: 10.0,
-        OperatingMode.GROWTH: 50.0,
-        OperatingMode.SCALE: 200.0
-    }
-
     def __init__(self, agent_id: str = "sarah_001", initial_balance: float = 50.0):
         self.agent_id = agent_id
         self.commission_balance = initial_balance
         self.total_earned = 0.0
         self.total_spent = 0.0
-        self.commission_history: List[CommissionEvent] = []
-        self.today_spent = 0.0
-        self.last_reset_date = datetime.now().date()
-        self.creation_date = datetime.now()
-        self.strategies: Dict[str, Strategy] = self._initialize_strategies()
-        
-        # LAZY IMPORT: Prevents circular dependency crashes
+        self.commission_history = []
+        self.strategies = self._initialize_strategies()
         self.command_center = None
-        try:
-            from src.orchestration_dashboard import OrchestrationDashboard
-            self.command_center = OrchestrationDashboard()
-        except:
-            pass
-
+        
         api_key = os.getenv('ANTHROPIC_API_KEY')
         self.anthropic_client = Anthropic(api_key=api_key) if api_key else None
         
-        logger.info(f"INIT: {agent_id} | Balance: ${initial_balance:.2f}")
+        logger.info(f"INIT: {agent_id} initialized.")
 
     def _initialize_strategies(self) -> Dict[str, Strategy]:
         return {
@@ -140,22 +120,37 @@ class BloomAIAgent:
             'canva_gen': Strategy('canva_gen', Platform.CANVA, 0.50)
         }
 
+    def choose_next_strategy(self):
+        # High-level strategy selection logic
+        available = [s for s in self.strategies.keys() if self.strategies[s].enabled]
+        if not available: return None
+        name = random.choice(available)
+        return name, self.strategies[name]
+
     def record_action_result(self, strategy_name: str, success: bool, reward: float = 0.0):
-        """Sarah's Feedback Loop. Stops phantom reporting."""
-        if strategy_name not in self.strategies: return
-        strat = self.strategies[strategy_name]
-        
-        if success:
-            strat.success_count += 1
-            strat.total_earned += reward
-            logger.info(f"SUCCESS: {strategy_name}")
-            if self.command_center:
-                self.command_center.update_trust_metrics(self.agent_id, trust_score=1)
-        else:
-            strat.failure_count += 1
-            logger.error(f"FAILURE: {strategy_name}")
-            if self.command_center:
-                self.command_center.log_product_intelligence(self.agent_id, "technical_fail", strategy_name)
+        # Lazy import handles circular dependencies at the package level
+        if self.command_center is None:
+            try:
+                from .orchestration_dashboard import OrchestrationDashboard
+                self.command_center = OrchestrationDashboard()
+            except:
+                pass
+
+        if strategy_name in self.strategies:
+            strat = self.strategies[strategy_name]
+            if success:
+                strat.success_count += 1
+                strat.total_earned += reward
+                if self.command_center: self.command_center.update_trust_metrics(self.agent_id, 1)
+            else:
+                strat.failure_count += 1
+                if self.command_center: self.command_center.log_product_intelligence(self.agent_id, "tech_fail", strategy_name)
+
+    def spend(self, amount: float, strategy_name: str) -> bool:
+        if amount > self.commission_balance: return False
+        self.commission_balance -= amount
+        self.total_spent += amount
+        return True
 
     def save_state(self, filepath: str):
         state = {
@@ -166,7 +161,6 @@ class BloomAIAgent:
             'strategies': {n: s.to_dict() for n, s in self.strategies.items()}
         }
         with open(filepath, 'w') as f:
-            # Minified JSON saves logging bandwidth
             json.dump(state, f)
 
     @staticmethod
@@ -174,7 +168,6 @@ class BloomAIAgent:
         if not os.path.exists(filepath): return BloomAIAgent()
         with open(filepath, 'r') as f:
             s = json.load(f)
-        
         agent = BloomAIAgent(s.get('agent_id', 'sarah_001'), s.get('balance', 50.0))
         agent.total_earned = s.get('total_earned', 0.0)
         agent.total_spent = s.get('total_spent', 0.0)
