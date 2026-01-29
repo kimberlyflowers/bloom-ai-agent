@@ -1,6 +1,6 @@
 """
 Sarah Rodriguez - AI Agent Employee
-Main entry point with Integrated Orchestration Command Center
+Main entry point: Fully Integrated with Colony, Campaign, and Command Center
 """
 
 import os
@@ -16,9 +16,10 @@ from src.chat_server import SarahChatServer
 from src.sarah_browser import SarahBrowser
 from src.unified_websocket_server import UnifiedWebSocketServer
 
-# 1. NEW: Import Orchestration & Campaign systems
-from src.orchestration_command_center import OrchestrationDashboard, MetricType
+# Import the 3 Orchestration Brains
+from src.orchestration_dashboard import OrchestrationDashboard, MetricType
 from src.campaign_orchestrator import CampaignOrchestrator, CampaignPhase
+from src.colony_orchestrator import ColonyOrchestrator
 
 # Setup logging
 logging.basicConfig(
@@ -39,12 +40,16 @@ class Sarah:
         self.relationships = RelationshipManager()
         self.ethics = EthicalFramework()
 
-        # 2. NEW: Initialize Orchestration & Campaign Management
-        logger.info("🎛️ Initializing Command Center & Orchestration...")
+        # 1. Initialize Orchestration & Command Center (System #22)
+        logger.info("🎛️  Initializing Orchestration Command Center...")
         self.command_center = OrchestrationDashboard()
+        
+        # 2. Initialize Colony & Campaign Managers
+        logger.info("🚀 Initializing Colony and Campaign Orchestrators...")
+        self.colony_manager = ColonyOrchestrator(initial_agent_id=self.agent_id)
         self.campaign_manager = CampaignOrchestrator()
         
-        # Register Sarah in the Command Center (The Onboarding)
+        # 3. Register Sarah in the Command Center for trust tracking
         self.metrics = self.command_center.register_agent(
             agent_id=self.agent_id, 
             agent_name="Sarah Rodriguez"
@@ -73,7 +78,7 @@ class Sarah:
             self.chat_server.command_center = self.command_center
             logger.info("✅ Chat server initialized with Command Center bridge")
         else:
-            logger.warning("⚠️ No ANTHROPIC_API_KEY - chat will not be available")
+            logger.warning("⚠️  No ANTHROPIC_API_KEY - chat will not be available")
             self.chat_server = None
 
         # Initialize unified WebSocket server
@@ -100,7 +105,8 @@ class Sarah:
             education=["B.S. Marketing - Arizona State University (2019)"],
             work_history=[{"company": "BLOOM", "role": "Growth Lead", "years": "2021-present"}],
             specializations=["TikTok growth strategies", "UGC creation"],
-            hometown="Phoenix, Arizona"
+            hometown="Phoenix, Arizona",
+            career_motivation="Empowering creators through AI automation."
         )
         personality = PersonalityTraits(openness=0.85, conscientiousness=0.75, extraversion=0.70, agreeableness=0.80, neuroticism=0.30)
         writing_style = WritingStyle(tone="warm, enthusiastic, helpful", uses_emojis=True, preferred_emojis=["✨", "🎯", "☕"])
@@ -110,6 +116,7 @@ class Sarah:
             first_name="Sarah",
             last_name="Rodriguez",
             job_title="Growth & Community Lead",
+            company="BLOOM",
             location="Phoenix, Arizona",
             backstory=backstory,
             writing_style=writing_style,
@@ -118,18 +125,20 @@ class Sarah:
         logger.info("✅ Sarah's identity created!")
 
     async def daily_routine(self):
-        """Sarah's daily routine - Now reporting to Command Center"""
+        """Sarah's daily routine - Now reporting to all Orchestrators"""
         logger.info("🌅 Starting daily routine...")
         
-        # Update Command Center state
+        # 1. Update Colony Stats
+        self.colony_manager.morning_routine()
+        
+        # 2. Update Command Center state
         self.command_center.update_trust_metrics(
             self.agent_id,
-            value_provided=True # Increment helpfulness counter
+            value_provided=True # Log that she is active and providing value
         )
         
-        # Display current Command Center status in logs
+        # 3. Print the live summary of her trust and ROI
         logger.info(self.command_center.get_dashboard_summary())
-
         logger.info("✅ Daily routine complete!")
 
     async def run(self):
@@ -156,18 +165,22 @@ class Sarah:
             asyncio.create_task(self.browser.streamer.stream_browser())
             logger.info("📺 Dashboard stream and Chat routes active!")
 
-        # Run continuous operation
+        # Run continuous operation loop
         while True:
             try:
                 await self.daily_routine()
+                # Run the colony cycle (reproduction checks, etc.)
+                self.colony_manager.run_colony_cycle()
+                
                 await asyncio.sleep(3600)
             except Exception as e:
-                logger.error(f"❌ Error in loop: {e}")
+                logger.error(f"❌ Error in main loop: {e}")
                 await asyncio.sleep(300)
 
 async def main():
+    """Entry point"""
     logger.info("=" * 60)
-    logger.info("🚀 BLOOM AI AGENT - STARTING UP WITH ORCHESTRATION")
+    logger.info("🚀 BLOOM AI AGENT - STARTING UP WITH FULL ORCHESTRATION")
     logger.info("=" * 60)
     sarah = Sarah()
     await sarah.run()
