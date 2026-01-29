@@ -194,7 +194,8 @@ class Sarah:
         # 1. Ensure Identity
         self.create_identity()
 
-        # 2. RUNTIME BROWSER CHECK (The Fix for Persistent Volumes)
+        # 2. RUNTIME BROWSER CHECK (Persistent Volume Fix)
+        # This checks if the browser binaries are in the /data volume
         browser_path = os.getenv('PLAYWRIGHT_BROWSERS_PATH', '/data/playwright-browsers')
         chromium_path = os.path.join(browser_path, 'chromium-1200')
         
@@ -204,7 +205,7 @@ class Sarah:
                 os.makedirs(browser_path, exist_ok=True)
                 os.environ['PLAYWRIGHT_BROWSERS_PATH'] = browser_path
                 
-                # Install browsers to the persistent volume
+                # Install browsers directly to the mounted volume
                 process = await asyncio.create_subprocess_exec(
                     'playwright', 'install', '--with-deps', 'chromium',
                     env=os.environ
@@ -216,7 +217,7 @@ class Sarah:
         else:
             logger.info(f"✅ Persistent browsers found at: {browser_path}")
 
-        # 3. Start browser
+        # 3. Start browser (Now it will find the files in /data)
         logger.info("🌐 Starting browser...")
         browser_started = await self.browser.start()
 
@@ -232,7 +233,7 @@ class Sarah:
             asyncio.create_task(self.browser.streamer.stream_browser())
             logger.info("📺 Screen streaming loop started!")
 
-        # 5. Life Loop
+        # 5. Continuous Loop
         while True:
             try:
                 await self.daily_routine()
