@@ -9,11 +9,17 @@ import random
 import time
 from datetime import datetime
 import schedule
-from ai_agent import BloomAIAgent, Specialization
-from agent_reproduction import AgentColony
-from colony_learning import ColonyLearning, print_learning_report
-from reddit_integration import RedditMonitor, RedditStrategy
-from twitter_integration import TwitterMonitor, TwitterStrategy
+
+# FIX: Use relative imports to find ai_agent in the same src/ directory
+try:
+    from .ai_agent import BloomAIAgent, Specialization
+except (ImportError, ValueError):
+    from ai_agent import BloomAIAgent, Specialization
+
+from .agent_reproduction import AgentColony
+from .colony_learning import ColonyLearning, print_learning_report
+from .reddit_integration import RedditMonitor, RedditStrategy
+from .twitter_integration import TwitterMonitor, TwitterStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -96,8 +102,8 @@ class ColonyOrchestrator:
         # Get colony stats
         stats = self.colony.get_colony_stats()
         logger.info(f"Colony Status: {stats['colony_size']} agents, "
-                   f"${stats['total_balance']:.2f} total balance, "
-                   f"ROI: {stats['overall_roi']:.2f}x")
+                    f"${stats['total_balance']:.2f} total balance, "
+                    f"ROI: {stats['overall_roi']:.2f}x")
 
     def evening_routine(self):
         """Evening routine - comprehensive colony report"""
@@ -131,9 +137,9 @@ class ColonyOrchestrator:
         top_agents = sorted(stats['agents'], key=lambda x: x['roi'], reverse=True)[:5]
         for agent_info in top_agents:
             logger.info(f"  {agent_info['agent_id']}: "
-                       f"${agent_info['balance']:.2f} balance, "
-                       f"{agent_info['roi']:.2f}x ROI, "
-                       f"{agent_info['children_count']} children")
+                        f"${agent_info['balance']:.2f} balance, "
+                        f"{agent_info['roi']:.2f}x ROI, "
+                        f"{agent_info['children_count']} children")
 
         # Show competition leaderboard
         logger.info("\n        🏆 Competition Leaderboard:")
@@ -141,10 +147,10 @@ class ColonyOrchestrator:
         if leaderboard:
             for entry in leaderboard:
                 logger.info(f"  #{entry['rank']} {entry['agent_id']}: "
-                           f"Score {entry['score']:.1f}, "
-                           f"{entry['tier']} tier, "
-                           f"{entry['commission_rate']} commission, "
-                           f"{entry['roi']:.2f}x ROI")
+                            f"Score {entry['score']:.1f}, "
+                            f"{entry['tier']} tier, "
+                            f"{entry['commission_rate']} commission, "
+                            f"{entry['roi']:.2f}x ROI")
         else:
             logger.info("  (No agents eligible for competition yet)")
 
@@ -158,7 +164,6 @@ class ColonyOrchestrator:
             return
 
         agent = self.colony.agents[agent_id]
-        genealogy = self.colony.genealogy[agent_id]
 
         # Choose strategy
         choice = agent.choose_next_strategy()
@@ -184,24 +189,18 @@ class ColonyOrchestrator:
 
             if strategy_name == 'reddit_value_comment':
                 success = reddit_strategy.execute_value_comment_strategy()
-
             elif strategy_name == 'reddit_educational_post':
                 success = reddit_strategy.execute_educational_post_strategy()
-
             elif strategy_name == 'twitter_reply':
                 success = twitter_strategy.execute_reply_strategy()
-
             elif strategy_name == 'twitter_thread':
                 success = twitter_strategy.execute_thread_strategy()
-
             elif strategy_name == 'reddit_boost':
                 logger.info(f"Agent '{agent_id}' - Reddit boost strategy")
-                success = True  # Simulated
-
+                success = True
             elif strategy_name == 'twitter_promoted':
                 logger.info(f"Agent '{agent_id}' - Twitter promoted strategy")
-                success = True  # Simulated
-
+                success = True
             else:
                 logger.warning(f"Unknown strategy: {strategy_name}")
 
@@ -209,7 +208,7 @@ class ColonyOrchestrator:
             logger.error(f"Error executing {strategy_name} for agent '{agent_id}': {e}")
             success = False
 
-        # Record result in agent's history
+        # Record results
         agent.record_action_result(
             strategy_name=strategy_name,
             cost=strategy.cost_per_action,
@@ -217,10 +216,9 @@ class ColonyOrchestrator:
             revenue=0.0
         )
 
-        # Record action in competition system (for performance tracking)
         self.colony.record_agent_action(
             agent_id=agent_id,
-            revenue=0.0,  # No revenue yet (comes from conversions via webhook)
+            revenue=0.0,
             spent=strategy.cost_per_action,
             conversions=0,
             actions=1
@@ -234,48 +232,32 @@ class ColonyOrchestrator:
     def run_colony_cycle(self):
         """Run one action cycle for all agents"""
         logger.info(f"🔄 Running colony cycle with {len(self.colony.agents)} agents...")
-
-        # Each agent executes one action
         for agent_id in list(self.colony.agents.keys()):
             self.execute_agent_action(agent_id)
-
-        # Check for reproductions
         self.check_reproductions()
 
     def check_reproductions(self):
         """Check all agents for reproduction eligibility"""
         reproductions = self.colony.run_reproduction_cycle()
-
         if reproductions > 0:
             logger.info(f"🎉 {reproductions} new agent(s) born!")
-            # Update schedule if needed (more agents = more activity)
 
     def simulate_conversion(self, agent_id: str, plan_type: str,
-                          source_strategy: str, source_platform: str,
-                          conversion_path: str = "simulated"):
-        """
-        Simulate a conversion for testing.
-        In production, this comes via webhook.
-        """
+                           source_strategy: str, source_platform: str,
+                           conversion_path: str = "simulated"):
         if agent_id not in self.colony.agents:
             logger.warning(f"Agent '{agent_id}' not found for conversion")
             return
 
         agent = self.colony.agents[agent_id]
-
-        # Calculate base commission
         base_commission = agent.COMMISSION_RATES.get(plan_type, 0.50)
-
-        # Apply specialization multiplier
         genealogy = self.colony.genealogy[agent_id]
         if genealogy.specialization == Specialization.ENTERPRISE_HUNTER:
-            base_commission *= 2.0  # 2x commission for enterprise hunter
+            base_commission *= 2.0
 
-        # Apply performance multiplier from competition system
         performance_multiplier = self.colony.competition.get_commission_multiplier(agent_id)
         commission_amount = base_commission * performance_multiplier
 
-        # Record commission in agent
         agent.record_commission(
             amount=commission_amount,
             user_id=f"user_{random.randint(1000, 9999)}",
@@ -285,7 +267,6 @@ class ColonyOrchestrator:
             conversion_path=conversion_path
         )
 
-        # Record revenue in competition system
         self.colony.record_agent_action(
             agent_id=agent_id,
             revenue=commission_amount,
@@ -294,98 +275,30 @@ class ColonyOrchestrator:
             actions=0
         )
 
-        tier = self.colony.competition.get_agent_tier(agent_id)
-        logger.info(f"🎉 Conversion recorded for agent '{agent_id}': "
-                   f"{plan_type} → ${commission_amount:.2f} commission "
-                   f"(base ${base_commission:.2f} × {performance_multiplier}x {tier.display_name} tier)")
-
     def run_weekly_competition(self):
-        """Run weekly competition and announce results"""
         logger.info("🏆 Running weekly competition...")
-
         result = self.colony.run_weekly_competition()
-
         if result.winner_id:
-            logger.info(f"""
-            🎊 WEEKLY COMPETITION RESULTS 🎊
-            ================================
-            Winner: {result.winner_id}
-            Score: {result.winner_score:.2f}/100
-            Tier: {result.winner_tier.display_name}
-            Commission Rate: {result.winner_tier.multiplier * 10}%
-
-            Top 5 Rankings:
-            """)
-
-            for i, (agent_id, score, tier) in enumerate(result.rankings[:5], 1):
-                logger.info(f"  {i}. {agent_id}: {score:.2f} points ({tier.display_name} tier)")
-
-            logger.info(f"\nTotal participants: {len(result.rankings)}")
-        else:
-            logger.info("No eligible agents for this week's competition")
+            logger.info(f"🎊 Winner: {result.winner_id} with Score {result.winner_score:.2f}")
 
     def run_monthly_competition(self):
-        """Run monthly competition and announce results"""
         logger.info("🏆🏆 Running MONTHLY competition...")
-
         result = self.colony.run_monthly_competition()
-
         if result.winner_id:
-            logger.info(f"""
-            🎊🎊 MONTHLY COMPETITION RESULTS 🎊🎊
-            ====================================
-            Winner: {result.winner_id}
-            Score: {result.winner_score:.2f}/100
-            Tier: {result.winner_tier.display_name}
-            Commission Rate: {result.winner_tier.multiplier * 10}%
-
-            Top 10 Rankings:
-            """)
-
-            for i, (agent_id, score, tier) in enumerate(result.rankings[:10], 1):
-                logger.info(f"  {i}. {agent_id}: {score:.2f} points ({tier.display_name} tier)")
-
-            logger.info(f"\nTotal participants: {len(result.rankings)}")
-        else:
-            logger.info("No eligible agents for this month's competition")
+            logger.info(f"🎊🎊 Winner: {result.winner_id} with Score {result.winner_score:.2f}")
 
     def run_learning_session(self):
-        """
-        Run collaborative learning session.
-
-        Agents learn from the best while protecting promising experiments.
-        This prevents the "local maximum trap" where everyone chases quick wins
-        and misses better long-term strategies.
-        """
         logger.info("🧠 Running weekly learning session...")
-
         session = self.learning.run_learning_session(self.colony)
-
         if session:
-            # Print detailed report
             print_learning_report(session)
-
-            # Log key insights
-            logger.info(f"\n💡 Learning Insights:")
-            logger.info(f"  Best performer: {session['best_agent']} ({session['best_roi']:.2f}x ROI)")
-            logger.info(f"  Agents improved: {len(session['actions'])}")
-
-            # Show protected experiments
-            protected_count = sum(1 for action in session['actions']
-                                 if action['role'] == 'Experimenter')
-            if protected_count > 0:
-                logger.info(f"  🛡️ Protected experiments: {protected_count}")
-                logger.info(f"     (These are showing promise even if ROI is currently lower)")
-
         else:
             logger.info("Not enough data for learning session yet")
 
     def get_colony_report(self) -> dict:
-        """Get comprehensive colony report"""
         stats = self.colony.get_colony_stats()
         tree = self.colony.get_family_tree()
         leaderboard = self.colony.get_leaderboard(limit=10)
-
         return {
             'timestamp': datetime.now().isoformat(),
             'stats': stats,
@@ -395,53 +308,33 @@ class ColonyOrchestrator:
         }
 
     def run_continuously(self):
-        """Run colony continuously with schedule"""
         logger.info("🚀 Starting continuous colony operation...")
-
-        # Run morning routine immediately
         self.morning_routine()
-
-        # Run scheduled tasks
         while True:
             schedule.run_pending()
-            time.sleep(60)  # Check every minute
+            time.sleep(60)
 
     def save_all_states(self):
-        """Save all colony state"""
         self.colony.save_colony_state('data')
         logger.info("All colony states saved")
 
     @staticmethod
     def load_colony(directory: str = 'data') -> 'ColonyOrchestrator':
-        """Load colony from saved state"""
         orchestrator = ColonyOrchestrator.__new__(ColonyOrchestrator)
-
-        # Load colony
         orchestrator.colony = AgentColony.load_colony_state(directory)
-
-        # Initialize platform monitors
         orchestrator.reddit_monitor = RedditMonitor()
         orchestrator.twitter_monitor = TwitterMonitor()
-
-        # Setup schedule
         orchestrator._setup_schedule()
-
         logger.info(f"Colony loaded from {directory}/ - {len(orchestrator.colony.agents)} agents")
-
         return orchestrator
 
 
 def main():
-    """Main entry point for colony"""
-    # Load configuration
     from dotenv import load_dotenv
     load_dotenv()
-
-    # Get configuration
     initial_balance = float(os.getenv('INITIAL_BALANCE', '50.0'))
     run_mode = os.getenv('RUN_MODE', 'once')
 
-    # Try to load existing colony, or create new one
     if os.path.exists('data/genealogy.json'):
         logger.info("Loading existing colony...")
         orchestrator = ColonyOrchestrator.load_colony('data')
@@ -452,11 +345,9 @@ def main():
             initial_balance=initial_balance
         )
 
-    # Run based on mode
     if run_mode == 'continuous':
         orchestrator.run_continuously()
     else:
-        # Run a single cycle
         orchestrator.morning_routine()
         orchestrator.run_colony_cycle()
         orchestrator.evening_routine()
