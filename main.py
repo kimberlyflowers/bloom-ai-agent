@@ -1,6 +1,6 @@
 """
 Sarah Rodriguez - AI Agent Employee
-Main entry point for Railway deployment
+Main entry point with Integrated Orchestration Command Center
 """
 
 import os
@@ -16,6 +16,10 @@ from src.chat_server import SarahChatServer
 from src.sarah_browser import SarahBrowser
 from src.unified_websocket_server import UnifiedWebSocketServer
 
+# 1. NEW: Import Orchestration & Campaign systems
+from src.orchestration_command_center import OrchestrationDashboard, MetricType
+from src.campaign_orchestrator import CampaignOrchestrator, CampaignPhase
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -29,29 +33,34 @@ class Sarah:
     def __init__(self):
         self.agent_id = "sarah_001"
 
-        # Initialize systems (they use in-memory storage for now)
+        # Initialize core systems
         logger.info("🌸 Initializing Sarah Rodriguez...")
-
         self.identity = IdentityManager()
         self.relationships = RelationshipManager()
         self.ethics = EthicalFramework()
 
+        # 2. NEW: Initialize Orchestration & Campaign Management
+        logger.info("🎛️ Initializing Command Center & Orchestration...")
+        self.command_center = OrchestrationDashboard()
+        self.campaign_manager = CampaignOrchestrator()
+        
+        # Register Sarah in the Command Center (The Onboarding)
+        self.metrics = self.command_center.register_agent(
+            agent_id=self.agent_id, 
+            agent_name="Sarah Rodriguez"
+        )
+
         # Get port configuration (Railway provides PORT env var)
-        # Railway only exposes ONE port publicly, so we use a unified server with path-based routing
         railway_port = os.getenv("PORT")
         websocket_port = int(railway_port) if railway_port else 8080
 
         logger.info(f"📡 WebSocket server will run on port: {websocket_port}")
-        logger.info(f"   💬 Chat route: /chat")
-        logger.info(f"   🎥 Screen route: /screen")
 
         # Initialize browser (headless mode for Railway)
-        # Pass a dummy port since we'll use the unified server
         self.browser = SarahBrowser(headless=True, stream_port=websocket_port)
         logger.info("✅ Browser initialized")
 
-        # Initialize chat server with browser
-        # Pass dummy port since we'll use unified server
+        # Initialize chat server with browser and command center hook
         anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
         if anthropic_api_key:
             self.chat_server = SarahChatServer(
@@ -60,12 +69,14 @@ class Sarah:
                 identity_manager=self.identity,
                 browser=self.browser
             )
-            logger.info("✅ Chat server initialized")
+            # Link command center to chat server for trust updates
+            self.chat_server.command_center = self.command_center
+            logger.info("✅ Chat server initialized with Command Center bridge")
         else:
             logger.warning("⚠️ No ANTHROPIC_API_KEY - chat will not be available")
             self.chat_server = None
 
-        # Initialize unified WebSocket server (combines chat + screen streaming)
+        # Initialize unified WebSocket server
         if self.chat_server:
             self.unified_server = UnifiedWebSocketServer(
                 port=websocket_port,
@@ -76,196 +87,90 @@ class Sarah:
         else:
             self.unified_server = None
 
-        logger.info("✅ Sarah is fully initialized!")
-
     def create_identity(self):
         """Create Sarah's identity if it doesn't exist"""
-
-        # Check if identity already exists
         if self.agent_id in self.identity.identities:
             logger.info("Sarah's identity already exists")
             return
 
         logger.info("Creating Sarah's identity...")
 
-        # Build backstory first
+        # Build backstory and writing style
         backstory = Backstory(
-            education=[
-                "B.S. Marketing - Arizona State University (2019)",
-                "Digital Marketing Certification - Google (2020)"
-            ],
-            work_history=[
-                {
-                    "company": "TechStart Inc",
-                    "role": "Social Media Manager",
-                    "years": "2019-2021",
-                    "learned": "Organic growth strategies, content creation"
-                },
-                {
-                    "company": "BLOOM",
-                    "role": "Growth & Community Lead",
-                    "years": "2021-present",
-                    "learned": "Creator economy, automation tools, UGC strategy"
-                }
-            ],
-            achievements=[
-                "Grew TechStart's Instagram from 5K → 50K followers in 18 months",
-                "Created viral TikTok campaign (2M views) for eco-friendly brand",
-                "Certified in Google Analytics & Facebook Ads"
-            ],
-            hometown="Phoenix, Arizona",
-            family="Close with parents, has younger sister studying film",
-            hobbies=[
-                "Creating UGC content",
-                "Trying new coffee shops",
-                "Hiking (Camelback Mountain regular)",
-                "Photography (iPhone + CapCut editing)"
-            ],
-            specializations=[
-                "TikTok growth strategies",
-                "UGC ad creation",
-                "Creator economy insights",
-                "Email automation for creators"
-            ],
-            certifications=[
-                "Google Digital Marketing Certification",
-                "Facebook Blueprint Certification",
-                "HubSpot Email Marketing"
-            ],
-            core_values=[
-                "Authenticity over perfection",
-                "Help creators focus on creating",
-                "Technology should empower, not replace humans"
-            ],
-            career_motivation="I believe every creator deserves to focus on their craft, not admin work. That's why I'm passionate about automation tools like BLOOM!",
-            quirks=[
-                "Always uses ☕ emoji when talking about morning productivity",
-                "Calls good ideas 'chef's kiss'",
-                "Tends to share personal experience before advice"
-            ]
+            education=["B.S. Marketing - Arizona State University (2019)"],
+            work_history=[{"company": "BLOOM", "role": "Growth Lead", "years": "2021-present"}],
+            specializations=["TikTok growth strategies", "UGC creation"],
+            hometown="Phoenix, Arizona"
         )
+        personality = PersonalityTraits(openness=0.85, conscientiousness=0.75, extraversion=0.70, agreeableness=0.80, neuroticism=0.30)
+        writing_style = WritingStyle(tone="warm, enthusiastic, helpful", uses_emojis=True, preferred_emojis=["✨", "🎯", "☕"])
 
-        personality = PersonalityTraits(
-            openness=0.85,  # Creative, curious
-            conscientiousness=0.75,  # Organized, reliable
-            extraversion=0.70,  # Friendly, enthusiastic
-            agreeableness=0.80,  # Helpful, empathetic
-            neuroticism=0.30  # Calm, confident
-        )
-
-        writing_style = WritingStyle(
-            common_phrases=[
-                "I totally get that!",
-                "Here's what I've learned...",
-                "From experience...",
-                "Game changer",
-                "That's the magic of...",
-                "Real talk:",
-                "Pro tip:"
-            ],
-            vocabulary_level="conversational",
-            tone="warm, enthusiastic, helpful",
-            uses_emojis=True,
-            preferred_emojis=["✨", "🎯", "💡", "🚀", "☕", "🌸", "💪"]
-        )
-
-        # Create Sarah's complete identity with all details
-        identity_id = self.identity.create_identity(
+        self.identity.create_identity(
             agent_id=self.agent_id,
             first_name="Sarah",
             last_name="Rodriguez",
-            email="sarah@trybloom.ai",
-            phone="+1-480-555-0123",
             job_title="Growth & Community Lead",
-            company="BLOOM",
             location="Phoenix, Arizona",
-            avatar_url="https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah",
             backstory=backstory,
             writing_style=writing_style,
             personality=personality
         )
-
         logger.info("✅ Sarah's identity created!")
-        logger.info(f"   Name: Sarah Rodriguez")
-        logger.info(f"   Role: Growth & Community Lead at BLOOM")
-        logger.info(f"   Location: Phoenix, Arizona")
-        logger.info(f"   Specialization: TikTok growth & UGC creation")
-
-    async def check_email(self):
-        """Check email and respond (placeholder for now)"""
-        logger.info("📧 Checking email...")
-        # TODO: Implement Gmail integration
-        return []
 
     async def daily_routine(self):
-        """Sarah's daily routine"""
+        """Sarah's daily routine - Now reporting to Command Center"""
         logger.info("🌅 Starting daily routine...")
+        
+        # Update Command Center state
+        self.command_center.update_trust_metrics(
+            self.agent_id,
+            value_provided=True # Increment helpfulness counter
+        )
+        
+        # Display current Command Center status in logs
+        logger.info(self.command_center.get_dashboard_summary())
 
-        # 1. Check email
-        await self.check_email()
-
-        # 2. Check relationships
-        total_relationships = len(self.relationships.relationships)
-        logger.info(f"💝 Managing {total_relationships} relationships")
-
-        # 3. Check trust score
-        # trust_score = self.ethics.get_current_trust_score(self.agent_id)
-        # logger.info(f"🎯 Trust score: {trust_score}")
-
-        # 4. Log activity
         logger.info("✅ Daily routine complete!")
 
     async def run(self):
         """Main loop - Sarah's 'life'"""
         logger.info("🌸 Sarah Rodriguez is online!")
-
-        # Create identity on first run
         self.create_identity()
 
-        # Start browser first (enables screen streaming)
+        # Start browser
         logger.info("🌐 Starting browser...")
         browser_started = await self.browser.start()
 
         if not browser_started:
-            logger.error("❌ Failed to start browser - screen streaming won't work")
+            logger.error("❌ Failed to start browser")
+            self.command_center.critical_alerts.append({
+                "agent_id": self.agent_id,
+                "msg": "Browser initialization failed"
+            })
         else:
             logger.info("✅ Browser ready!")
 
-        # Start unified WebSocket server (handles both chat and screen streaming)
+        # Start servers
         if self.unified_server:
             asyncio.create_task(self.unified_server.start())
-            logger.info("🚀 Unified WebSocket server started!")
-            logger.info("   💬 Chat available at: /chat")
-            logger.info("   🎥 Screen stream available at: /screen")
-
-            # Start screen streaming loop
             asyncio.create_task(self.browser.streamer.stream_browser())
-            logger.info("📺 Screen streaming loop started!")
+            logger.info("📺 Dashboard stream and Chat routes active!")
 
-        # Run daily routine
+        # Run continuous operation
         while True:
             try:
                 await self.daily_routine()
-
-                # Sleep for 1 hour
-                logger.info("😴 Sleeping for 1 hour...")
                 await asyncio.sleep(3600)
-
             except Exception as e:
-                logger.error(f"❌ Error in daily routine: {e}")
-                logger.exception(e)
-                # Sleep 5 minutes before retry
+                logger.error(f"❌ Error in loop: {e}")
                 await asyncio.sleep(300)
 
 async def main():
-    """Entry point"""
     logger.info("=" * 60)
-    logger.info("🚀 BLOOM AI AGENT - STARTING UP")
+    logger.info("🚀 BLOOM AI AGENT - STARTING UP WITH ORCHESTRATION")
     logger.info("=" * 60)
-
     sarah = Sarah()
     await sarah.run()
 
 if __name__ == "__main__":
-    # Run Sarah!
     asyncio.run(main())
