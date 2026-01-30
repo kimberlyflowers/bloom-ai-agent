@@ -394,13 +394,47 @@ class IntelligentClickRouter:
             if result.get('success'):
                 return {**result, 'router': 'safe_clicker'}
 
-        # ROUTE 4: Fallback to universal locator (vision-based) - last resort
-        # NOTE: This may still have coordinate issues until viewport fix is tested
-        logger.info(f"👁️ INTELLIGENT ROUTER: DOM failed -> Falling back to vision-based locator")
+        # ROUTE 4: Direct Playwright text/role matching (simple but effective)
+        logger.info(f"🔤 INTELLIGENT ROUTER: SafeClicker failed -> Trying direct Playwright text match")
+        try:
+            # Strip annotations like (input), (button), etc. to get clean text
+            clean_desc = re.sub(r'\s*\((?:input|button|link|submit|form)\)\s*', '', description, flags=re.IGNORECASE)
+            # Remove leading action words
+            for prefix in ['click ', 'click on ', 'press ', 'tap ']:
+                if clean_desc.lower().startswith(prefix):
+                    clean_desc = clean_desc[len(prefix):]
+            clean_desc = clean_desc.strip()
+
+            if clean_desc:
+                # Try role-based first (buttons, links)
+                for role in ['button', 'link']:
+                    try:
+                        locator = self.page.get_by_role(role, name=re.compile(re.escape(clean_desc), re.IGNORECASE))
+                        if await locator.count() > 0:
+                            await locator.first.click(timeout=5000)
+                            logger.info(f"✅ INTELLIGENT ROUTER: Clicked via role='{role}', name='{clean_desc}'")
+                            return {'success': True, 'method': f'playwright_role_{role}', 'router': 'playwright_direct'}
+                    except Exception:
+                        continue
+
+                # Try text-based click
+                try:
+                    locator = self.page.get_by_text(re.compile(re.escape(clean_desc), re.IGNORECASE))
+                    if await locator.count() > 0:
+                        await locator.first.click(timeout=5000)
+                        logger.info(f"✅ INTELLIGENT ROUTER: Clicked via text match: '{clean_desc}'")
+                        return {'success': True, 'method': 'playwright_text', 'router': 'playwright_direct'}
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.warning(f"⚠️ INTELLIGENT ROUTER: Playwright direct match failed: {e}")
+
+        # ROUTE 5: Everything failed
+        logger.info(f"👁️ INTELLIGENT ROUTER: All methods failed for: {description}")
         return {
             'success': False,
-            'message': 'DOM methods failed, vision-based clicking may have coordinate issues',
-            'router': 'fallback_needed'
+            'message': 'All click methods failed (SafeClicker + Playwright direct)',
+            'router': 'all_failed'
         }
 
     @staticmethod
@@ -415,6 +449,16 @@ class IntelligentClickRouter:
     @staticmethod
     def _is_search_intent(description: str) -> bool:
         """Check if this is a search box click intent"""
-        return any(word in description for word in [
-            'search', 'search box', 'search bar', 'input', 'type in'
-        ])
+        # Use whole-phrase matching to avoid false positives
+        # e.g. "Click reserve my spot (input)" should NOT match
+        search_phrases = [
+            'search box', 'search bar', 'search field', 'search input',
+            'type in search', 'type in the search'
+        ]
+        if any(phrase in description for phrase in search_phrases):
+            return True
+        # Only match standalone 'search' if it's not part of a longer click description
+        words = description.split()
+        if words and words[0] == 'search':
+            return True
+        return False
