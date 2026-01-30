@@ -14,16 +14,16 @@ export default function Dashboard() {
   const chatWsRef = useRef(null)
   const messagesEndRef = useRef(null)
 
-  // WebSocket URLs - use environment variable or localhost for development
-  const getWebSocketUrl = (port) => {
-    // Check if we have a Railway URL from environment variable
+  // WebSocket URL - path-based routing on single port (Railway exposes one port)
+  const getWebSocketUrl = (path) => {
     const railwayUrl = process.env.NEXT_PUBLIC_RAILWAY_WS_URL
     if (railwayUrl) {
-      // Use Railway WebSocket URL (wss:// for secure connection)
-      return railwayUrl.replace(':8000', `:${port}`)
+      // Production: wss://bloom-ai-agent-production.up.railway.app/<path>
+      const base = railwayUrl.replace(/\/+$/, '')  // strip trailing slashes
+      return `${base}${path}`
     }
-    // Fallback to localhost for development
-    return `ws://localhost:${port}`
+    // Local dev: ws://localhost:8080/<path>
+    return `ws://localhost:8080${path}`
   }
 
   useEffect(() => {
@@ -57,8 +57,8 @@ export default function Dashboard() {
 
   function connectToLiveScreen() {
     try {
-      // Connect to Railway WebSocket server
-      const wsUrl = getWebSocketUrl(8765)
+      // Connect to unified WebSocket server - /screen path
+      const wsUrl = getWebSocketUrl('/screen')
       console.log('🎥 Connecting to screen stream:', wsUrl)
       const ws = new WebSocket(wsUrl)
 
@@ -100,8 +100,8 @@ export default function Dashboard() {
 
   function connectToChat() {
     try {
-      // Connect to chat WebSocket server (different port from screen stream)
-      const wsUrl = getWebSocketUrl(8766)
+      // Connect to unified WebSocket server - /chat path
+      const wsUrl = getWebSocketUrl('/chat')
       console.log('💬 Connecting to chat:', wsUrl)
       const ws = new WebSocket(wsUrl)
 
