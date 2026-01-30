@@ -9,11 +9,11 @@ import random
 import time
 from datetime import datetime
 import schedule
-from ai_agent import BloomAIAgent, Specialization
-from agent_reproduction import AgentColony
-from colony_learning import ColonyLearning, print_learning_report
-from reddit_integration import RedditMonitor, RedditStrategy
-from twitter_integration import TwitterMonitor, TwitterStrategy
+from src.ai_agent import BloomAIAgent, Specialization
+from src.agent_reproduction import AgentColony
+from src.colony_learning import ColonyLearning, print_learning_report
+from src.reddit_integration import RedditMonitor, RedditStrategy
+from src.twitter_integration import TwitterMonitor, TwitterStrategy
 
 logger = logging.getLogger(__name__)
 

@@ -395,13 +395,13 @@ if __name__ == "__main__":
     print("MULTI-AGENT CAMPAIGN ORCHESTRATOR - DEMO".center(80))
     print("=" * 80)
 
-    from agent_reproduction import AgentColony
-    from ai_agent import BloomAIAgent, Specialization
+    from src.agent_reproduction import AgentColony
+    from src.ai_agent import BloomAIAgent, Specialization
 
     # Create colony
     colony = AgentColony()
-    colony.agents['discord_expert'] = BloomAIAgent('discord_expert', 100.0, Specialization.DISCORD_EXPERT)
-    colony.agents['twitter_expert'] = BloomAIAgent('twitter_expert', 100.0, Specialization.TWITTER_EXPERT)
+    colony.agents['discord_expert'] = BloomAIAgent('discord_expert', 100.0, Specialization.COMMUNITY_ENGAGER)
+    colony.agents['twitter_expert'] = BloomAIAgent('twitter_expert', 100.0, Specialization.TWITTER_SPECIALIST)
     colony.agents['generalist'] = BloomAIAgent('generalist', 100.0, Specialization.GENERALIST)
 
     # Create campaign
