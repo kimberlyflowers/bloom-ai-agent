@@ -23,7 +23,8 @@ class SarahChatServer:
         self,
         anthropic_api_key: str,
         port: int = 8766,
-        identity_manager=None
+        identity_manager=None,
+        browser=None
     ):
         """
         Initialize chat server
@@ -32,11 +33,13 @@ class SarahChatServer:
             anthropic_api_key: Anthropic API key for Claude
             port: WebSocket port (default 8766)
             identity_manager: Sarah's identity for context
+            browser: SarahBrowser instance for browser control
         """
         self.port = port
         self.connected_clients: Set[WebSocketServerProtocol] = set()
         self.server = None
         self.identity_manager = identity_manager
+        self.browser = browser
 
         # Initialize Anthropic client
         self.anthropic = Anthropic(api_key=anthropic_api_key)
@@ -112,7 +115,7 @@ Important:
             await self.server.wait_closed()
             logger.info("🔴 Chat server stopped")
 
-    async def handle_client(self, websocket: WebSocketServerProtocol, path: str):
+    async def handle_client(self, websocket: WebSocketServerProtocol, path: str = None):
         """Handle new client connection"""
         client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
         logger.info(f"💬 New chat client connected: {client_id}")

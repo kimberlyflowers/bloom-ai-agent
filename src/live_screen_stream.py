@@ -57,7 +57,7 @@ class LiveScreenStreamer:
         except Exception as e:
             logger.error(f"❌ Error starting screen stream server: {e}")
 
-    async def handle_client(self, websocket: WebSocketServerProtocol, path: str):
+    async def handle_client(self, websocket: WebSocketServerProtocol, path: str = None):
         """Handle new dashboard connection"""
         client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
 
@@ -190,7 +190,7 @@ class PlaywrightScreenStreamer:
         logger.info(f"✅ Screen stream server ready!")
         logger.info(f"   Dashboard can connect to: ws://[railway-url]:{self.port}")
 
-    async def handle_client(self, websocket: WebSocketServerProtocol, path: str):
+    async def handle_client(self, websocket: WebSocketServerProtocol, path: str = None):
         """Handle dashboard connection"""
         client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
         logger.info(f"📺 Dashboard connected: {client_id}")
